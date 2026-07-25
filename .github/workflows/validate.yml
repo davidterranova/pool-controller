@@ -1,0 +1,29 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      # pool-controller.yaml reads Wi-Fi/API/OTA credentials via !secret from
+      # secrets.yaml, which is gitignored and never committed. These values
+      # are placeholders good enough for schema validation only -- nothing
+      # here needs to be a real credential. pool_controller_api_key still has
+      # to decode as a base64 32-byte key, since ESPHome validates that shape.
+      - name: Create placeholder secrets.yaml
+        run: |
+          cat > secrets.yaml <<'EOF'
+          wifi_ssid: "placeholder"
+          wifi_password: "placeholder"
+          pool_controller_api_key: "bK1YlLBsY0Ouxeekl8eHkLoQ6TORbg4RbocsLsXDqvQ="
+          pool_controller_ota_password: "placeholder"
+          EOF
+
+      - name: make validate
+        run: make validate
