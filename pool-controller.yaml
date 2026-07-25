@@ -1,0 +1,318 @@
+esphome:
+  name: pool-controller
+  friendly_name: Pool Controller
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Edit these for your network; everything below reads from them.
+substitutions:
+  shelly_v1_ip: "192.168.0.181"    # Relay 1 -> pump DI1 (Speed V1)
+  shelly_v2_ip: "192.168.0.182"    # Relay 2 -> pump DI2 (Speed V2)
+  shelly_v3_ip: "192.168.0.183"    # Relay 3 -> pump DI3 (Speed V3)
+  shelly_run_ip: "192.168.0.184"   # Relay 4 -> pump DI4 (Run/Stop)
+  onewire_pin: GPIO4
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # Reboot and retry if Wi-Fi has been down this long -- recovers from a
+  # stuck radio without needing anyone to notice.
+  reboot_timeout: 15min
+
+logger:
+  level: INFO
+
+api:
+  encryption:
+    key: !secret pool_controller_api_key
+  # ESPHome's default reboots the device if no API client (i.e. Home
+  # Assistant) connects for a while -- exactly the dependency this whole
+  # design exists to avoid. This device must keep running its schedule
+  # with or without HA, so that safety reboot is disabled.
+  reboot_timeout: 0s
+
+ota:
+  platform: esphome
+  password: !secret pool_controller_ota_password
+
+time:
+  - platform: sntp
+    id: local_time
+    # Falls back to your router's DHCP-advertised NTP server; add explicit
+    # servers here if your network doesn't advertise one.
+
+http_request:
+  useragent: esphome/pool-controller
+  timeout: 5s
+  verify_ssl: false
+
+one_wire:
+  - platform: gpio
+    pin: ${onewire_pin}
+
+sensor:
+  - platform: dallas_temp
+    id: pool_return_temp
+    name: "Pool Return Temperature"
+    address: 0x1c3c01d075640128   # from the boot log -- see "Before flashing"
+    filters:
+      - median: {window_size: 5, send_every: 5}
+  - platform: dallas_temp
+    id: pad_ambient_temp
+    name: "Equipment Pad Temperature"
+    address: 0x3c2c01d0756a0328
+
+text_sensor:
+  - platform: template
+    name: "Pump Commanded Speed"
+    id: pump_status
+    icon: mdi:pump
+    update_interval: 10s
+    lambda: 'return id(last_commanded);'
+
+# --- Schedule, editable from the Home Assistant dashboard, persisted in flash ---
+number:
+  - platform: template
+    name: "Program A Start Hour"
+    id: prog_a_start
+    min_value: 0
+    max_value: 23
+    step: 1
+    initial_value: 8
+    restore_value: true
+    optimistic: true
+  - platform: template
+    name: "Program A End Hour"
+    id: prog_a_end
+    min_value: 0
+    max_value: 23
+    step: 1
+    initial_value: 12
+    restore_value: true
+    optimistic: true
+  - platform: template
+    name: "Program B Start Hour"
+    id: prog_b_start
+    min_value: 0
+    max_value: 23
+    step: 1
+    initial_value: 12
+    restore_value: true
+    optimistic: true
+  - platform: template
+    name: "Program B End Hour"
+    id: prog_b_end
+    min_value: 0
+    max_value: 23
+    step: 1
+    initial_value: 16
+    restore_value: true
+    optimistic: true
+  - platform: template
+    name: "Program C Start Hour"
+    id: prog_c_start
+    min_value: 0
+    max_value: 23
+    step: 1
+    initial_value: 16
+    restore_value: true
+    optimistic: true
+  - platform: template
+    name: "Program C End Hour"
+    id: prog_c_end
+    min_value: 0
+    max_value: 23
+    step: 1
+    initial_value: 20
+    restore_value: true
+    optimistic: true
+
+select:
+  - platform: template
+    name: "Program A Speed"
+    id: prog_a_speed
+    options: ["Off", "Low", "Medium", "High"]
+    initial_option: "Low"
+    restore_value: true
+    optimistic: true
+  - platform: template
+    name: "Program B Speed"
+    id: prog_b_speed
+    options: ["Off", "Low", "Medium", "High"]
+    initial_option: "Medium"
+    restore_value: true
+    optimistic: true
+  - platform: template
+    name: "Program C Speed"
+    id: prog_c_speed
+    options: ["Off", "Low", "Medium", "High"]
+    initial_option: "Low"
+    restore_value: true
+    optimistic: true
+  - platform: template
+    name: "Manual Override"
+    id: manual_override
+    options: ["Auto", "Off", "Low", "Medium", "High"]
+    initial_option: "Auto"
+    restore_value: true
+    optimistic: true
+
+globals:
+  - id: last_commanded
+    type: std::string
+    restore_value: false
+    initial_value: '"unknown"'
+  # Suppresses the pump_fan -> manual_override sync (see fan: on_state below)
+  # while the schedule engine itself is updating the fan's displayed state --
+  # otherwise every automatic speed change would yank the device out of Auto.
+  - id: syncing_fan_display
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
+# A friendlier, HA-native "Fan" card layered on top of Manual Override: toggling
+# it or picking a preset here just writes into `manual_override` below (same as
+# using that select directly), so freeze protection and the schedule still take
+# priority exactly as before. It has no way to represent "Auto" -- use the
+# Manual Override select for that -- but covers the everyday "override to a
+# speed" and "turn it off" cases with a nicer widget.
+fan:
+  - platform: template
+    name: "Pump"
+    id: pump_fan
+    icon: mdi:pump
+    preset_modes:
+      - "Low"
+      - "Medium"
+      - "High"
+    on_state:
+      - lambda: |-
+          if (id(syncing_fan_display)) return;
+          if (!x->state) {
+            id(manual_override).make_call().set_option("Off").perform();
+          } else if (x->has_preset_mode()) {
+            id(manual_override).make_call().set_option(x->get_preset_mode().str()).perform();
+          } else {
+            // Turned on with no preset chosen (e.g. a plain toggle) -- default low.
+            id(manual_override).make_call().set_option("Low").perform();
+          }
+
+# --- Relay commands: one script per Shelly, each a plain local RPC call ---
+script:
+  - id: relay_v1
+    parameters:
+      "on": bool
+    then:
+      - http_request.get:
+          url: !lambda |-
+            return std::string("http://${shelly_v1_ip}/rpc/Switch.Set?id=0&on=") + (on ? "true" : "false");
+          on_error:
+            - logger.log: "relay_v1 command failed"
+
+  - id: relay_v2
+    parameters:
+      "on": bool
+    then:
+      - http_request.get:
+          url: !lambda |-
+            return std::string("http://${shelly_v2_ip}/rpc/Switch.Set?id=0&on=") + (on ? "true" : "false");
+          on_error:
+            - logger.log: "relay_v2 command failed"
+
+  - id: relay_v3
+    parameters:
+      "on": bool
+    then:
+      - http_request.get:
+          url: !lambda |-
+            return std::string("http://${shelly_v3_ip}/rpc/Switch.Set?id=0&on=") + (on ? "true" : "false");
+          on_error:
+            - logger.log: "relay_v3 command failed"
+
+  - id: relay_run
+    parameters:
+      "on": bool
+    then:
+      - http_request.get:
+          url: !lambda |-
+            return std::string("http://${shelly_run_ip}/rpc/Switch.Set?id=0&on=") + (on ? "true" : "false");
+          on_error:
+            - logger.log: "relay_run command failed"
+
+  # Break-before-make sequencing: drop the run contact, settle, select the
+  # new speed, settle again, re-assert run. Guarantees two speed DI lines
+  # are never briefly closed together, and never leaves the run contact
+  # energized while a speed relay is switching.
+  - id: apply_speed
+    parameters:
+      speed: string
+    then:
+      - logger.log:
+          format: "Pump: applying speed %s"
+          args: ["speed.c_str()"]
+      - script.execute: {id: relay_run, "on": false}
+      - delay: 500ms
+      - if:
+          condition:
+            lambda: 'return speed != "Off";'
+          then:
+            - script.execute: {id: relay_v1, "on": false}
+            - script.execute: {id: relay_v2, "on": false}
+            - script.execute: {id: relay_v3, "on": false}
+            - delay: 300ms
+            - if:
+                condition: {lambda: 'return speed == "Low";'}
+                then: [{script.execute: {id: relay_v1, "on": true}}]
+            - if:
+                condition: {lambda: 'return speed == "Medium";'}
+                then: [{script.execute: {id: relay_v2, "on": true}}]
+            - if:
+                condition: {lambda: 'return speed == "High";'}
+                then: [{script.execute: {id: relay_v3, "on": true}}]
+            - delay: 300ms
+            - script.execute: {id: relay_run, "on": true}
+
+# --- The schedule engine itself ---
+interval:
+  - interval: 30s
+    then:
+      - lambda: |-
+          std::string desired = "Off";
+
+          // 1. Freeze protection always wins, Home Assistant or not.
+          if (id(pool_return_temp).state < 3.0) {
+            desired = "Low";
+          }
+          // 2. Manual override (set from the HA dashboard) wins over the schedule.
+          else if (id(manual_override).current_option() != "Auto") {
+            desired = id(manual_override).current_option().str();
+          }
+          // 3. Otherwise, whichever program window we're currently in.
+          // Later programs win on overlap -- keep windows non-overlapping
+          // in practice; this is just a defined tie-break.
+          else {
+            int h = id(local_time).now().hour;
+            if (h >= (int) id(prog_a_start).state && h < (int) id(prog_a_end).state)
+              desired = id(prog_a_speed).current_option().str();
+            if (h >= (int) id(prog_b_start).state && h < (int) id(prog_b_end).state)
+              desired = id(prog_b_speed).current_option().str();
+            if (h >= (int) id(prog_c_start).state && h < (int) id(prog_c_end).state)
+              desired = id(prog_c_speed).current_option().str();
+          }
+
+          if (desired != id(last_commanded)) {
+            id(last_commanded) = desired;
+
+            id(syncing_fan_display) = true;
+            if (desired == "Off") {
+              id(pump_fan).turn_off().perform();
+            } else {
+              id(pump_fan).turn_on().set_preset_mode(desired.c_str()).perform();
+            }
+            id(syncing_fan_display) = false;
+
+            id(apply_speed).execute(desired);
+          }
