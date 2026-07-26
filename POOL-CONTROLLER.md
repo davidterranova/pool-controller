@@ -111,11 +111,60 @@ no reason.
      doing what you expect)
    - **Numbers**: Program A/B/C Start Hour, Program A/B/C End Hour
    - **Selects**: Program A/B/C Speed, Manual Override
-4. A simple dashboard card with the three programs' numbers/selects,
-   Manual Override, and the two temperature sensors + Pump Commanded Speed
-   covers everything you'd need day-to-day.
-5. Once paired, HA's ESPHome integration can also push OTA updates directly
+   - **Fan**: Pump — a friendlier proxy for Manual Override (on/off +
+     Low/Medium/High). Has no way to represent "Auto"; use the Manual
+     Override select for that.
+4. Once paired, HA's ESPHome integration can also push OTA updates directly
    — an alternative to running `make ota` from this repo.
+
+### Suggested dashboard card
+
+A single `entities` card (built-in, no HACS dependency) covering the
+schedule, override, fan, and status in one place:
+
+```yaml
+type: entities
+title: Pool Pump Schedule
+entities:
+  - entity: fan.pool_controller_pump
+  - entity: select.pool_controller_manual_override
+  - type: section
+    label: Program A
+  - entity: number.pool_controller_program_a_start_hour
+    name: Start Hour
+  - entity: number.pool_controller_program_a_end_hour
+    name: End Hour
+  - entity: select.pool_controller_program_a_speed
+    name: Speed
+  - type: section
+    label: Program B
+  - entity: number.pool_controller_program_b_start_hour
+    name: Start Hour
+  - entity: number.pool_controller_program_b_end_hour
+    name: End Hour
+  - entity: select.pool_controller_program_b_speed
+    name: Speed
+  - type: section
+    label: Program C
+  - entity: number.pool_controller_program_c_start_hour
+    name: Start Hour
+  - entity: number.pool_controller_program_c_end_hour
+    name: End Hour
+  - entity: select.pool_controller_program_c_speed
+    name: Speed
+  - type: section
+    label: Status
+  - entity: sensor.pool_controller_pool_return_temperature
+  - entity: sensor.pool_controller_equipment_pad_temperature
+  - entity: sensor.pool_controller_pump_commanded_speed
+    name: Commanded Speed
+```
+
+Add it via Edit Dashboard → Add Card → Manual (or any card's "Edit in
+YAML"). The entity IDs above are HA's usual naming convention for this
+device, not a confirmed live read — if a row shows "Entity not available,"
+check Developer Tools → States (filter `pool_controller`) and fix that line,
+or delete and re-add it through the visual entity picker instead.
 
 ## Changing the freeze-protection threshold
 
