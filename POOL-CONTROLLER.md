@@ -66,6 +66,61 @@ relay script only logs `relay_vX command failed` and moves on, so if the
 pump never responds, check the boot/runtime log for that message before
 assuming it's a wiring or Shelly-side problem.
 
+### Planned change: direct GPIO relay control (retiring the Shellys)
+
+The ESP32 and the pump's control panel are physically co-located, so the
+whole reason to route relay commands over Wi-Fi — avoiding a wiring run
+between two separate locations — doesn't apply here. The plan is to drive
+relays directly from ESP32 GPIOs instead, dropping the network dependency
+(and the cross-VLAN question above) entirely for pump control. The four
+Shelly units aren't wasted — they're earmarked for other automation
+projects later.
+
+**Hardware**: an [Elegoo 8-channel 5V relay module with
+optocoupler](https://www.amazon.fr/dp/B06XL1F53G) (or the functionally
+identical SainSmart-style board sold under other names). Only 4 of its 8
+channels are used; the rest are spare.
+
+Two things about this board that aren't obvious from a datasheet skim:
+
+- **Active-LOW trigger.** Pulling an `IN` pin to GND *closes* that relay;
+  driving it HIGH keeps it open — backwards from what most people expect,
+  but standard across this entire class of board. In ESPHome, each
+  `switch: platform: gpio` entry for these relays will need
+  `inverted: true`, or "on" in software leaves the physical relay open.
+- **JD-VCC jumper.** A jumper cap bridges `VCC` and `JD-VCC` on the board.
+  Leave it in place — bridged, one 5V feed powers both the opto-isolator
+  side and the relay coils. Removing it lets you power them from separate
+  supplies for full galvanic isolation, which isn't needed here since these
+  relays only switch the pump's low-voltage DI lines, not mains.
+
+**Wiring:**
+
+| Relay board pin | Connects to |
+|---|---|
+| `VCC` + `JD-VCC` (jumper bridged) | 5V, same rail as the ESP32 |
+| `GND` | Shared GND with the ESP32 |
+| `IN1`–`IN4` | Four ESP32 GPIOs — GPIO16/17/18/19 are reasonable defaults (output-capable, not strapping pins, not already used by the OneWire bus on GPIO4). Any similar general-purpose GPIO works; just avoid GPIO0/2/12/15 (boot-strapping) and GPIO34–39 (input-only, can't drive a relay). |
+| `COM` / `NO` on channels 1–4 | Pump DI1–DI4 and common — the same terminals the Shelly relays currently land on |
+| Channels 5–8 | Unused, spare for future projects |
+
+Wire to each channel's **NO** (normally open) contact, not NC. That way, if
+the ESP32 loses power or crashes, every relay de-energizes back to open —
+matching the pump's default "everything off" state, rather than leaving a
+speed or run signal accidentally latched active.
+
+**Worth confirming once wired**: reliable triggering from the ESP32's 3.3V
+GPIO output isn't something verifiable from the product listing alone — the
+board is nominally rated for 5V logic. After wiring, toggle each channel
+and confirm it audibly clicks. If a channel is unreliable, the JD-VCC split
+above lets you feed the opto-isolator side its own lower-voltage supply
+separately from the coil-driving JD-VCC rail.
+
+This section describes the target wiring only — `pool-controller.yaml`
+still targets the Shelly relays over HTTP until the corresponding firmware
+rewrite (swapping the `http_request`-based relay scripts for plain
+`switch: platform: gpio` actions) happens.
+
 ## Control logic
 
 Re-evaluated every 30 seconds, highest priority wins:

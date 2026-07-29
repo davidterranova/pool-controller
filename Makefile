@@ -14,7 +14,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build flash status kill-port ota ip clean
+.PHONY: validate build flash status kill-port ota ip logs clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate:
@@ -66,6 +66,13 @@ ota: build
 ip:
 	@test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
 	@echo "$(HOSTNAME) -> $(HOST)"
+
+# Streams the device's live log over Wi-Fi (native API, port 6053) -- no USB
+# needed. Ctrl-C to stop. Useful for watching the boot-time OneWire scan and
+# live sensor readings once the board's sealed up and USB isn't convenient.
+logs:
+	@test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
+	docker run --rm -it -v "$(CURDIR):/config" ghcr.io/esphome/esphome logs $(CONFIG) --device $(HOST) --states
 
 clean:
 	rm -rf .esphome

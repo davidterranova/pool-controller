@@ -57,13 +57,13 @@ sensor:
   - platform: dallas_temp
     id: pool_return_temp
     name: "Pool Return Temperature"
-    address: 0x1c3c01d075640128   # from the boot log -- see "Before flashing"
+    address: 0x52000000518FE928   # current bench-test sensor; was 0x1c3c01d075640128 before the swap
     filters:
       - median: {window_size: 5, send_every: 5}
   - platform: dallas_temp
     id: pad_ambient_temp
     name: "Equipment Pad Temperature"
-    address: 0x3c2c01d0756a0328
+    address: 0xFF00000026007028   # was 0x3c2c01d0756a0328 before the sensor swap
 
 text_sensor:
   - platform: template
