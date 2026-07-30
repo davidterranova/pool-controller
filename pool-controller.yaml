@@ -7,12 +7,12 @@ esp32:
   framework:
     type: arduino
 
-# Edit these for your network; everything below reads from them.
+# Edit these for your wiring; everything below reads from them.
 substitutions:
-  shelly_v1_ip: "192.168.0.181"    # Relay 1 -> pump DI1 (Speed V1)
-  shelly_v2_ip: "192.168.0.182"    # Relay 2 -> pump DI2 (Speed V2)
-  shelly_v3_ip: "192.168.0.183"    # Relay 3 -> pump DI3 (Speed V3)
-  shelly_run_ip: "192.168.0.184"   # Relay 4 -> pump DI4 (Run/Stop)
+  relay_v1_pin: GPIO16    # Relay 1 -> pump DI1 (Speed V1)
+  relay_v2_pin: GPIO17    # Relay 2 -> pump DI2 (Speed V2)
+  relay_v3_pin: GPIO18    # Relay 3 -> pump DI3 (Speed V3)
+  relay_run_pin: GPIO19   # Relay 4 -> pump DI4 (Run/Stop)
   onewire_pin: GPIO4
 
 wifi:
@@ -43,11 +43,6 @@ time:
     id: local_time
     # Falls back to your router's DHCP-advertised NTP server; add explicit
     # servers here if your network doesn't advertise one.
-
-http_request:
-  useragent: esphome/pool-controller
-  timeout: 5s
-  verify_ssl: false
 
 one_wire:
   - platform: gpio
@@ -200,48 +195,45 @@ fan:
             id(manual_override).make_call().set_option("Low").perform();
           }
 
-# --- Relay commands: one script per Shelly, each a plain local RPC call ---
+# --- Pump speed relays, driven directly via GPIO through an opto-isolated
+# 8-channel relay module (Elegoo-style). This board is active-LOW -- pulling
+# an IN pin low is what closes the relay -- hence `inverted: true` on each
+# pin below; ESPHome's `switch.turn_on` still means "logically on" from
+# there. Internal (no HA entity): these are only ever driven through
+# apply_speed's break-before-make sequencing below, never toggled directly,
+# so exposing them individually in HA would let someone bypass that safety
+# sequencing by accident.
+switch:
+  - platform: gpio
+    id: relay_v1
+    pin:
+      number: ${relay_v1_pin}
+      inverted: true
+    restore_mode: ALWAYS_OFF
+    internal: true
+  - platform: gpio
+    id: relay_v2
+    pin:
+      number: ${relay_v2_pin}
+      inverted: true
+    restore_mode: ALWAYS_OFF
+    internal: true
+  - platform: gpio
+    id: relay_v3
+    pin:
+      number: ${relay_v3_pin}
+      inverted: true
+    restore_mode: ALWAYS_OFF
+    internal: true
+  - platform: gpio
+    id: relay_run
+    pin:
+      number: ${relay_run_pin}
+      inverted: true
+    restore_mode: ALWAYS_OFF
+    internal: true
+
 script:
-  - id: relay_v1
-    parameters:
-      "on": bool
-    then:
-      - http_request.get:
-          url: !lambda |-
-            return std::string("http://${shelly_v1_ip}/rpc/Switch.Set?id=0&on=") + (on ? "true" : "false");
-          on_error:
-            - logger.log: "relay_v1 command failed"
-
-  - id: relay_v2
-    parameters:
-      "on": bool
-    then:
-      - http_request.get:
-          url: !lambda |-
-            return std::string("http://${shelly_v2_ip}/rpc/Switch.Set?id=0&on=") + (on ? "true" : "false");
-          on_error:
-            - logger.log: "relay_v2 command failed"
-
-  - id: relay_v3
-    parameters:
-      "on": bool
-    then:
-      - http_request.get:
-          url: !lambda |-
-            return std::string("http://${shelly_v3_ip}/rpc/Switch.Set?id=0&on=") + (on ? "true" : "false");
-          on_error:
-            - logger.log: "relay_v3 command failed"
-
-  - id: relay_run
-    parameters:
-      "on": bool
-    then:
-      - http_request.get:
-          url: !lambda |-
-            return std::string("http://${shelly_run_ip}/rpc/Switch.Set?id=0&on=") + (on ? "true" : "false");
-          on_error:
-            - logger.log: "relay_run command failed"
-
   # Break-before-make sequencing: drop the run contact, settle, select the
   # new speed, settle again, re-assert run. Guarantees two speed DI lines
   # are never briefly closed together, and never leaves the run contact
@@ -253,27 +245,30 @@ script:
       - logger.log:
           format: "Pump: applying speed %s"
           args: ["speed.c_str()"]
-      - script.execute: {id: relay_run, "on": false}
+      - switch.turn_off: relay_run
       - delay: 500ms
       - if:
           condition:
             lambda: 'return speed != "Off";'
           then:
-            - script.execute: {id: relay_v1, "on": false}
-            - script.execute: {id: relay_v2, "on": false}
-            - script.execute: {id: relay_v3, "on": false}
+            - switch.turn_off: relay_v1
+            - switch.turn_off: relay_v2
+            - switch.turn_off: relay_v3
             - delay: 300ms
             - if:
                 condition: {lambda: 'return speed == "Low";'}
-                then: [{script.execute: {id: relay_v1, "on": true}}]
+                then:
+                  - switch.turn_on: relay_v1
             - if:
                 condition: {lambda: 'return speed == "Medium";'}
-                then: [{script.execute: {id: relay_v2, "on": true}}]
+                then:
+                  - switch.turn_on: relay_v2
             - if:
                 condition: {lambda: 'return speed == "High";'}
-                then: [{script.execute: {id: relay_v3, "on": true}}]
+                then:
+                  - switch.turn_on: relay_v3
             - delay: 300ms
-            - script.execute: {id: relay_run, "on": true}
+            - switch.turn_on: relay_run
 
 # --- The schedule engine itself ---
 interval:
