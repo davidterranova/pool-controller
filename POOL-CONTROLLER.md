@@ -16,30 +16,56 @@ visibility, not a dependency for correct operation.
 
 - **Board**: ESP32-WROOM (`esp32dev`, Arduino framework).
 - **GPIO4** — OneWire bus for two DS18B20 temperature sensors:
-  - `Pool Return Temperature` (address `0x1c3c01d075640128`)
-  - `Equipment Pad Temperature` (address `0x3c2c01d0756a0328`)
+  - `Pool Return Temperature` (address `0x52000000518FE928`)
+  - `Equipment Pad Temperature` (address `0xFF00000026007028`)
 
   ESPHome does **not** enable GPIO4's internal pull-up for this bus — you
   need an external ~4.7kΩ resistor between the data line and 3.3V, or the
   sensors won't respond. If you rewire the bus with different DS18B20 units,
   their addresses will differ from the ones above: boot the device with a
-  USB monitor attached (`idf.py monitor` or `screen /dev/cu.xxxx 115200`)
-  and read the addresses it logs at startup, then update the `address:`
-  fields in `pool-controller.yaml`.
+  USB monitor attached (`idf.py monitor` or `screen /dev/cu.xxxx 115200`),
+  or `make logs` over Wi-Fi, and read the addresses it logs at startup, then
+  update the `address:` fields in `pool-controller.yaml`.
 
-- **No pump wiring on the ESP32 itself.** Speed control happens over Wi-Fi:
-  the ESP32 sends HTTP requests to four networked Shelly (Gen2 RPC-API)
-  relay modules, each wired to one input on the pump's control panel:
+- **Pump speed relays, driven directly via GPIO** — no networked relays,
+  no Wi-Fi dependency for pump control at all. An [Elegoo 8-channel 5V
+  relay module with optocoupler](https://www.amazon.fr/dp/B06XL1F53G) (or
+  the functionally identical SainSmart-style board sold under other names)
+  is wired straight to four ESP32 GPIOs. Only 4 of its 8 channels are used;
+  the rest are spare for future projects.
 
-  | Relay | Config variable | Default IP | Pump terminal |
+  | Relay | Config variable | GPIO | Pump terminal |
   |---|---|---|---|
-  | 1 | `shelly_v1_ip` | `192.168.0.181` | DI1 — Speed V1 (Low) |
-  | 2 | `shelly_v2_ip` | `192.168.0.182` | DI2 — Speed V2 (Medium) |
-  | 3 | `shelly_v3_ip` | `192.168.0.183` | DI3 — Speed V3 (High) |
-  | 4 | `shelly_run_ip` | `192.168.0.184` | DI4 — Run/Stop |
+  | 1 | `relay_v1_pin` | `GPIO16` | DI1 — Speed V1 (Low) |
+  | 2 | `relay_v2_pin` | `GPIO17` | DI2 — Speed V2 (Medium) |
+  | 3 | `relay_v3_pin` | `GPIO18` | DI3 — Speed V3 (High) |
+  | 4 | `relay_run_pin` | `GPIO19` | DI4 — Run/Stop |
 
   These are set in the `substitutions:` block at the top of
-  `pool-controller.yaml` — edit them for your own relays.
+  `pool-controller.yaml` — edit them if your wiring uses different GPIOs.
+  Each relay is wired to its channel's `COM`/`NO` contacts, not `NC` — if
+  the ESP32 loses power or crashes, every relay de-energizes back to open,
+  matching the pump's default "everything off" state rather than leaving a
+  speed or run signal latched active.
+
+  Two things about this board that aren't obvious from a datasheet skim:
+
+  - **Active-LOW trigger.** Pulling an `IN` pin to GND *closes* that relay;
+    driving it HIGH keeps it open — backwards from what most people expect.
+    That's why every `switch:` entry for these relays has `inverted: true`
+    on its pin — ESPHome's `switch.turn_on` still means "logically on" from
+    there.
+  - **JD-VCC jumper.** A jumper cap bridges `VCC` and `JD-VCC` on the
+    board. Leave it in place — bridged, one 5V feed (shared with the
+    ESP32's own supply) powers both the opto-isolator side and the relay
+    coils. Removing it allows powering them from separate supplies for
+    full galvanic isolation, which isn't needed here since these relays
+    only switch the pump's low-voltage DI lines, never mains.
+
+  These four switches are `internal: true` in the config — no HA entity is
+  created for them. They're only ever driven through `apply_speed`'s
+  break-before-make sequencing below; exposing them individually in HA
+  would let someone bypass that sequencing by accident.
 
 ### Relay sequencing
 
@@ -47,79 +73,17 @@ Every speed change goes through a break-before-make sequence
 (the `apply_speed` script), not a direct switch:
 
 1. Open the Run relay, wait 500ms.
-2. Open **all three** speed relays, wait 300ms.
-3. Close the one relay for the target speed (skipped entirely if the target
-   is "Off"), wait 300ms.
-4. Close the Run relay again.
+2. Open the **other two** speed relays (skipped entirely if the target is
+   "Off"), wait 300ms.
+3. Close the one relay for the target speed.
+4. Wait 300ms, then close the Run relay again.
 
-This guarantees two speed lines are never briefly closed together, and the
-pump is never left running while its speed input changes underneath it.
-
-### Network topology — check this if pump commands seem to do nothing
-
-The ESP32 lives on the IoT VLAN; the Shelly relay IPs above are on a
-separate subnet (the main LAN). For relay commands to actually arrive,
-your router needs to allow traffic from the ESP32's network to wherever the
-Shellys really are — IoT VLANs are commonly locked down from the main LAN
-by default. Failures here are silent from the device's perspective: each
-relay script only logs `relay_vX command failed` and moves on, so if the
-pump never responds, check the boot/runtime log for that message before
-assuming it's a wiring or Shelly-side problem.
-
-### Planned change: direct GPIO relay control (retiring the Shellys)
-
-The ESP32 and the pump's control panel are physically co-located, so the
-whole reason to route relay commands over Wi-Fi — avoiding a wiring run
-between two separate locations — doesn't apply here. The plan is to drive
-relays directly from ESP32 GPIOs instead, dropping the network dependency
-(and the cross-VLAN question above) entirely for pump control. The four
-Shelly units aren't wasted — they're earmarked for other automation
-projects later.
-
-**Hardware**: an [Elegoo 8-channel 5V relay module with
-optocoupler](https://www.amazon.fr/dp/B06XL1F53G) (or the functionally
-identical SainSmart-style board sold under other names). Only 4 of its 8
-channels are used; the rest are spare.
-
-Two things about this board that aren't obvious from a datasheet skim:
-
-- **Active-LOW trigger.** Pulling an `IN` pin to GND *closes* that relay;
-  driving it HIGH keeps it open — backwards from what most people expect,
-  but standard across this entire class of board. In ESPHome, each
-  `switch: platform: gpio` entry for these relays will need
-  `inverted: true`, or "on" in software leaves the physical relay open.
-- **JD-VCC jumper.** A jumper cap bridges `VCC` and `JD-VCC` on the board.
-  Leave it in place — bridged, one 5V feed powers both the opto-isolator
-  side and the relay coils. Removing it lets you power them from separate
-  supplies for full galvanic isolation, which isn't needed here since these
-  relays only switch the pump's low-voltage DI lines, not mains.
-
-**Wiring:**
-
-| Relay board pin | Connects to |
-|---|---|
-| `VCC` + `JD-VCC` (jumper bridged) | 5V, same rail as the ESP32 |
-| `GND` | Shared GND with the ESP32 |
-| `IN1`–`IN4` | Four ESP32 GPIOs — GPIO16/17/18/19 are reasonable defaults (output-capable, not strapping pins, not already used by the OneWire bus on GPIO4). Any similar general-purpose GPIO works; just avoid GPIO0/2/12/15 (boot-strapping) and GPIO34–39 (input-only, can't drive a relay). |
-| `COM` / `NO` on channels 1–4 | Pump DI1–DI4 and common — the same terminals the Shelly relays currently land on |
-| Channels 5–8 | Unused, spare for future projects |
-
-Wire to each channel's **NO** (normally open) contact, not NC. That way, if
-the ESP32 loses power or crashes, every relay de-energizes back to open —
-matching the pump's default "everything off" state, rather than leaving a
-speed or run signal accidentally latched active.
-
-**Worth confirming once wired**: reliable triggering from the ESP32's 3.3V
-GPIO output isn't something verifiable from the product listing alone — the
-board is nominally rated for 5V logic. After wiring, toggle each channel
-and confirm it audibly clicks. If a channel is unreliable, the JD-VCC split
-above lets you feed the opto-isolator side its own lower-voltage supply
-separately from the coil-driving JD-VCC rail.
-
-This section describes the target wiring only — `pool-controller.yaml`
-still targets the Shelly relays over HTTP until the corresponding firmware
-rewrite (swapping the `http_request`-based relay scripts for plain
-`switch: platform: gpio` actions) happens.
+Each speed branch clears the other two relays itself rather than sharing one
+"turn off all three" step before the branch — the "never two speed relays on
+at once" guarantee holds within each branch on its own, not dependent on
+remembering a preceding step elsewhere in the script. Combined with the
+break-before-make sequencing, the pump is never left running while its speed
+input changes underneath it either.
 
 ## Control logic
 
@@ -137,8 +101,8 @@ Re-evaluated every 30 seconds, highest priority wins:
    non-overlapping in practice rather than relying on that tie-break.
 
 A new speed is only pushed to the relays when it actually differs from the
-last one commanded, so the Shellys aren't re-triggered every 30 seconds for
-no reason.
+last one commanded, so they aren't re-triggered every 30 seconds for no
+reason.
 
 ## Why it doesn't depend on Home Assistant
 
