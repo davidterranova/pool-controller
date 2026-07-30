@@ -73,13 +73,17 @@ Every speed change goes through a break-before-make sequence
 (the `apply_speed` script), not a direct switch:
 
 1. Open the Run relay, wait 500ms.
-2. Open **all three** speed relays, wait 300ms.
-3. Close the one relay for the target speed (skipped entirely if the target
-   is "Off"), wait 300ms.
-4. Close the Run relay again.
+2. Open the **other two** speed relays (skipped entirely if the target is
+   "Off"), wait 300ms.
+3. Close the one relay for the target speed.
+4. Wait 300ms, then close the Run relay again.
 
-This guarantees two speed lines are never briefly closed together, and the
-pump is never left running while its speed input changes underneath it.
+Each speed branch clears the other two relays itself rather than sharing one
+"turn off all three" step before the branch — the "never two speed relays on
+at once" guarantee holds within each branch on its own, not dependent on
+remembering a preceding step elsewhere in the script. Combined with the
+break-before-make sequencing, the pump is never left running while its speed
+input changes underneath it either.
 
 ## Control logic
 

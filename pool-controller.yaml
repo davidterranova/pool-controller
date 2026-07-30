@@ -251,21 +251,31 @@ script:
           condition:
             lambda: 'return speed != "Off";'
           then:
-            - switch.turn_off: relay_v1
-            - switch.turn_off: relay_v2
-            - switch.turn_off: relay_v3
-            - delay: 300ms
+            # Each branch explicitly clears the other two speed relays
+            # itself, rather than relying on a shared "turn off all three"
+            # step before the branch. That keeps "never two speed relays on
+            # at once" true within each branch on its own -- not dependent on
+            # remembering a preceding step elsewhere in the script.
             - if:
                 condition: {lambda: 'return speed == "Low";'}
                 then:
+                  - switch.turn_off: relay_v2
+                  - switch.turn_off: relay_v3
+                  - delay: 300ms
                   - switch.turn_on: relay_v1
             - if:
                 condition: {lambda: 'return speed == "Medium";'}
                 then:
+                  - switch.turn_off: relay_v1
+                  - switch.turn_off: relay_v3
+                  - delay: 300ms
                   - switch.turn_on: relay_v2
             - if:
                 condition: {lambda: 'return speed == "High";'}
                 then:
+                  - switch.turn_off: relay_v1
+                  - switch.turn_off: relay_v2
+                  - delay: 300ms
                   - switch.turn_on: relay_v3
             - delay: 300ms
             - switch.turn_on: relay_run
