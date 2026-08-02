@@ -154,6 +154,12 @@ select:
     initial_option: "Auto"
     restore_value: true
     optimistic: true
+    # React immediately instead of waiting for the next 30s interval tick --
+    # overriding the pump is a "make this happen now" action, unlike the
+    # schedule/freeze-protection checks below which are inherently tied to
+    # the clock/temperature anyway and have nothing to react to sooner.
+    on_value:
+      - script.execute: evaluate_speed
 
 globals:
   - id: last_commanded
@@ -295,9 +301,13 @@ script:
             - delay: 300ms
             - switch.turn_on: relay_run
 
-# --- The schedule engine itself ---
-interval:
-  - interval: 30s
+  # The schedule engine itself: computes the speed that should be running
+  # right now and applies it if that's changed. Runs periodically (below)
+  # to catch the freeze-protection/schedule-window checks, which are purely
+  # time/temperature driven and have no "changed" event to react to -- and
+  # also runs immediately on manual_override's on_value, so overriding the
+  # pump doesn't wait for up to 30s of polling before anything happens.
+  - id: evaluate_speed
     then:
       - lambda: |-
           std::string desired = "Off";
@@ -336,3 +346,8 @@ interval:
 
             id(apply_speed).execute(desired);
           }
+
+interval:
+  - interval: 30s
+    then:
+      - script.execute: evaluate_speed
