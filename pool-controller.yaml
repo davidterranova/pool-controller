@@ -9,10 +9,10 @@ esp32:
 
 # Edit these for your wiring; everything below reads from them.
 substitutions:
-  relay_v1_pin: GPIO16    # Relay 1 -> pump DI1 (Speed V1)
-  relay_v2_pin: GPIO17    # Relay 2 -> pump DI2 (Speed V2)
-  relay_v3_pin: GPIO18    # Relay 3 -> pump DI3 (Speed V3)
-  relay_run_pin: GPIO19   # Relay 4 -> pump DI4 (Run/Stop)
+  relay_v1_pin: GPIO26    # Relay 1 -> pump DI1 (Speed V1)
+  relay_v2_pin: GPIO25    # Relay 2 -> pump DI2 (Speed V2)
+  relay_v3_pin: GPIO14    # Relay 3 -> pump DI3 (Speed V3)
+  relay_run_pin: GPIO27   # Relay 4 -> pump DI4 (Run/Stop)
   onewire_pin: GPIO4
 
 wifi:
