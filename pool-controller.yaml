@@ -46,6 +46,7 @@ time:
 
 one_wire:
   - platform: gpio
+    id: ow_bus
     pin: ${onewire_pin}
 
 sensor:
@@ -348,6 +349,16 @@ script:
           }
 
 interval:
+  # Diagnostic: log every OneWire device actually found on the bus, by
+  # address, at plain INFO level. Remove once the new sensor is mapped.
+  - interval: 20s
+    then:
+      - lambda: |-
+          auto devices = id(ow_bus)->get_devices();
+          ESP_LOGI("diag", "OneWire bus: %d device(s) found", devices.size());
+          for (auto address : devices) {
+            ESP_LOGI("diag", "  found 0x%016llX", address);
+          }
   - interval: 30s
     then:
       - script.execute: evaluate_speed
