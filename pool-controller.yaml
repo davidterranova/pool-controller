@@ -9,10 +9,10 @@ esp32:
 
 # Edit these for your wiring; everything below reads from them.
 substitutions:
-  relay_v1_pin: GPIO16    # Relay 1 -> pump DI1 (Speed V1)
-  relay_v2_pin: GPIO17    # Relay 2 -> pump DI2 (Speed V2)
-  relay_v3_pin: GPIO18    # Relay 3 -> pump DI3 (Speed V3)
-  relay_run_pin: GPIO19   # Relay 4 -> pump DI4 (Run/Stop)
+  relay_v1_pin: GPIO26    # Relay 1 -> pump DI1 (Speed V1)
+  relay_v2_pin: GPIO25    # Relay 2 -> pump DI2 (Speed V2)
+  relay_v3_pin: GPIO14    # Relay 3 -> pump DI3 (Speed V3)
+  relay_run_pin: GPIO27   # Relay 4 -> pump DI4 (Run/Stop)
   onewire_pin: GPIO4
 
 wifi:
@@ -46,6 +46,7 @@ time:
 
 one_wire:
   - platform: gpio
+    id: ow_bus
     pin: ${onewire_pin}
 
 sensor:
@@ -154,6 +155,12 @@ select:
     initial_option: "Auto"
     restore_value: true
     optimistic: true
+    # React immediately instead of waiting for the next 30s interval tick --
+    # overriding the pump is a "make this happen now" action, unlike the
+    # schedule/freeze-protection checks below which are inherently tied to
+    # the clock/temperature anyway and have nothing to react to sooner.
+    on_value:
+      - script.execute: evaluate_speed
 
 globals:
   - id: last_commanded
@@ -239,6 +246,15 @@ script:
   # are never briefly closed together, and never leaves the run contact
   # energized while a speed relay is switching.
   - id: apply_speed
+    # Now that manual_override can trigger this instantly (on_value below)
+    # instead of only every 30s, a rapid double-change could otherwise land
+    # inside an in-flight run and get silently dropped (default mode:
+    # single), leaving last_commanded claiming a speed the relays never
+    # actually reached. restart cancels an in-progress run and starts the
+    # new one instead -- safe here because every run unconditionally resets
+    # Run and all three speed relays at the top, regardless of where a
+    # cancelled run was interrupted.
+    mode: restart
     parameters:
       speed: string
     then:
@@ -247,15 +263,21 @@ script:
           args: ["speed.c_str()"]
       - switch.turn_off: relay_run
       - delay: 500ms
+      # Unconditional: clears all three speed relays for every target speed,
+      # including "Off" -- previously this only happened inside the
+      # `speed != "Off"` branch below, so switching to "Off" dropped Run but
+      # left whatever speed relay was last selected still energized.
+      - switch.turn_off: relay_v1
+      - switch.turn_off: relay_v2
+      - switch.turn_off: relay_v3
       - if:
           condition:
             lambda: 'return speed != "Off";'
           then:
-            # Each branch explicitly clears the other two speed relays
-            # itself, rather than relying on a shared "turn off all three"
-            # step before the branch. That keeps "never two speed relays on
-            # at once" true within each branch on its own -- not dependent on
-            # remembering a preceding step elsewhere in the script.
+            # Each branch also explicitly clears the other two speed relays
+            # itself, redundant with the unconditional step above -- keeps
+            # "never two speed relays on at once" true within each branch on
+            # its own, not dependent on remembering a preceding step.
             - if:
                 condition: {lambda: 'return speed == "Low";'}
                 then:
@@ -280,9 +302,13 @@ script:
             - delay: 300ms
             - switch.turn_on: relay_run
 
-# --- The schedule engine itself ---
-interval:
-  - interval: 30s
+  # The schedule engine itself: computes the speed that should be running
+  # right now and applies it if that's changed. Runs periodically (below)
+  # to catch the freeze-protection/schedule-window checks, which are purely
+  # time/temperature driven and have no "changed" event to react to -- and
+  # also runs immediately on manual_override's on_value, so overriding the
+  # pump doesn't wait for up to 30s of polling before anything happens.
+  - id: evaluate_speed
     then:
       - lambda: |-
           std::string desired = "Off";
@@ -321,3 +347,18 @@ interval:
 
             id(apply_speed).execute(desired);
           }
+
+interval:
+  # Diagnostic: log every OneWire device actually found on the bus, by
+  # address, at plain INFO level. Remove once the new sensor is mapped.
+  - interval: 20s
+    then:
+      - lambda: |-
+          auto devices = id(ow_bus)->get_devices();
+          ESP_LOGI("diag", "OneWire bus: %d device(s) found", devices.size());
+          for (auto address : devices) {
+            ESP_LOGI("diag", "  found 0x%016llX", address);
+          }
+  - interval: 30s
+    then:
+      - script.execute: evaluate_speed
