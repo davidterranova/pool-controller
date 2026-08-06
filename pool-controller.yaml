@@ -46,7 +46,6 @@ time:
 
 one_wire:
   - platform: gpio
-    id: ow_bus
     pin: ${onewire_pin}
 
 sensor:
@@ -60,6 +59,10 @@ sensor:
     id: pad_ambient_temp
     name: "Equipment Pad Temperature"
     address: 0xFF00000026007028   # was 0x3c2c01d0756a0328 before the sensor swap
+  - platform: dallas_temp
+    id: outdoor_temp
+    name: "Outdoor Temperature"
+    address: 0xFC00000051AD2428
 
 text_sensor:
   - platform: template
@@ -349,16 +352,6 @@ script:
           }
 
 interval:
-  # Diagnostic: log every OneWire device actually found on the bus, by
-  # address, at plain INFO level. Remove once the new sensor is mapped.
-  - interval: 20s
-    then:
-      - lambda: |-
-          auto devices = id(ow_bus)->get_devices();
-          ESP_LOGI("diag", "OneWire bus: %d device(s) found", devices.size());
-          for (auto address : devices) {
-            ESP_LOGI("diag", "  found 0x%016llX", address);
-          }
   - interval: 30s
     then:
       - script.execute: evaluate_speed

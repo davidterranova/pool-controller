@@ -15,17 +15,34 @@ visibility, not a dependency for correct operation.
 ## Hardware
 
 - **Board**: ESP32-WROOM (`esp32dev`, Arduino framework).
-- **GPIO4** — OneWire bus for two DS18B20 temperature sensors:
+- **GPIO4** — OneWire bus for three DS18B20 temperature sensors, wired as a
+  genuine daisy-chain (each sensor's leads spliced in-line between the
+  previous and next, not a star/hub of separate stubs):
   - `Pool Return Temperature` (address `0x52000000518FE928`)
   - `Equipment Pad Temperature` (address `0xFF00000026007028`)
+  - `Outdoor Temperature` (address `0xFC00000051AD2428`)
 
   ESPHome does **not** enable GPIO4's internal pull-up for this bus — you
-  need an external ~4.7kΩ resistor between the data line and 3.3V, or the
+  need an external ~3–4.7kΩ resistor between the data line and 3.3V, or the
   sensors won't respond. If you rewire the bus with different DS18B20 units,
   their addresses will differ from the ones above: boot the device with a
   USB monitor attached (`idf.py monitor` or `screen /dev/cu.xxxx 115200`),
   or `make logs` over Wi-Fi, and read the addresses it logs at startup, then
   update the `address:` fields in `pool-controller.yaml`.
+
+  **Counterfeit sensors break the whole bus, not just themselves.** Adding
+  the third sensor initially caused total bus failure (`Found no devices!`)
+  regardless of wiring, pull-up value, topology, or which physical unit sat
+  in that slot — but never affected the other two as long as only two were
+  connected. That signature (instant, total failure the moment a third
+  device joins, not gradual CRC flakiness) turned out to be a counterfeit/
+  clone DS18B20 that didn't correctly implement the 1-Wire ROM-search bit-
+  arbitration protocol: it can work fine alone, but corrupts reset/search
+  timing for every device sharing the bus once it has to arbitrate with
+  others. Swapping in a sensor from a different source fixed it outright.
+  If you ever see the same symptom (2 sensors solid, 3+ instantly dead, no
+  wiring fix helps), suspect the newest sensor's authenticity before
+  re-wiring again.
 
 - **Pump speed relays, driven directly via GPIO** — no networked relays,
   no Wi-Fi dependency for pump control at all. An [Elegoo 8-channel 5V
@@ -36,10 +53,10 @@ visibility, not a dependency for correct operation.
 
   | Relay | Config variable | GPIO | Pump terminal |
   |---|---|---|---|
-  | 1 | `relay_v1_pin` | `GPIO16` | DI1 — Speed V1 (Low) |
-  | 2 | `relay_v2_pin` | `GPIO17` | DI2 — Speed V2 (Medium) |
-  | 3 | `relay_v3_pin` | `GPIO18` | DI3 — Speed V3 (High) |
-  | 4 | `relay_run_pin` | `GPIO19` | DI4 — Run/Stop |
+  | 1 | `relay_v1_pin` | `GPIO26` | DI1 — Speed V1 (Low) |
+  | 2 | `relay_v2_pin` | `GPIO25` | DI2 — Speed V2 (Medium) |
+  | 3 | `relay_v3_pin` | `GPIO14` | DI3 — Speed V3 (High) |
+  | 4 | `relay_run_pin` | `GPIO27` | DI4 — Run/Stop |
 
   These are set in the `substitutions:` block at the top of
   `pool-controller.yaml` — edit them if your wiring uses different GPIOs.
@@ -73,17 +90,23 @@ Every speed change goes through a break-before-make sequence
 (the `apply_speed` script), not a direct switch:
 
 1. Open the Run relay, wait 500ms.
-2. Open the **other two** speed relays (skipped entirely if the target is
-   "Off"), wait 300ms.
-3. Close the one relay for the target speed.
-4. Wait 300ms, then close the Run relay again.
+2. Open **all three** speed relays unconditionally — including when the
+   target is "Off" itself, so switching to Off can't leave whatever speed
+   was previously selected still energized.
+3. If the target isn't "Off": wait 300ms, close the one relay for the
+   target speed, wait 300ms, then close the Run relay again.
 
-Each speed branch clears the other two relays itself rather than sharing one
-"turn off all three" step before the branch — the "never two speed relays on
-at once" guarantee holds within each branch on its own, not dependent on
-remembering a preceding step elsewhere in the script. Combined with the
-break-before-make sequencing, the pump is never left running while its speed
-input changes underneath it either.
+Each speed branch also clears the other two relays itself, redundant with
+the unconditional step above — the "never two speed relays on at once"
+guarantee holds within each branch on its own, not dependent on remembering
+a preceding step elsewhere in the script. Combined with the break-before-make
+sequencing, the pump is never left running while its speed input changes
+underneath it either.
+
+Manual Override changes apply immediately (an `on_value:` trigger executes
+the same evaluation the 30s interval runs), rather than waiting for the next
+polling tick — the 30s interval still exists for the freeze-protection and
+schedule checks, which have no "changed" event of their own to react to.
 
 ## Control logic
 
@@ -124,7 +147,8 @@ reason.
    into the firmware, and it has to match for HA's encrypted API connection
    to succeed.
 3. Once paired, these entities show up:
-   - **Sensors**: Pool Return Temperature, Equipment Pad Temperature
+   - **Sensors**: Pool Return Temperature, Equipment Pad Temperature, Outdoor
+     Temperature
    - **Text sensor**: Pump Commanded Speed — whatever the device is
      currently telling the relays (useful to confirm the schedule logic is
      doing what you expect)
@@ -175,6 +199,7 @@ entities:
     label: Status
   - entity: sensor.pool_controller_pool_return_temperature
   - entity: sensor.pool_controller_equipment_pad_temperature
+  - entity: sensor.pool_controller_outdoor_temperature
   - entity: sensor.pool_controller_pump_commanded_speed
     name: Commanded Speed
 ```
