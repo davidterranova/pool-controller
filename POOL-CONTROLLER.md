@@ -6,11 +6,12 @@ set it up in Home Assistant. For repo/tooling info, see
 
 ## What it does
 
-Runs a variable-speed pool pump on a fixed schedule (three programs, each
-with its own hours and speed), with a manual override and a freeze-
-protection rule that always takes priority. It's designed to keep running
-correctly even if Home Assistant is offline — HA is for configuration and
-visibility, not a dependency for correct operation.
+Runs a variable-speed pool pump on an autonomous daily filtration schedule —
+computed on-device from water temperature and today's sunrise/sunset, not
+set by hand — with a manual override and a freeze-protection rule that
+always takes priority. It's designed to keep running correctly even if Home
+Assistant is offline — HA is for configuration and visibility, not a
+dependency for correct operation.
 
 ## Hardware
 
@@ -108,6 +109,25 @@ the same evaluation the 30s interval runs), rather than waiting for the next
 polling tick — the 30s interval still exists for the freeze-protection and
 schedule checks, which have no "changed" event of their own to react to.
 
+## Location & clock
+
+The autonomous filtration schedule needs today's sunrise/sunset and true
+local midnight, so three more values live in `secrets.yaml` (not
+`pool-controller.yaml` itself — together they reveal the pool's approximate
+location, unlike the relay-pin substitutions which are just wiring choices):
+
+- `pool_latitude` / `pool_longitude` — decimal degrees, used by ESPHome's
+  `sun:` component to compute today's sunrise/sunset.
+- `pool_timezone` — an IANA zone name (e.g. `"Europe/Paris"`), used by the
+  `time:` component.
+
+**This also fixes a pre-existing bug.** Before this, `time:` had no
+`timezone:` set at all, so the device's clock ran in plain UTC — no error,
+no warning, just silently wrong outside the UTC timezone. If the pool isn't
+in UTC, the old Program A/B/C schedule was actually running at your
+programmed hour *plus your UTC offset*, not local wall-clock time. Setting
+`pool_timezone` fixes this going forward.
+
 ## Control logic
 
 Re-evaluated every 30 seconds, highest priority wins:
@@ -117,11 +137,48 @@ Re-evaluated every 30 seconds, highest priority wins:
    override, unconditionally.
 2. **Manual Override** (select, HA-editable) — if set to anything other
    than `Auto`, forces that speed.
-3. **Schedule** — three programs (A, B, C), each with a `Start Hour` /
-   `End Hour` (0–23) and a `Speed` (`Off`/`Low`/`Medium`/`High`), all
-   HA-editable. If the current hour falls inside more than one program's
-   window, the later one wins (C beats B beats A) — keep the windows
-   non-overlapping in practice rather than relying on that tie-break.
+3. **Autonomous schedule** — computed on-device, once per calendar day, from
+   water temperature and today's sunrise/sunset:
+   - **Filtration hours** = `Pool Return Temperature / 2`, clamped between
+     `Min Filtration Hours` and `Max Filtration Hours` (both HA-editable,
+     default 2h/16h).
+   - **Split into two blocks**: 1/3 of those hours starting at sunrise, the
+     remaining 2/3 centered on `solar noon + Warmest Part of Day Offset`
+     (HA-editable, default 2.5h — the real lag between solar noon and the
+     day's actual warmest period is climate/location-dependent, hence
+     tunable rather than fixed). If the two blocks would touch or overlap,
+     they're merged into one continuous block instead, so you still get
+     exactly the computed number of hours rather than double-counting the
+     overlap.
+   - **Boost pulse**: while a block is running, every `Boost Pulse Interval`
+     (default 30 min) the pump spends the first `Boost Pulse Duration`
+     (default 5 min) at `High`, then drops back to `Low`. The boost phase is
+     timed from the moment the *block itself* starts (not from whenever the
+     schedule last regained control), which guarantees **every block always
+     starts with a full boost** — Block 1 at sunrise, Block 2 at its own
+     start, or the merged block at sunrise if the two were joined — before
+     settling into the interval cadence for the rest of the block. This
+     doesn't apply during freeze protection or manual override, and doesn't
+     re-trigger if you release an override partway through an already-running
+     block — the boost window stays anchored to the block's actual start
+     time. Keep `Boost Pulse Duration` below `Boost Pulse Interval`, or the
+     pump will stay at `High` for the whole block instead of pulsing.
+   - The plan is computed **once per day and cached** — not continuously
+     recalculated from the live temperature reading, which would make the
+     block boundaries drift throughout the day. It's recomputed on a real
+     day change, immediately if you edit `Min`/`Max Filtration Hours` or
+     `Warmest Part of Day Offset`, or on demand via the **Recompute Schedule
+     Now** button (same effect, just triggered by hand instead of waiting for
+     midnight or a tunable edit). A same-day reboot (Wi-Fi watchdog, OTA,
+     power blip) resumes the already-computed plan rather than recomputing
+     it from whatever the temperature happens to be at that moment.
+   - **Pump Planned Speed** always reflects what this schedule alone would
+     be doing right now, even while overridden or freeze-protected — compare
+     it against **Pump Commanded Speed** (the real, applied value) to see
+     when and why they diverge.
+   - **Schedule Block 1/2 Start/End** show today's computed windows
+     (`--:--` if not yet computed). If Block 2 Start equals Block 1 End, the
+     blocks were merged that day — not a bug.
 
 A new speed is only pushed to the relays when it actually differs from the
 last one commanded, so they aren't re-triggered every 30 seconds for no
@@ -133,9 +190,10 @@ reason.
   if no API client (i.e. HA) connects for a while. That's disabled here on
   purpose, since this device has to keep running its schedule and freeze
   protection with or without HA.
-- All schedule state (program hours/speeds, manual override) is set to
-  `restore_value: true`, so it survives a power cycle without HA needing to
-  re-push anything.
+- All schedule state (tunables, manual override, and the autonomous
+  schedule's cached daily plan) is set to `restore_value: true`, so it
+  survives a power cycle without HA needing to re-push anything, and without
+  silently recomputing the day's plan from a different temperature mid-day.
 
 ## Home Assistant configuration
 
@@ -148,22 +206,29 @@ reason.
    to succeed.
 3. Once paired, these entities show up:
    - **Sensors**: Pool Return Temperature, Equipment Pad Temperature, Outdoor
-     Temperature
-   - **Text sensor**: Pump Commanded Speed — whatever the device is
-     currently telling the relays (useful to confirm the schedule logic is
-     doing what you expect)
-   - **Numbers**: Program A/B/C Start Hour, Program A/B/C End Hour
-   - **Selects**: Program A/B/C Speed, Manual Override
+     Temperature, Planned Filtration Hours
+   - **Text sensors**: Pump Commanded Speed (what's actually applied), Pump
+     Planned Speed (what the autonomous schedule alone says right now),
+     Schedule Block 1/2 Start/End (today's computed windows)
+   - **Numbers**: Min/Max Filtration Hours, Warmest Part of Day Offset,
+     Boost Pulse Duration, Boost Pulse Interval
+   - **Select**: Manual Override
+   - **Button**: Recompute Schedule Now — forces an immediate re-run of the
+     daily schedule calc using the current temperature reading, instead of
+     waiting for midnight
    - **Fan**: Pump — a friendlier proxy for Manual Override (on/off +
      Low/Medium/High). Has no way to represent "Auto"; use the Manual
      Override select for that.
+   - **Binary sensor**: Status — device online/connectivity, so you can tell
+     "pump didn't run because the controller was offline" apart from "pump
+     didn't run because the schedule said Off."
 4. Once paired, HA's ESPHome integration can also push OTA updates directly
    — an alternative to running `make ota` from this repo.
 
-### Suggested dashboard card
+### Suggested dashboard cards
 
-A single `entities` card (built-in, no HACS dependency) covering the
-schedule, override, fan, and status in one place:
+**Schedule & status** — a single `entities` card (built-in, no HACS
+dependency):
 
 ```yaml
 type: entities
@@ -172,29 +237,23 @@ entities:
   - entity: fan.pool_controller_pump
   - entity: select.pool_controller_manual_override
   - type: section
-    label: Program A
-  - entity: number.pool_controller_program_a_start_hour
-    name: Start Hour
-  - entity: number.pool_controller_program_a_end_hour
-    name: End Hour
-  - entity: select.pool_controller_program_a_speed
-    name: Speed
-  - type: section
-    label: Program B
-  - entity: number.pool_controller_program_b_start_hour
-    name: Start Hour
-  - entity: number.pool_controller_program_b_end_hour
-    name: End Hour
-  - entity: select.pool_controller_program_b_speed
-    name: Speed
-  - type: section
-    label: Program C
-  - entity: number.pool_controller_program_c_start_hour
-    name: Start Hour
-  - entity: number.pool_controller_program_c_end_hour
-    name: End Hour
-  - entity: select.pool_controller_program_c_speed
-    name: Speed
+    label: Autonomous Schedule
+  - entity: number.pool_controller_min_filtration_hours
+  - entity: number.pool_controller_max_filtration_hours
+  - entity: number.pool_controller_warmest_part_of_day_offset
+  - entity: number.pool_controller_boost_pulse_duration
+  - entity: number.pool_controller_boost_pulse_interval
+  - entity: button.pool_controller_recompute_schedule_now
+    name: Recompute Now
+  - entity: sensor.pool_controller_planned_filtration_hours
+  - entity: sensor.pool_controller_schedule_block_1_start
+    name: Block 1 Start
+  - entity: sensor.pool_controller_schedule_block_1_end
+    name: Block 1 End
+  - entity: sensor.pool_controller_schedule_block_2_start
+    name: Block 2 Start
+  - entity: sensor.pool_controller_schedule_block_2_end
+    name: Block 2 End
   - type: section
     label: Status
   - entity: sensor.pool_controller_pool_return_temperature
@@ -202,13 +261,60 @@ entities:
   - entity: sensor.pool_controller_outdoor_temperature
   - entity: sensor.pool_controller_pump_commanded_speed
     name: Commanded Speed
+  - entity: sensor.pool_controller_pump_planned_speed
+    name: Planned Speed
+  - entity: binary_sensor.pool_controller_status
+    name: Online
 ```
 
-Add it via Edit Dashboard → Add Card → Manual (or any card's "Edit in
-YAML"). The entity IDs above are HA's usual naming convention for this
-device, not a confirmed live read — if a row shows "Entity not available,"
-check Developer Tools → States (filter `pool_controller`) and fix that line,
-or delete and re-add it through the visual entity picker instead.
+**Plan vs. actual, as a graph** — requires the
+[ApexCharts Card](https://github.com/RomRider/apexcharts-card) (install via
+HACS). Overlays what the schedule planned against what was actually
+commanded, both as real recorded history:
+
+```yaml
+type: custom:apexcharts-card
+header:
+  title: Pool Pump — Plan vs Actual
+  show: true
+graph_span: 24h
+span:
+  start: day
+apex_config:
+  stroke:
+    curve: stepline
+yaxis:
+  - min: 0
+    max: 3
+    decimals: 0
+    labels:
+      formatter: |
+        EVAL:(val) => ["Off", "Low", "Medium", "High"][Math.round(val)] || ""
+series:
+  - entity: sensor.pool_controller_pump_planned_speed
+    name: Planned
+    curve: stepline
+    transform: 'return {"Off":0,"Low":1,"Medium":2,"High":3}[x] ?? 0;'
+  - entity: sensor.pool_controller_pump_commanded_speed
+    name: Actual
+    curve: stepline
+    transform: 'return {"Off":0,"Low":1,"Medium":2,"High":3}[x] ?? 0;'
+```
+
+Note: this plots what's already happened today (real recorded history), not
+the not-yet-started remainder of today's plan as a shape. Extending it to
+also draw the rest of today from the Block 1/2 Start/End sensors is possible
+with ApexCharts' `data_generator`, but mixing a synthetic future series with
+a real history series in the same chart has a known rendering glitch in that
+card, so it's left as an optional exercise rather than shipped here.
+
+Add either card via Edit Dashboard → Add Card → Manual (or any card's "Edit
+in YAML"). The entity IDs above are HA's usual naming convention for this
+device (both ESPHome `sensor:` and `text_sensor:` entities surface under the
+`sensor.` domain in HA — there's no separate `text_sensor.` domain), not a
+confirmed live read — if a row shows "Entity not available," check Developer
+Tools → States (filter `pool_controller`) and fix that line, or delete and
+re-add it through the visual entity picker instead.
 
 ## Changing the freeze-protection threshold
 

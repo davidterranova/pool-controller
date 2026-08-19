@@ -23,6 +23,9 @@ jobs:
           wifi_password: "placeholder"
           pool_controller_api_key: "bK1YlLBsY0Ouxeekl8eHkLoQ6TORbg4RbocsLsXDqvQ="
           pool_controller_ota_password: "placeholder"
+          pool_latitude: "0.0"
+          pool_longitude: "0.0"
+          pool_timezone: "UTC"
           EOF
 
       - name: make validate
