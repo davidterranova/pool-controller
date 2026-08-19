@@ -1,10 +1,11 @@
-# esp-swimmingpool
+# ESP32 - Pool controller
 
 ESPHome firmware for an ESP32-WROOM that runs a swimming pool's variable-speed
-pump: a fixed on-device schedule (three programs + manual override), a
-freeze-protection safety rule that always wins, and two temperature sensors —
-all exposed to Home Assistant, but not dependent on it. The device keeps
-running its schedule whether or not HA is reachable.
+pump: an autonomous on-device filtration schedule (computed from water
+temperature and sunrise/sunset, plus manual override), a freeze-protection
+safety rule that always wins, and three temperature sensors — all exposed to
+Home Assistant, but not dependent on it. The device keeps running its
+schedule whether or not HA is reachable.
 
 See [POOL-CONTROLLER.md](POOL-CONTROLLER.md) for how the controller actually
 works: wiring, control logic, and Home Assistant setup. This file covers the
@@ -40,11 +41,16 @@ repo itself — layout and tooling.
    #   python3 -c "import os,base64; print(base64.b64encode(os.urandom(32)).decode())"
    pool_controller_api_key: "..."
    pool_controller_ota_password: "..."
+   # Used by the autonomous filtration schedule for sunrise/sunset + local
+   # midnight -- decimal degrees and an IANA zone name:
+   pool_latitude: "..."
+   pool_longitude: "..."
+   pool_timezone: "Europe/Paris"
    ```
 
-2. Edit the `substitutions:` block at the top of `pool-controller.yaml` —
-   at minimum the four Shelly relay IPs — for your own network. See
-   [POOL-CONTROLLER.md](POOL-CONTROLLER.md) for what each one does.
+2. Check the `substitutions:` block at the top of `pool-controller.yaml` —
+   the four relay GPIO pins and the OneWire bus pin — match your own wiring.
+   See [POOL-CONTROLLER.md](POOL-CONTROLLER.md) for what each one does.
 
 3. `make validate` — parses the YAML and checks component schemas (fast, no
    compile).

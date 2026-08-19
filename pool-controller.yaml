@@ -41,8 +41,22 @@ ota:
 time:
   - platform: sntp
     id: local_time
+    # REQUIRED for the schedule below: sunrise/sunset day-selection and the
+    # once-daily recompute both key off local wall-clock fields, not just
+    # the underlying UTC epoch. Without this, ESPHome's RTC defaults to
+    # plain UTC with no DST.
+    timezone: !secret pool_timezone
     # Falls back to your router's DHCP-advertised NTP server; add explicit
     # servers here if your network doesn't advertise one.
+
+# Used to compute today's sunrise/sunset for the autonomous filtration
+# schedule below. Latitude/longitude are treated as sensitive (reveal the
+# pool's approximate location), same as the credentials above -- hence
+# !secret rather than the substitutions: block.
+sun:
+  id: sun_id
+  latitude: !secret pool_latitude
+  longitude: !secret pool_longitude
 
 one_wire:
   - platform: gpio
@@ -63,6 +77,21 @@ sensor:
     id: outdoor_temp
     name: "Outdoor Temperature"
     address: 0xFC00000051AD2428
+  # Derived live from the cached block boundaries below, not stored as its
+  # own global -- can't drift out of sync with what Block 1/2 actually say,
+  # and it collapses to Block 1's length automatically when they're merged
+  # (Block 2 is zero-width in that case).
+  - platform: template
+    name: "Planned Filtration Hours"
+    id: planned_filtration_hours
+    icon: mdi:timer-sand
+    unit_of_measurement: "h"
+    accuracy_decimals: 1
+    state_class: measurement
+    update_interval: 60s
+    lambda: |-
+      return (id(sched_block1_end) - id(sched_block1_start) +
+              id(sched_block2_end) - id(sched_block2_start)) / 3600.0f;
 
 text_sensor:
   - platform: template
@@ -71,86 +100,124 @@ text_sensor:
     icon: mdi:pump
     update_interval: 10s
     lambda: 'return id(last_commanded);'
+  # "What the autonomous plan alone says right now" -- always live,
+  # independent of freeze protection / manual override. Compare against Pump
+  # Commanded Speed above to see plan-vs-actual divergence (a freeze event,
+  # a manual override, or a boost pulse currently being overridden).
+  - platform: template
+    name: "Pump Planned Speed"
+    id: pump_planned_speed
+    icon: mdi:calendar-clock
+    update_interval: 10s
+    lambda: 'return id(sched_speed_now);'
+  - platform: template
+    name: "Schedule Block 1 Start"
+    id: block1_start_display
+    icon: mdi:clock-start
+    update_interval: 60s
+    lambda: |-
+      if (id(sched_block1_start) == 0) return std::string("--:--");
+      return ESPTime::from_epoch_local(id(sched_block1_start)).strftime("%H:%M");
+  - platform: template
+    name: "Schedule Block 1 End"
+    id: block1_end_display
+    icon: mdi:clock-end
+    update_interval: 60s
+    lambda: |-
+      if (id(sched_block1_end) == 0) return std::string("--:--");
+      return ESPTime::from_epoch_local(id(sched_block1_end)).strftime("%H:%M");
+  # If this matches Block 2 Start, the two blocks were merged into one
+  # continuous run today (see POOL-CONTROLLER.md) -- Block 2 is a real,
+  # zero-width, always-off no-op in that case, not a bug.
+  - platform: template
+    name: "Schedule Block 2 Start"
+    id: block2_start_display
+    icon: mdi:clock-start
+    update_interval: 60s
+    lambda: |-
+      if (id(sched_block2_start) == 0) return std::string("--:--");
+      return ESPTime::from_epoch_local(id(sched_block2_start)).strftime("%H:%M");
+  - platform: template
+    name: "Schedule Block 2 End"
+    id: block2_end_display
+    icon: mdi:clock-end
+    update_interval: 60s
+    lambda: |-
+      if (id(sched_block2_end) == 0) return std::string("--:--");
+      return ESPTime::from_epoch_local(id(sched_block2_end)).strftime("%H:%M");
 
-# --- Schedule, editable from the Home Assistant dashboard, persisted in flash ---
+# --- Autonomous schedule tunables, editable from the Home Assistant dashboard, persisted in flash ---
 number:
   - platform: template
-    name: "Program A Start Hour"
-    id: prog_a_start
+    name: "Min Filtration Hours"
+    id: min_filtration_hours
+    icon: mdi:timer-sand
     min_value: 0
-    max_value: 23
-    step: 1
-    initial_value: 8
+    max_value: 24
+    step: 0.5
+    initial_value: 2
     restore_value: true
     optimistic: true
+    on_value:
+      - lambda: 'id(sched_computed_day) = -1;'
+      - script.execute: evaluate_speed
   - platform: template
-    name: "Program A End Hour"
-    id: prog_a_end
+    name: "Max Filtration Hours"
+    id: max_filtration_hours
+    icon: mdi:timer-sand
     min_value: 0
-    max_value: 23
-    step: 1
-    initial_value: 12
-    restore_value: true
-    optimistic: true
-  - platform: template
-    name: "Program B Start Hour"
-    id: prog_b_start
-    min_value: 0
-    max_value: 23
-    step: 1
-    initial_value: 12
-    restore_value: true
-    optimistic: true
-  - platform: template
-    name: "Program B End Hour"
-    id: prog_b_end
-    min_value: 0
-    max_value: 23
-    step: 1
+    max_value: 24
+    step: 0.5
     initial_value: 16
     restore_value: true
     optimistic: true
+    on_value:
+      - lambda: 'id(sched_computed_day) = -1;'
+      - script.execute: evaluate_speed
   - platform: template
-    name: "Program C Start Hour"
-    id: prog_c_start
+    name: "Warmest Part of Day Offset"
+    id: warmest_offset_hours
+    icon: mdi:sun-clock
     min_value: 0
-    max_value: 23
-    step: 1
-    initial_value: 16
+    max_value: 6
+    step: 0.25
+    initial_value: 2.5
     restore_value: true
     optimistic: true
+    on_value:
+      - lambda: 'id(sched_computed_day) = -1;'
+      - script.execute: evaluate_speed
+  # These two intentionally do NOT reset the daily cache: evaluate_speed
+  # already reads them live every tick regardless of cache state, so forcing
+  # a full recompute here would just be wasted work -- and would drag in
+  # whatever the live temperature happens to be, undermining the "stable
+  # once-daily plan" goal, just because pulse timing was tweaked.
   - platform: template
-    name: "Program C End Hour"
-    id: prog_c_end
+    name: "Boost Pulse Duration"
+    id: boost_duration_minutes
+    icon: mdi:flash
     min_value: 0
-    max_value: 23
+    max_value: 15
     step: 1
-    initial_value: 20
+    initial_value: 5
     restore_value: true
     optimistic: true
+    on_value:
+      - script.execute: evaluate_speed
+  - platform: template
+    name: "Boost Pulse Interval"
+    id: boost_interval_minutes
+    icon: mdi:flash-outline
+    min_value: 5
+    max_value: 60
+    step: 5
+    initial_value: 30
+    restore_value: true
+    optimistic: true
+    on_value:
+      - script.execute: evaluate_speed
 
 select:
-  - platform: template
-    name: "Program A Speed"
-    id: prog_a_speed
-    options: ["Off", "Low", "Medium", "High"]
-    initial_option: "Low"
-    restore_value: true
-    optimistic: true
-  - platform: template
-    name: "Program B Speed"
-    id: prog_b_speed
-    options: ["Off", "Low", "Medium", "High"]
-    initial_option: "Medium"
-    restore_value: true
-    optimistic: true
-  - platform: template
-    name: "Program C Speed"
-    id: prog_c_speed
-    options: ["Off", "Low", "Medium", "High"]
-    initial_option: "Low"
-    restore_value: true
-    optimistic: true
   - platform: template
     name: "Manual Override"
     id: manual_override
@@ -177,6 +244,56 @@ globals:
     type: bool
     restore_value: false
     initial_value: 'false'
+
+  # --- Autonomous schedule (tier 3) cache -----------------------------------
+  # Computed once per calendar day from pool_return_temp + today's sunrise/
+  # sunset, then held fixed for the rest of the day -- deliberately NOT
+  # recomputed continuously, which would make the block boundaries an
+  # unstable "moving target" as the live temperature reading drifts a few
+  # tenths of a degree. restore_value: true on all five of these (unlike the
+  # two globals above) is deliberate: a same-day reboot -- the WiFi watchdog
+  # above, an OTA update, a power blip -- must resume the plan already
+  # computed that morning, not silently recompute it from whatever the
+  # temperature happens to be at that instant. Only an actual day change, or
+  # an explicit edit of a schedule tunable (see number: below, each resets
+  # this to -1 on_value), should trigger a recompute.
+  - id: sched_computed_day
+    type: int
+    restore_value: true
+    initial_value: '-1'
+  - id: sched_block1_start
+    type: time_t
+    restore_value: true
+    initial_value: '0'
+  - id: sched_block1_end
+    type: time_t
+    restore_value: true
+    initial_value: '0'
+  - id: sched_block2_start
+    type: time_t
+    restore_value: true
+    initial_value: '0'
+  - id: sched_block2_end
+    type: time_t
+    restore_value: true
+    initial_value: '0'
+  # "What the autonomous plan alone says right now" -- kept live every
+  # evaluate_speed tick regardless of freeze protection / manual override, so
+  # a dashboard can show true plan-vs-actual divergence. Deliberately NOT
+  # restored: it's fully recomputed every tick (at most 30s stale), so
+  # there's nothing here worth persisting across a reboot.
+  - id: sched_speed_now
+    type: std::string
+    restore_value: false
+    initial_value: '"Off"'
+
+binary_sensor:
+  # Short name deliberately -- HA prefixes the device's own friendly name
+  # ("Pool Controller") automatically, and naming this "Pool Controller
+  # Status" here would risk HA generating a doubled-up entity ID.
+  - platform: status
+    name: "Status"
+    device_class: connectivity
 
 # A friendlier, HA-native "Fan" card layered on top of Manual Override: toggling
 # it or picking a preset here just writes into `manual_override` below (same as
@@ -305,36 +422,145 @@ script:
             - delay: 300ms
             - switch.turn_on: relay_run
 
-  # The schedule engine itself: computes the speed that should be running
-  # right now and applies it if that's changed. Runs periodically (below)
-  # to catch the freeze-protection/schedule-window checks, which are purely
-  # time/temperature driven and have no "changed" event to react to -- and
-  # also runs immediately on manual_override's on_value, so overriding the
-  # pump doesn't wait for up to 30s of polling before anything happens.
+  # The schedule engine itself: computes today's autonomous filtration plan
+  # (once per day, cached -- see globals above), derives what that plan says
+  # right now, and applies the result of the freeze/override/schedule
+  # priority chain if it's changed. Runs periodically (below) to catch the
+  # freeze-protection/schedule/boost checks, which are purely time/
+  # temperature driven and have no "changed" event to react to -- and also
+  # runs immediately on manual_override's and the schedule tunables' on_value,
+  # so changing any of them doesn't wait for up to 30s of polling.
   - id: evaluate_speed
     then:
       - lambda: |-
+          // ===== Part 1: recompute today's autonomous (tier 3) plan, if stale =====
+          if (id(local_time).now().is_valid()) {
+            int today = id(local_time).now().day_of_year;
+            if (today != id(sched_computed_day)) {
+              float temp = id(pool_return_temp).state;
+              // Only cache on success -- a recompute landing before
+              // pool_return_temp's first post-boot reading (or a transient
+              // sensor fault) shouldn't lock in a bad plan for the whole day;
+              // it just retries next tick instead.
+              if (!isnan(temp)) {
+                float hours = clamp(temp / 2.0f, id(min_filtration_hours).state,
+                                     id(max_filtration_hours).state);
+
+                // "Today" at local midnight -- forces sunrise()/sunset() to
+                // return TODAY's event even if called after it already
+                // happened (they'd otherwise roll forward to tomorrow's).
+                ESPTime midnight_today = id(local_time).now();
+                midnight_today.hour = 0;
+                midnight_today.minute = 0;
+                midnight_today.second = 0;
+                midnight_today.recalc_timestamp_local();
+
+                auto sunrise = id(sun_id).sunrise(midnight_today, -0.833);
+                auto sunset = id(sun_id).sunset(midnight_today, -0.833);
+
+                if (sunrise.has_value() && sunset.has_value()) {
+                  time_t noon = (sunrise->timestamp + sunset->timestamp) / 2;
+                  // Fully evaluate each tunable's float offset into an
+                  // integral number of seconds BEFORE combining with a
+                  // (much larger) epoch timestamp -- adding a number
+                  // template's float .state straight to a time_t implicitly
+                  // converts the timestamp to float, which only has ~24 bits
+                  // of mantissa and silently rounds to the nearest ~128s at
+                  // today's epoch magnitude.
+                  time_t warmest_offset_sec = (time_t) (id(warmest_offset_hours).state * 3600.0f);
+                  time_t warmest = noon + warmest_offset_sec;
+
+                  time_t total_sec = (time_t) (hours * 3600.0f);
+                  time_t block1_len = total_sec / 3;
+                  time_t block2_len = total_sec - block1_len;
+
+                  time_t b1_start = sunrise->timestamp;
+                  time_t b1_end = b1_start + block1_len;
+                  time_t b2_start = warmest - block2_len / 2;
+                  time_t b2_end = warmest + block2_len / 2;
+
+                  // Merge into one continuous block if they'd touch or
+                  // overlap -- guarantees exactly `hours` of total filtration
+                  // either way. (A union of two overlapping windows can only
+                  // be <= the sum of their lengths, so left un-merged it
+                  // would UNDER-shoot the temperature-derived budget the more
+                  // they overlap, never exceed it -- merging is still the
+                  // right call, just for that reason.)
+                  if (b2_start <= b1_end) {
+                    b1_end = b1_start + total_sec;
+                    b2_start = b1_end;
+                    b2_end = b1_end;
+                  }
+
+                  // Never spill into tomorrow -- the day-rollover recompute
+                  // above would silently cut off and overwrite whatever
+                  // tail ran past midnight with an unrelated new plan.
+                  time_t midnight_end = midnight_today.timestamp + 86400;
+                  if (b1_end > midnight_end) b1_end = midnight_end;
+                  if (b2_start > midnight_end) b2_start = midnight_end;
+                  if (b2_end > midnight_end) b2_end = midnight_end;
+
+                  id(sched_block1_start) = b1_start;
+                  id(sched_block1_end) = b1_end;
+                  id(sched_block2_start) = b2_start;
+                  id(sched_block2_end) = b2_end;
+                  id(sched_computed_day) = today;
+                }
+                // else: sun lookup failed -- leave sched_computed_day alone,
+                // retry next tick.
+              }
+            }
+          }
+
+          // ===== Part 2: "what the plan alone says right now" -- always
+          // live, independent of freeze protection / manual override, so a
+          // dashboard can show true plan-vs-actual divergence. =====
+          time_t now_ts = id(local_time).now().timestamp;
+          bool in_block = false;
+          time_t block_start = 0;
+          if (now_ts >= id(sched_block1_start) && now_ts < id(sched_block1_end)) {
+            in_block = true;
+            block_start = id(sched_block1_start);
+          } else if (now_ts >= id(sched_block2_start) && now_ts < id(sched_block2_end)) {
+            in_block = true;
+            block_start = id(sched_block2_start);
+          }
+
+          std::string plan = "Off";
+          if (in_block) {
+            plan = "Low";
+            // Every boost_interval_minutes, spend the first
+            // boost_duration_minutes at full speed -- anchored to when this
+            // block started, so it's deterministic across reboots rather
+            // than free-running on the wall clock.
+            time_t boost_interval_sec = (time_t) (id(boost_interval_minutes).state * 60.0f);
+            time_t boost_duration_sec = (time_t) (id(boost_duration_minutes).state * 60.0f);
+            if (boost_interval_sec > 0) {
+              time_t phase = (now_ts - block_start) % boost_interval_sec;
+              if (phase < boost_duration_sec) {
+                plan = "High";
+              }
+            }
+          }
+          id(sched_speed_now) = plan;
+
+          // ===== Part 3: priority chain, highest wins. =====
           std::string desired = "Off";
 
           // 1. Freeze protection always wins, Home Assistant or not.
           if (id(pool_return_temp).state < 3.0) {
             desired = "Low";
           }
-          // 2. Manual override (set from the HA dashboard) wins over the schedule.
+          // 2. Manual override (set from the HA dashboard) wins over the
+          // schedule. Note sched_speed_now (and "Pump Planned Speed") keep
+          // evolving normally even while overridden -- that's what makes the
+          // plan-vs-actual divergence visible on a dashboard.
           else if (id(manual_override).current_option() != "Auto") {
             desired = id(manual_override).current_option().str();
           }
-          // 3. Otherwise, whichever program window we're currently in.
-          // Later programs win on overlap -- keep windows non-overlapping
-          // in practice; this is just a defined tie-break.
+          // 3. Otherwise, whatever the autonomous plan says right now.
           else {
-            int h = id(local_time).now().hour;
-            if (h >= (int) id(prog_a_start).state && h < (int) id(prog_a_end).state)
-              desired = id(prog_a_speed).current_option().str();
-            if (h >= (int) id(prog_b_start).state && h < (int) id(prog_b_end).state)
-              desired = id(prog_b_speed).current_option().str();
-            if (h >= (int) id(prog_c_start).state && h < (int) id(prog_c_end).state)
-              desired = id(prog_c_speed).current_option().str();
+            desired = id(sched_speed_now);
           }
 
           if (desired != id(last_commanded)) {
