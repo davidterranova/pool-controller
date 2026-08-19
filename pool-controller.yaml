@@ -232,6 +232,20 @@ select:
     on_value:
       - script.execute: evaluate_speed
 
+button:
+  - platform: template
+    name: "Recompute Schedule Now"
+    icon: mdi:refresh
+    # Same escape hatch the Min/Max Filtration Hours and Warmest Part of Day
+    # Offset numbers already use on_value: force the daily cache stale, then
+    # run the same evaluate_speed tick that would otherwise only fire on a
+    # real day change. Uses whatever pool_return_temp reads at press time --
+    # same one-shot-then-hold-for-the-day behavior as the automatic recompute,
+    # just triggered on demand instead of waiting for midnight.
+    on_press:
+      - lambda: 'id(sched_computed_day) = -1;'
+      - script.execute: evaluate_speed
+
 globals:
   - id: last_commanded
     type: std::string

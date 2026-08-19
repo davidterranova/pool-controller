@@ -166,8 +166,10 @@ Re-evaluated every 30 seconds, highest priority wins:
    - The plan is computed **once per day and cached** — not continuously
      recalculated from the live temperature reading, which would make the
      block boundaries drift throughout the day. It's recomputed on a real
-     day change, or immediately if you edit `Min`/`Max Filtration Hours` or
-     `Warmest Part of Day Offset`. A same-day reboot (Wi-Fi watchdog, OTA,
+     day change, immediately if you edit `Min`/`Max Filtration Hours` or
+     `Warmest Part of Day Offset`, or on demand via the **Recompute Schedule
+     Now** button (same effect, just triggered by hand instead of waiting for
+     midnight or a tunable edit). A same-day reboot (Wi-Fi watchdog, OTA,
      power blip) resumes the already-computed plan rather than recomputing
      it from whatever the temperature happens to be at that moment.
    - **Pump Planned Speed** always reflects what this schedule alone would
@@ -211,6 +213,9 @@ reason.
    - **Numbers**: Min/Max Filtration Hours, Warmest Part of Day Offset,
      Boost Pulse Duration, Boost Pulse Interval
    - **Select**: Manual Override
+   - **Button**: Recompute Schedule Now — forces an immediate re-run of the
+     daily schedule calc using the current temperature reading, instead of
+     waiting for midnight
    - **Fan**: Pump — a friendlier proxy for Manual Override (on/off +
      Low/Medium/High). Has no way to represent "Auto"; use the Manual
      Override select for that.
@@ -238,6 +243,8 @@ entities:
   - entity: number.pool_controller_warmest_part_of_day_offset
   - entity: number.pool_controller_boost_pulse_duration
   - entity: number.pool_controller_boost_pulse_interval
+  - entity: button.pool_controller_recompute_schedule_now
+    name: Recompute Now
   - entity: sensor.pool_controller_planned_filtration_hours
   - entity: sensor.pool_controller_schedule_block_1_start
     name: Block 1 Start
