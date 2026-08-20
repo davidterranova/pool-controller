@@ -312,22 +312,30 @@ commanded, both as real recorded history:
 
 ```yaml
 type: custom:apexcharts-card
+grid_options:
+  columns: full
+  rows: auto
 header:
   title: Pool Pump — Plan vs Actual
   show: true
 graph_span: 24h
-span:
-  start: day
+now:
+  show: true
+  label: Now
+  color: "#ff5252"
 apex_config:
   stroke:
     curve: stepline
+  chart:
+    height: 200
 yaxis:
   - min: 0
     max: 3
     decimals: 0
-    labels:
-      formatter: |
-        EVAL:(val) => ["Off", "Low", "Medium", "High"][Math.round(val)] || ""
+    apex_config:
+      labels:
+        formatter: |
+          EVAL:(val) => ["Off", "Low", "Medium", "High"][Math.round(val)] || ""
 series:
   - entity: sensor.pool_controller_pump_planned_speed
     name: Planned
@@ -339,19 +347,38 @@ series:
     transform: 'return {"Off":0,"Low":1,"Medium":2,"High":3}[x] ?? 0;'
 ```
 
-Note: this plots what's already happened today (real recorded history), not
-the not-yet-started remainder of today's plan as a shape. Extending it to
-also draw the rest of today from the Block 1/2 Start/End sensors is possible
-with ApexCharts' `data_generator`, but mixing a synthetic future series with
-a real history series in the same chart has a known rendering glitch in that
-card, so it's left as an optional exercise rather than shipped here.
+`grid_options: {columns: full, rows: auto}` is for a `sections`-type
+dashboard view: put this card alone in a section with `column_span: 4` (or
+your view's full `max_columns`) so it gets its own full-width row instead of
+being squeezed into a shared one — `rows: auto` then sizes the section to
+the chart's real rendered height instead of an under/over-estimated fixed
+row count. `apex_config.chart.height: 200` keeps the plot itself compact;
+drop it (or raise it) for a taller chart.
 
-For the two things that glitch would otherwise be working around — "when's
-the next boost pulse" and "when does it shut off later today" — use the
-**Next Boost Start/End** and **Schedule Block 1/2 End** text sensors
-instead, either as a heading badge on the chart's section or in the entities
-card above. Firmware-computed, so no client-side schedule math to keep in
-sync with `evaluate_speed`, and no chart-glitch risk.
+`graph_span: 24h` with no `span:` override is a **rolling window ending at
+"now"**, not a midnight-anchored one — deliberately, after trying the
+midnight-anchored version (`span: {start: day}`) first. That version's fixed
+day-long window reaches hours into the future once the current time is past
+midnight, and since Home Assistant has no recorded history for the future,
+apexcharts-card fills that unplottable stretch with a flat line pinned to
+`Off` rather than leaving it blank — visually implying "the plan says off
+for the rest of the day" when it doesn't. The rolling window never asks for
+data past "now", so that artifact can't happen; the tradeoff is the chart
+no longer always starts exactly at midnight.
+
+This still only ever plots what's already happened (real recorded history)
+— even with the rolling window, there's no way to show the not-yet-started
+remainder of today's plan as a shape. Extending it to draw the rest of
+today from the Block 1/2 Start/End sensors is possible with ApexCharts'
+`data_generator`, but mixing a synthetic future series with a real history
+series in the same chart has a known rendering glitch in that card, so it's
+left as an optional exercise rather than shipped here. For the two things
+that glitch would otherwise be working around — "when's the next boost
+pulse" and "when does it shut off later today" — use the **Next Boost
+Start/End** and **Schedule Block 1/2 End** text sensors instead, either as
+a heading badge on the chart's section or in the entities card above.
+Firmware-computed, so no client-side schedule math to keep in sync with
+`evaluate_speed`, and no chart-glitch risk.
 
 Add either card via Edit Dashboard → Add Card → Manual (or any card's "Edit
 in YAML"). The entity IDs above are HA's usual naming convention for this
