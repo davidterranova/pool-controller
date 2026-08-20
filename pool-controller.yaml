@@ -159,6 +159,37 @@ text_sensor:
     lambda: |-
       if (id(sched_block2_end) == 0) return std::string("--:--");
       return ESPTime::from_epoch_local(id(sched_block2_end)).strftime("%H:%M");
+  # Look-ahead for the dashboard: when the next High-speed boost pulse
+  # starts/ends, computed fresh every evaluate_speed tick (see Part 2b
+  # there). "--:--" once no more boosts remain in today's plan.
+  - platform: template
+    name: "Next Boost Start"
+    id: next_boost_start_display
+    icon: mdi:clock-fast
+    update_interval: 30s
+    lambda: |-
+      if (id(sched_next_boost_start) == 0) return std::string("--:--");
+      return ESPTime::from_epoch_local(id(sched_next_boost_start)).strftime("%H:%M");
+  - platform: template
+    name: "Next Boost End"
+    id: next_boost_end_display
+    icon: mdi:clock-fast
+    update_interval: 30s
+    lambda: |-
+      if (id(sched_next_boost_end) == 0) return std::string("--:--");
+      return ESPTime::from_epoch_local(id(sched_next_boost_end)).strftime("%H:%M");
+  # Confirms a "Recompute Schedule Now" press actually did something, even
+  # on days it lands on an identical plan (see the comment in Part 1 of
+  # evaluate_speed). Includes the date, not just time-of-day, since this can
+  # be stale from a previous day if the sunrise/sunset lookup keeps failing.
+  - platform: template
+    name: "Last Recomputed At"
+    id: last_recompute_display
+    icon: mdi:history
+    update_interval: 30s
+    lambda: |-
+      if (id(sched_last_recompute) == 0) return std::string("Never");
+      return ESPTime::from_epoch_local(id(sched_last_recompute)).strftime("%Y-%m-%d %H:%M:%S");
 
 # --- Autonomous schedule tunables, editable from the Home Assistant dashboard, persisted in flash ---
 number:
@@ -321,6 +352,14 @@ globals:
     type: time_t
     restore_value: true
     initial_value: '0'
+  # When the plan above was last successfully (re)computed -- day-rollover
+  # or the "Recompute Schedule Now" button, see Part 1 in evaluate_speed.
+  # Restored like the block boundaries themselves: a real historical fact,
+  # not something to erase to 0 on every reboot.
+  - id: sched_last_recompute
+    type: time_t
+    restore_value: true
+    initial_value: '0'
   # "What the autonomous plan alone says right now" -- kept live every
   # evaluate_speed tick regardless of freeze protection / manual override, so
   # a dashboard can show true plan-vs-actual divergence. Deliberately NOT
@@ -330,6 +369,17 @@ globals:
     type: std::string
     restore_value: false
     initial_value: '"Off"'
+  # "When's the next boost pulse" -- also fully recomputed every
+  # evaluate_speed tick (Part 2b), also deliberately NOT restored for the
+  # same reason as sched_speed_now above. 0 means "none left today".
+  - id: sched_next_boost_start
+    type: time_t
+    restore_value: false
+    initial_value: '0'
+  - id: sched_next_boost_end
+    type: time_t
+    restore_value: false
+    initial_value: '0'
 
 binary_sensor:
   # Short name deliberately -- HA prefixes the device's own friendly name
@@ -555,6 +605,14 @@ script:
                   id(sched_block2_start) = b2_start;
                   id(sched_block2_end) = b2_end;
                   id(sched_computed_day) = today;
+                  // Stamped on every successful recompute (day-rollover or
+                  // the "Recompute Schedule Now" button) -- exists purely so
+                  // a press is confirmable even when the resulting plan is
+                  // byte-for-byte identical to before (e.g. filtration hours
+                  // still clamped at the same Max Filtration Hours ceiling).
+                  // Without this there's no way to tell "recomputed, landed
+                  // on the same plan" apart from "did nothing."
+                  id(sched_last_recompute) = id(local_time).now().timestamp;
                 }
                 // else: sun lookup failed -- leave sched_computed_day alone,
                 // retry next tick.
@@ -593,6 +651,47 @@ script:
             }
           }
           id(sched_speed_now) = plan;
+
+          // ===== Part 2b: "when's the next boost pulse" -- a look-ahead for
+          // the dashboard, independent of Part 2 above (which only ever
+          // evaluates the single instant "now"). Walks forward through
+          // today's remaining blocks and finds the next High-speed window;
+          // leaves both globals at 0 if none remain today (already-past
+          // blocks, boost pulses disabled via a zero interval/duration, or
+          // the plan hasn't been computed yet).
+          time_t next_boost_start = 0;
+          time_t next_boost_end = 0;
+          time_t look_interval_sec = (time_t) (id(boost_interval_minutes).state * 60.0f);
+          time_t look_duration_sec = (time_t) (id(boost_duration_minutes).state * 60.0f);
+          if (look_interval_sec > 0 && look_duration_sec > 0) {
+            time_t blocks[2][2] = {
+              {id(sched_block1_start), id(sched_block1_end)},
+              {id(sched_block2_start), id(sched_block2_end)},
+            };
+            for (int b = 0; b < 2; b++) {
+              time_t b_start = blocks[b][0];
+              time_t b_end = blocks[b][1];
+              if (b_end <= b_start) continue;  // zero-width (merged-away) block
+              time_t candidate;
+              if (now_ts < b_start) {
+                candidate = b_start;  // a block's first pulse starts right on its boundary
+              } else if (now_ts < b_end) {
+                time_t phase = (now_ts - b_start) % look_interval_sec;
+                candidate = now_ts - phase + look_interval_sec;
+              } else {
+                continue;  // this block is already over -- try the next one
+              }
+              if (candidate < b_end) {
+                next_boost_start = candidate;
+                next_boost_end = candidate + look_duration_sec;
+                if (next_boost_end > b_end) next_boost_end = b_end;
+                break;
+              }
+              // else: no more pulses fit before this block ends -- try the next block.
+            }
+          }
+          id(sched_next_boost_start) = next_boost_start;
+          id(sched_next_boost_end) = next_boost_end;
 
           // ===== Part 3: priority chain, highest wins. =====
           std::string desired = "Off";

@@ -179,6 +179,17 @@ Re-evaluated every 30 seconds, highest priority wins:
    - **Schedule Block 1/2 Start/End** show today's computed windows
      (`--:--` if not yet computed). If Block 2 Start equals Block 1 End, the
      blocks were merged that day — not a bug.
+   - **Next Boost Start/End** show the next upcoming `High`-speed pulse
+     (`--:--` if none remain today — the current block is over, or boost
+     pulses are disabled via a zero `Boost Pulse Interval`/`Duration`).
+     Recomputed every 30s tick, same as **Pump Planned Speed** — a look-ahead
+     companion to it, not a stored forecast of every remaining pulse today.
+   - **Last Recomputed At** shows exactly when the plan above was last
+     (re)computed — the day-rollover recompute, or a **Recompute Schedule
+     Now** press. Exists so a press is always confirmable even when it lands
+     on a byte-for-byte identical plan (e.g. filtration hours already
+     clamped at the same `Max Filtration Hours` ceiling) — that's a correct,
+     expected no-op, not the button silently failing to do anything.
 
 A new speed is only pushed to the relays when it actually differs from the
 last one commanded, so they aren't re-triggered every 30 seconds for no
@@ -228,7 +239,9 @@ reason.
      Temperature, Planned Filtration Hours
    - **Text sensors**: Pump Commanded Speed (what's actually applied), Pump
      Planned Speed (what the autonomous schedule alone says right now),
-     Schedule Block 1/2 Start/End (today's computed windows)
+     Schedule Block 1/2 Start/End (today's computed windows), Next Boost
+     Start/End (when the next `High`-speed pulse is coming), Last Recomputed
+     At (proof a recompute — automatic or button-triggered — actually ran)
    - **Numbers**: Min/Max Filtration Hours, Warmest Part of Day Offset,
      Boost Pulse Duration, Boost Pulse Interval
    - **Select**: Manual Override
@@ -273,6 +286,12 @@ entities:
     name: Block 2 Start
   - entity: sensor.pool_controller_schedule_block_2_end
     name: Block 2 End
+  - entity: sensor.pool_controller_next_boost_start
+    name: Next Boost Start
+  - entity: sensor.pool_controller_next_boost_end
+    name: Next Boost End
+  - entity: sensor.pool_controller_last_recomputed_at
+    name: Last Recomputed At
   - type: section
     label: Status
   - entity: sensor.pool_controller_pool_return_temperature
@@ -326,6 +345,13 @@ also draw the rest of today from the Block 1/2 Start/End sensors is possible
 with ApexCharts' `data_generator`, but mixing a synthetic future series with
 a real history series in the same chart has a known rendering glitch in that
 card, so it's left as an optional exercise rather than shipped here.
+
+For the two things that glitch would otherwise be working around — "when's
+the next boost pulse" and "when does it shut off later today" — use the
+**Next Boost Start/End** and **Schedule Block 1/2 End** text sensors
+instead, either as a heading badge on the chart's section or in the entities
+card above. Firmware-computed, so no client-side schedule math to keep in
+sync with `evaluate_speed`, and no chart-glitch risk.
 
 Add either card via Edit Dashboard → Add Card → Manual (or any card's "Edit
 in YAML"). The entity IDs above are HA's usual naming convention for this
