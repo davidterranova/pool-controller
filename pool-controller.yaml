@@ -1,6 +1,20 @@
 esphome:
   name: pool-controller
   friendly_name: Pool Controller
+  # The "Pump" fan entity below (see fan:) has no restore/initial state of
+  # its own, so it always boots into a default "off" state -- and its
+  # on_state handler unconditionally syncs that into Manual Override,
+  # which would silently clobber Manual Override's own "Auto" boot default
+  # (see select: below) the instant the fan's initial state is established.
+  # boot_guard_active suppresses that one-time startup sync; cleared a few
+  # seconds after boot, once every component's own initial/restored state
+  # has settled, so any *real* user interaction with the fan afterwards
+  # still syncs normally.
+  on_boot:
+    priority: -100
+    then:
+      - delay: 3s
+      - lambda: 'id(boot_guard_active) = false;'
 
 esp32:
   board: esp32dev
@@ -145,6 +159,37 @@ text_sensor:
     lambda: |-
       if (id(sched_block2_end) == 0) return std::string("--:--");
       return ESPTime::from_epoch_local(id(sched_block2_end)).strftime("%H:%M");
+  # Look-ahead for the dashboard: when the next High-speed boost pulse
+  # starts/ends, computed fresh every evaluate_speed tick (see Part 2b
+  # there). "--:--" once no more boosts remain in today's plan.
+  - platform: template
+    name: "Next Boost Start"
+    id: next_boost_start_display
+    icon: mdi:clock-fast
+    update_interval: 30s
+    lambda: |-
+      if (id(sched_next_boost_start) == 0) return std::string("--:--");
+      return ESPTime::from_epoch_local(id(sched_next_boost_start)).strftime("%H:%M");
+  - platform: template
+    name: "Next Boost End"
+    id: next_boost_end_display
+    icon: mdi:clock-fast
+    update_interval: 30s
+    lambda: |-
+      if (id(sched_next_boost_end) == 0) return std::string("--:--");
+      return ESPTime::from_epoch_local(id(sched_next_boost_end)).strftime("%H:%M");
+  # Confirms a "Recompute Schedule Now" press actually did something, even
+  # on days it lands on an identical plan (see the comment in Part 1 of
+  # evaluate_speed). Includes the date, not just time-of-day, since this can
+  # be stale from a previous day if the sunrise/sunset lookup keeps failing.
+  - platform: template
+    name: "Last Recomputed At"
+    id: last_recompute_display
+    icon: mdi:history
+    update_interval: 30s
+    lambda: |-
+      if (id(sched_last_recompute) == 0) return std::string("Never");
+      return ESPTime::from_epoch_local(id(sched_last_recompute)).strftime("%Y-%m-%d %H:%M:%S");
 
 # --- Autonomous schedule tunables, editable from the Home Assistant dashboard, persisted in flash ---
 number:
@@ -223,7 +268,14 @@ select:
     id: manual_override
     options: ["Auto", "Off", "Low", "Medium", "High"]
     initial_option: "Auto"
-    restore_value: true
+    # Deliberately NOT restored (unlike the schedule tunables and their
+    # cached daily plan above) -- a reboot from a Wi-Fi watchdog, OTA, or
+    # power blip must always come back into Auto, so freeze protection and
+    # the autonomous schedule are back in control on their own. Restoring a
+    # stale "Off" or a fixed speed across an unattended power event would
+    # silently leave the pump stuck there, unmonitored, for however long
+    # until someone happens to check the dashboard.
+    restore_value: false
     optimistic: true
     # React immediately instead of waiting for the next 30s interval tick --
     # overriding the pump is a "make this happen now" action, unlike the
@@ -258,6 +310,15 @@ globals:
     type: bool
     restore_value: false
     initial_value: 'false'
+  # Suppresses the SAME pump_fan -> manual_override sync, but for the
+  # opposite direction: the one-time on_state firing caused by the fan
+  # entity establishing its own initial state at boot (see esphome:
+  # on_boot: above and fan: on_state below), not a real user action.
+  # Starts true and flips false a few seconds after boot.
+  - id: boot_guard_active
+    type: bool
+    restore_value: false
+    initial_value: 'true'
 
   # --- Autonomous schedule (tier 3) cache -----------------------------------
   # Computed once per calendar day from pool_return_temp + today's sunrise/
@@ -291,6 +352,14 @@ globals:
     type: time_t
     restore_value: true
     initial_value: '0'
+  # When the plan above was last successfully (re)computed -- day-rollover
+  # or the "Recompute Schedule Now" button, see Part 1 in evaluate_speed.
+  # Restored like the block boundaries themselves: a real historical fact,
+  # not something to erase to 0 on every reboot.
+  - id: sched_last_recompute
+    type: time_t
+    restore_value: true
+    initial_value: '0'
   # "What the autonomous plan alone says right now" -- kept live every
   # evaluate_speed tick regardless of freeze protection / manual override, so
   # a dashboard can show true plan-vs-actual divergence. Deliberately NOT
@@ -300,6 +369,17 @@ globals:
     type: std::string
     restore_value: false
     initial_value: '"Off"'
+  # "When's the next boost pulse" -- also fully recomputed every
+  # evaluate_speed tick (Part 2b), also deliberately NOT restored for the
+  # same reason as sched_speed_now above. 0 means "none left today".
+  - id: sched_next_boost_start
+    type: time_t
+    restore_value: false
+    initial_value: '0'
+  - id: sched_next_boost_end
+    type: time_t
+    restore_value: false
+    initial_value: '0'
 
 binary_sensor:
   # Short name deliberately -- HA prefixes the device's own friendly name
@@ -327,6 +407,12 @@ fan:
     on_state:
       - lambda: |-
           if (id(syncing_fan_display)) return;
+          // See esphome: on_boot: above -- this entity boots into a
+          // default "off" state, and without this guard that boot-time
+          // firing would immediately force Manual Override to "Off",
+          // overriding its own "Auto" boot default before anyone gets a
+          // chance to see it.
+          if (id(boot_guard_active)) return;
           if (!x->state) {
             id(manual_override).make_call().set_option("Off").perform();
           } else if (x->has_preset_mode()) {
@@ -519,6 +605,14 @@ script:
                   id(sched_block2_start) = b2_start;
                   id(sched_block2_end) = b2_end;
                   id(sched_computed_day) = today;
+                  // Stamped on every successful recompute (day-rollover or
+                  // the "Recompute Schedule Now" button) -- exists purely so
+                  // a press is confirmable even when the resulting plan is
+                  // byte-for-byte identical to before (e.g. filtration hours
+                  // still clamped at the same Max Filtration Hours ceiling).
+                  // Without this there's no way to tell "recomputed, landed
+                  // on the same plan" apart from "did nothing."
+                  id(sched_last_recompute) = id(local_time).now().timestamp;
                 }
                 // else: sun lookup failed -- leave sched_computed_day alone,
                 // retry next tick.
@@ -557,6 +651,47 @@ script:
             }
           }
           id(sched_speed_now) = plan;
+
+          // ===== Part 2b: "when's the next boost pulse" -- a look-ahead for
+          // the dashboard, independent of Part 2 above (which only ever
+          // evaluates the single instant "now"). Walks forward through
+          // today's remaining blocks and finds the next High-speed window;
+          // leaves both globals at 0 if none remain today (already-past
+          // blocks, boost pulses disabled via a zero interval/duration, or
+          // the plan hasn't been computed yet).
+          time_t next_boost_start = 0;
+          time_t next_boost_end = 0;
+          time_t look_interval_sec = (time_t) (id(boost_interval_minutes).state * 60.0f);
+          time_t look_duration_sec = (time_t) (id(boost_duration_minutes).state * 60.0f);
+          if (look_interval_sec > 0 && look_duration_sec > 0) {
+            time_t blocks[2][2] = {
+              {id(sched_block1_start), id(sched_block1_end)},
+              {id(sched_block2_start), id(sched_block2_end)},
+            };
+            for (int b = 0; b < 2; b++) {
+              time_t b_start = blocks[b][0];
+              time_t b_end = blocks[b][1];
+              if (b_end <= b_start) continue;  // zero-width (merged-away) block
+              time_t candidate;
+              if (now_ts < b_start) {
+                candidate = b_start;  // a block's first pulse starts right on its boundary
+              } else if (now_ts < b_end) {
+                time_t phase = (now_ts - b_start) % look_interval_sec;
+                candidate = now_ts - phase + look_interval_sec;
+              } else {
+                continue;  // this block is already over -- try the next one
+              }
+              if (candidate < b_end) {
+                next_boost_start = candidate;
+                next_boost_end = candidate + look_duration_sec;
+                if (next_boost_end > b_end) next_boost_end = b_end;
+                break;
+              }
+              // else: no more pulses fit before this block ends -- try the next block.
+            }
+          }
+          id(sched_next_boost_start) = next_boost_start;
+          id(sched_next_boost_end) = next_boost_end;
 
           // ===== Part 3: priority chain, highest wins. =====
           std::string desired = "Off";

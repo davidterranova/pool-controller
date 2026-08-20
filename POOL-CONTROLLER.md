@@ -179,6 +179,17 @@ Re-evaluated every 30 seconds, highest priority wins:
    - **Schedule Block 1/2 Start/End** show today's computed windows
      (`--:--` if not yet computed). If Block 2 Start equals Block 1 End, the
      blocks were merged that day — not a bug.
+   - **Next Boost Start/End** show the next upcoming `High`-speed pulse
+     (`--:--` if none remain today — the current block is over, or boost
+     pulses are disabled via a zero `Boost Pulse Interval`/`Duration`).
+     Recomputed every 30s tick, same as **Pump Planned Speed** — a look-ahead
+     companion to it, not a stored forecast of every remaining pulse today.
+   - **Last Recomputed At** shows exactly when the plan above was last
+     (re)computed — the day-rollover recompute, or a **Recompute Schedule
+     Now** press. Exists so a press is always confirmable even when it lands
+     on a byte-for-byte identical plan (e.g. filtration hours already
+     clamped at the same `Max Filtration Hours` ceiling) — that's a correct,
+     expected no-op, not the button silently failing to do anything.
 
 A new speed is only pushed to the relays when it actually differs from the
 last one commanded, so they aren't re-triggered every 30 seconds for no
@@ -190,10 +201,29 @@ reason.
   if no API client (i.e. HA) connects for a while. That's disabled here on
   purpose, since this device has to keep running its schedule and freeze
   protection with or without HA.
-- All schedule state (tunables, manual override, and the autonomous
-  schedule's cached daily plan) is set to `restore_value: true`, so it
-  survives a power cycle without HA needing to re-push anything, and without
-  silently recomputing the day's plan from a different temperature mid-day.
+- The schedule tunables and the autonomous schedule's cached daily plan are
+  set to `restore_value: true`, so they survive a power cycle without HA
+  needing to re-push anything, and without silently recomputing the day's
+  plan from a different temperature mid-day.
+- **Manual Override is the deliberate exception** — it always comes back as
+  `Auto` after a reboot (Wi-Fi watchdog, OTA, power blip), rather than
+  restoring whatever speed/Off it was last set to. This guarantees freeze
+  protection and the autonomous schedule regain control on their own after
+  an unattended power event, instead of the pump silently staying wherever a
+  stale manual override left it until someone happens to check the
+  dashboard.
+  - **This alone isn't sufficient**, because of a second interaction: the
+    **Pump** fan entity (the friendlier proxy for Manual Override) has no
+    restore state of its own, so it always boots into a default "off"
+    state — and its `on_state` handler unconditionally syncs whatever the
+    fan is showing into Manual Override, including that one-time boot-time
+    "off". Left alone, that would immediately clobber Manual Override's
+    `Auto` boot default a fraction of a second after it's set, before
+    anyone ever sees it. `esphome: on_boot:` sets a `boot_guard_active`
+    global at startup that suppresses this one specific sync for a few
+    seconds, just long enough for every entity's own initial/restored
+    state to settle — real user interactions with the fan afterwards sync
+    normally, same as before.
 
 ## Home Assistant configuration
 
@@ -209,7 +239,9 @@ reason.
      Temperature, Planned Filtration Hours
    - **Text sensors**: Pump Commanded Speed (what's actually applied), Pump
      Planned Speed (what the autonomous schedule alone says right now),
-     Schedule Block 1/2 Start/End (today's computed windows)
+     Schedule Block 1/2 Start/End (today's computed windows), Next Boost
+     Start/End (when the next `High`-speed pulse is coming), Last Recomputed
+     At (proof a recompute — automatic or button-triggered — actually ran)
    - **Numbers**: Min/Max Filtration Hours, Warmest Part of Day Offset,
      Boost Pulse Duration, Boost Pulse Interval
    - **Select**: Manual Override
@@ -254,6 +286,12 @@ entities:
     name: Block 2 Start
   - entity: sensor.pool_controller_schedule_block_2_end
     name: Block 2 End
+  - entity: sensor.pool_controller_next_boost_start
+    name: Next Boost Start
+  - entity: sensor.pool_controller_next_boost_end
+    name: Next Boost End
+  - entity: sensor.pool_controller_last_recomputed_at
+    name: Last Recomputed At
   - type: section
     label: Status
   - entity: sensor.pool_controller_pool_return_temperature
@@ -274,22 +312,30 @@ commanded, both as real recorded history:
 
 ```yaml
 type: custom:apexcharts-card
+grid_options:
+  columns: full
+  rows: auto
 header:
   title: Pool Pump — Plan vs Actual
   show: true
 graph_span: 24h
-span:
-  start: day
+now:
+  show: true
+  label: Now
+  color: "#ff5252"
 apex_config:
   stroke:
     curve: stepline
+  chart:
+    height: 200
 yaxis:
   - min: 0
     max: 3
     decimals: 0
-    labels:
-      formatter: |
-        EVAL:(val) => ["Off", "Low", "Medium", "High"][Math.round(val)] || ""
+    apex_config:
+      labels:
+        formatter: |
+          EVAL:(val) => ["Off", "Low", "Medium", "High"][Math.round(val)] || ""
 series:
   - entity: sensor.pool_controller_pump_planned_speed
     name: Planned
@@ -301,12 +347,38 @@ series:
     transform: 'return {"Off":0,"Low":1,"Medium":2,"High":3}[x] ?? 0;'
 ```
 
-Note: this plots what's already happened today (real recorded history), not
-the not-yet-started remainder of today's plan as a shape. Extending it to
-also draw the rest of today from the Block 1/2 Start/End sensors is possible
-with ApexCharts' `data_generator`, but mixing a synthetic future series with
-a real history series in the same chart has a known rendering glitch in that
-card, so it's left as an optional exercise rather than shipped here.
+`grid_options: {columns: full, rows: auto}` is for a `sections`-type
+dashboard view: put this card alone in a section with `column_span: 4` (or
+your view's full `max_columns`) so it gets its own full-width row instead of
+being squeezed into a shared one — `rows: auto` then sizes the section to
+the chart's real rendered height instead of an under/over-estimated fixed
+row count. `apex_config.chart.height: 200` keeps the plot itself compact;
+drop it (or raise it) for a taller chart.
+
+`graph_span: 24h` with no `span:` override is a **rolling window ending at
+"now"**, not a midnight-anchored one — deliberately, after trying the
+midnight-anchored version (`span: {start: day}`) first. That version's fixed
+day-long window reaches hours into the future once the current time is past
+midnight, and since Home Assistant has no recorded history for the future,
+apexcharts-card fills that unplottable stretch with a flat line pinned to
+`Off` rather than leaving it blank — visually implying "the plan says off
+for the rest of the day" when it doesn't. The rolling window never asks for
+data past "now", so that artifact can't happen; the tradeoff is the chart
+no longer always starts exactly at midnight.
+
+This still only ever plots what's already happened (real recorded history)
+— even with the rolling window, there's no way to show the not-yet-started
+remainder of today's plan as a shape. Extending it to draw the rest of
+today from the Block 1/2 Start/End sensors is possible with ApexCharts'
+`data_generator`, but mixing a synthetic future series with a real history
+series in the same chart has a known rendering glitch in that card, so it's
+left as an optional exercise rather than shipped here. For the two things
+that glitch would otherwise be working around — "when's the next boost
+pulse" and "when does it shut off later today" — use the **Next Boost
+Start/End** and **Schedule Block 1/2 End** text sensors instead, either as
+a heading badge on the chart's section or in the entities card above.
+Firmware-computed, so no client-side schedule math to keep in sync with
+`evaluate_speed`, and no chart-glitch risk.
 
 Add either card via Edit Dashboard → Add Card → Manual (or any card's "Edit
 in YAML"). The entity IDs above are HA's usual naming convention for this
