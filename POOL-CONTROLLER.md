@@ -190,10 +190,29 @@ reason.
   if no API client (i.e. HA) connects for a while. That's disabled here on
   purpose, since this device has to keep running its schedule and freeze
   protection with or without HA.
-- All schedule state (tunables, manual override, and the autonomous
-  schedule's cached daily plan) is set to `restore_value: true`, so it
-  survives a power cycle without HA needing to re-push anything, and without
-  silently recomputing the day's plan from a different temperature mid-day.
+- The schedule tunables and the autonomous schedule's cached daily plan are
+  set to `restore_value: true`, so they survive a power cycle without HA
+  needing to re-push anything, and without silently recomputing the day's
+  plan from a different temperature mid-day.
+- **Manual Override is the deliberate exception** — it always comes back as
+  `Auto` after a reboot (Wi-Fi watchdog, OTA, power blip), rather than
+  restoring whatever speed/Off it was last set to. This guarantees freeze
+  protection and the autonomous schedule regain control on their own after
+  an unattended power event, instead of the pump silently staying wherever a
+  stale manual override left it until someone happens to check the
+  dashboard.
+  - **This alone isn't sufficient**, because of a second interaction: the
+    **Pump** fan entity (the friendlier proxy for Manual Override) has no
+    restore state of its own, so it always boots into a default "off"
+    state — and its `on_state` handler unconditionally syncs whatever the
+    fan is showing into Manual Override, including that one-time boot-time
+    "off". Left alone, that would immediately clobber Manual Override's
+    `Auto` boot default a fraction of a second after it's set, before
+    anyone ever sees it. `esphome: on_boot:` sets a `boot_guard_active`
+    global at startup that suppresses this one specific sync for a few
+    seconds, just long enough for every entity's own initial/restored
+    state to settle — real user interactions with the fan afterwards sync
+    normally, same as before.
 
 ## Home Assistant configuration
 

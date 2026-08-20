@@ -1,6 +1,20 @@
 esphome:
   name: pool-controller
   friendly_name: Pool Controller
+  # The "Pump" fan entity below (see fan:) has no restore/initial state of
+  # its own, so it always boots into a default "off" state -- and its
+  # on_state handler unconditionally syncs that into Manual Override,
+  # which would silently clobber Manual Override's own "Auto" boot default
+  # (see select: below) the instant the fan's initial state is established.
+  # boot_guard_active suppresses that one-time startup sync; cleared a few
+  # seconds after boot, once every component's own initial/restored state
+  # has settled, so any *real* user interaction with the fan afterwards
+  # still syncs normally.
+  on_boot:
+    priority: -100
+    then:
+      - delay: 3s
+      - lambda: 'id(boot_guard_active) = false;'
 
 esp32:
   board: esp32dev
@@ -223,7 +237,14 @@ select:
     id: manual_override
     options: ["Auto", "Off", "Low", "Medium", "High"]
     initial_option: "Auto"
-    restore_value: true
+    # Deliberately NOT restored (unlike the schedule tunables and their
+    # cached daily plan above) -- a reboot from a Wi-Fi watchdog, OTA, or
+    # power blip must always come back into Auto, so freeze protection and
+    # the autonomous schedule are back in control on their own. Restoring a
+    # stale "Off" or a fixed speed across an unattended power event would
+    # silently leave the pump stuck there, unmonitored, for however long
+    # until someone happens to check the dashboard.
+    restore_value: false
     optimistic: true
     # React immediately instead of waiting for the next 30s interval tick --
     # overriding the pump is a "make this happen now" action, unlike the
@@ -258,6 +279,15 @@ globals:
     type: bool
     restore_value: false
     initial_value: 'false'
+  # Suppresses the SAME pump_fan -> manual_override sync, but for the
+  # opposite direction: the one-time on_state firing caused by the fan
+  # entity establishing its own initial state at boot (see esphome:
+  # on_boot: above and fan: on_state below), not a real user action.
+  # Starts true and flips false a few seconds after boot.
+  - id: boot_guard_active
+    type: bool
+    restore_value: false
+    initial_value: 'true'
 
   # --- Autonomous schedule (tier 3) cache -----------------------------------
   # Computed once per calendar day from pool_return_temp + today's sunrise/
@@ -327,6 +357,12 @@ fan:
     on_state:
       - lambda: |-
           if (id(syncing_fan_display)) return;
+          // See esphome: on_boot: above -- this entity boots into a
+          // default "off" state, and without this guard that boot-time
+          // firing would immediately force Manual Override to "Off",
+          // overriding its own "Auto" boot default before anyone gets a
+          // chance to see it.
+          if (id(boot_guard_active)) return;
           if (!x->state) {
             id(manual_override).make_call().set_option("Off").perform();
           } else if (x->has_preset_mode()) {
