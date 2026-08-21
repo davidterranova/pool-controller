@@ -162,9 +162,10 @@ text_sensor:
     lambda: |-
       if (id(sched_block2_end) == 0) return std::string("--:--");
       return ESPTime::from_epoch_local(id(sched_block2_end)).strftime("%H:%M");
-  # Look-ahead for the dashboard: when the next High-speed boost pulse
-  # starts/ends, computed fresh every evaluate_speed tick (see Part 2b
-  # there). "--:--" once no more boosts remain in today's plan.
+  # Look-ahead for the dashboard: when the next boost pulse (Medium, or
+  # High every boost_high_every_n-th) starts/ends, computed fresh every
+  # evaluate_speed tick (see Part 2b there). "--:--" once no more boosts
+  # remain in today's plan.
   - platform: template
     name: "Next Boost Start"
     id: next_boost_start_display
@@ -235,7 +236,7 @@ number:
     on_value:
       - lambda: 'id(sched_computed_day) = -1;'
       - script.execute: evaluate_speed
-  # These two intentionally do NOT reset the daily cache: evaluate_speed
+  # These three intentionally do NOT reset the daily cache: evaluate_speed
   # already reads them live every tick regardless of cache state, so forcing
   # a full recompute here would just be wasted work -- and would drag in
   # whatever the live temperature happens to be, undermining the "stable
@@ -260,6 +261,23 @@ number:
     max_value: 60
     step: 5
     initial_value: 30
+    restore_value: true
+    optimistic: true
+    on_value:
+      - script.execute: evaluate_speed
+  # Most boost pulses run at Medium instead of High -- the pump's power draw
+  # scales roughly with speed cubed, so Medium gives most of the circulation
+  # benefit for a fraction of High's energy cost. Every Nth pulse still
+  # escalates to High for a stronger periodic turnover/skim. 1 reproduces
+  # the old "always High" behavior.
+  - platform: template
+    name: "High Boost Frequency"
+    id: boost_high_every_n
+    icon: mdi:flash-triangle
+    min_value: 1
+    max_value: 10
+    step: 1
+    initial_value: 3
     restore_value: true
     optimistic: true
     on_value:
@@ -641,15 +659,23 @@ script:
           if (in_block) {
             plan = "Low";
             // Every boost_interval_minutes, spend the first
-            // boost_duration_minutes at full speed -- anchored to when this
-            // block started, so it's deterministic across reboots rather
-            // than free-running on the wall clock.
+            // boost_duration_minutes at an elevated speed -- anchored to
+            // when this block started, so it's deterministic across
+            // reboots rather than free-running on the wall clock. Most
+            // pulses run at Medium; every boost_high_every_n-th pulse
+            // (0-indexed, so the block's very first pulse is always one of
+            // them) escalates to High instead, preserving the "every block
+            // starts with a full boost" guarantee from before this was
+            // split into two tiers.
             time_t boost_interval_sec = (time_t) (id(boost_interval_minutes).state * 60.0f);
             time_t boost_duration_sec = (time_t) (id(boost_duration_minutes).state * 60.0f);
             if (boost_interval_sec > 0) {
-              time_t phase = (now_ts - block_start) % boost_interval_sec;
+              time_t elapsed = now_ts - block_start;
+              time_t phase = elapsed % boost_interval_sec;
               if (phase < boost_duration_sec) {
-                plan = "High";
+                int every_n = (int) id(boost_high_every_n).state;
+                long pulse_index = elapsed / boost_interval_sec;
+                plan = (pulse_index % every_n == 0) ? "High" : "Medium";
               }
             }
           }
@@ -658,7 +684,8 @@ script:
           // ===== Part 2b: "when's the next boost pulse" -- a look-ahead for
           // the dashboard, independent of Part 2 above (which only ever
           // evaluates the single instant "now"). Walks forward through
-          // today's remaining blocks and finds the next High-speed window;
+          // today's remaining blocks and finds the next boost window
+          // (Medium or High, whichever evaluate_speed's Part 2 would pick);
           // leaves both globals at 0 if none remain today (already-past
           // blocks, boost pulses disabled via a zero interval/duration, or
           // the plan hasn't been computed yet).
