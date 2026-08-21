@@ -152,17 +152,24 @@ Re-evaluated every 30 seconds, highest priority wins:
      overlap.
    - **Boost pulse**: while a block is running, every `Boost Pulse Interval`
      (default 30 min) the pump spends the first `Boost Pulse Duration`
-     (default 5 min) at `High`, then drops back to `Low`. The boost phase is
+     (default 5 min) at an elevated speed, then drops back to `Low`. Most
+     pulses run at `Medium` — the pump's power draw scales roughly with
+     speed cubed, so `Medium` recovers most of the circulation benefit for a
+     fraction of `High`'s energy cost — and every `High Boost Frequency`-th
+     pulse (default 3, i.e. every third pulse) escalates to `High` instead,
+     for a periodic stronger turnover/skim. Set `High Boost Frequency` to 1
+     to make every pulse `High` (the old behavior). The boost phase is
      timed from the moment the *block itself* starts (not from whenever the
      schedule last regained control), which guarantees **every block always
-     starts with a full boost** — Block 1 at sunrise, Block 2 at its own
-     start, or the merged block at sunrise if the two were joined — before
-     settling into the interval cadence for the rest of the block. This
-     doesn't apply during freeze protection or manual override, and doesn't
-     re-trigger if you release an override partway through an already-running
-     block — the boost window stays anchored to the block's actual start
-     time. Keep `Boost Pulse Duration` below `Boost Pulse Interval`, or the
-     pump will stay at `High` for the whole block instead of pulsing.
+     starts with a full `High` boost** — Block 1 at sunrise, Block 2 at its
+     own start, or the merged block at sunrise if the two were joined —
+     before settling into the Medium/High cadence for the rest of the
+     block. This doesn't apply during freeze protection or manual override,
+     and doesn't re-trigger if you release an override partway through an
+     already-running block — the boost window stays anchored to the
+     block's actual start time. Keep `Boost Pulse Duration` below
+     `Boost Pulse Interval`, or the pump will stay at its boost speed for
+     the whole block instead of pulsing.
    - The plan is computed **once per day and cached** — not continuously
      recalculated from the live temperature reading, which would make the
      block boundaries drift throughout the day. It's recomputed on a real
@@ -179,9 +186,10 @@ Re-evaluated every 30 seconds, highest priority wins:
    - **Schedule Block 1/2 Start/End** show today's computed windows
      (`--:--` if not yet computed). If Block 2 Start equals Block 1 End, the
      blocks were merged that day — not a bug.
-   - **Next Boost Start/End** show the next upcoming `High`-speed pulse
-     (`--:--` if none remain today — the current block is over, or boost
-     pulses are disabled via a zero `Boost Pulse Interval`/`Duration`).
+   - **Next Boost Start/End** show the next upcoming boost pulse (`Medium`
+     or `High`, per the escalation cadence above; `--:--` if none remain
+     today — the current block is over, or boost pulses are disabled via a
+     zero `Boost Pulse Interval`/`Duration`).
      Recomputed every 30s tick, same as **Pump Planned Speed** — a look-ahead
      companion to it, not a stored forecast of every remaining pulse today.
    - **Last Recomputed At** shows exactly when the plan above was last
@@ -240,10 +248,10 @@ reason.
    - **Text sensors**: Pump Commanded Speed (what's actually applied), Pump
      Planned Speed (what the autonomous schedule alone says right now),
      Schedule Block 1/2 Start/End (today's computed windows), Next Boost
-     Start/End (when the next `High`-speed pulse is coming), Last Recomputed
+     Start/End (when the next boost pulse is coming), Last Recomputed
      At (proof a recompute — automatic or button-triggered — actually ran)
    - **Numbers**: Min/Max Filtration Hours, Warmest Part of Day Offset,
-     Boost Pulse Duration, Boost Pulse Interval
+     Boost Pulse Duration, Boost Pulse Interval, High Boost Frequency
    - **Select**: Manual Override
    - **Button**: Recompute Schedule Now — forces an immediate re-run of the
      daily schedule calc using the current temperature reading, instead of
@@ -275,6 +283,7 @@ entities:
   - entity: number.pool_controller_warmest_part_of_day_offset
   - entity: number.pool_controller_boost_pulse_duration
   - entity: number.pool_controller_boost_pulse_interval
+  - entity: number.pool_controller_high_boost_frequency
   - entity: button.pool_controller_recompute_schedule_now
     name: Recompute Now
   - entity: sensor.pool_controller_planned_filtration_hours
