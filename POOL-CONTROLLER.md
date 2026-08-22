@@ -200,6 +200,12 @@ Re-evaluated every 30 seconds, highest priority wins:
      **Next Boost Start/End** by hand. Like those, it reflects the
      autonomous plan alone and keeps advancing even under freeze protection
      or a manual override.
+   - **Next Planned Speed** shows what speed that change is *to* — e.g.
+     `High` for a block's opening boost, `Off` for a block ending, `Medium`
+     or `High` for a mid-block boost pulse starting, `Low` for one ending
+     (`--` alongside Next Speed Change's `--:--` when nothing more is
+     scheduled today). Pairs with Next Speed Change so a dashboard can show
+     "Next change: 14:30 → High" as one line.
    - **Last Recomputed At** shows exactly when the plan above was last
      (re)computed — the day-rollover recompute, or a **Recompute Schedule
      Now** press. Exists so a press is always confirmable even when it lands
@@ -256,9 +262,10 @@ reason.
    - **Text sensors**: Pump Commanded Speed (what's actually applied), Pump
      Planned Speed (what the autonomous schedule alone says right now),
      Schedule Block 1/2 Start/End (today's computed windows), Next Boost
-     Start/End (when the next boost pulse is coming), Next Speed Change
-     (the single next upcoming transition, whichever kind), Last Recomputed
-     At (proof a recompute — automatic or button-triggered — actually ran)
+     Start/End (when the next boost pulse is coming), Next Speed Change and
+     Next Planned Speed (the single next upcoming transition, whichever
+     kind, and what it changes to), Last Recomputed At (proof a recompute —
+     automatic or button-triggered — actually ran)
    - **Numbers**: Min/Max Filtration Hours, Warmest Part of Day Offset,
      Boost Pulse Duration, Boost Pulse Interval, High Boost Frequency
    - **Select**: Manual Override
@@ -315,6 +322,8 @@ entities:
     name: Next Boost End
   - entity: sensor.pool_controller_next_speed_change
     name: Next Speed Change
+  - entity: sensor.pool_controller_next_planned_speed
+    name: Next Planned Speed
   - entity: sensor.pool_controller_last_recomputed_at
     name: Last Recomputed At
   - type: section

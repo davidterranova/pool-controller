@@ -193,6 +193,18 @@ text_sensor:
     lambda: |-
       if (id(sched_next_change) == 0) return std::string("--:--");
       return ESPTime::from_epoch_local(id(sched_next_change)).strftime("%H:%M");
+  # What speed Next Speed Change above is changing to -- pairs with it so a
+  # dashboard can show "Next change: 14:30 -> High" without the two ever
+  # disagreeing (both come from the same Part 2c/2d computation). "--" once
+  # nothing more is scheduled today, same gating as Next Speed Change itself.
+  - platform: template
+    name: "Next Planned Speed"
+    id: next_planned_speed_display
+    icon: mdi:speedometer
+    update_interval: 30s
+    lambda: |-
+      if (id(sched_next_change) == 0) return std::string("--");
+      return id(sched_next_planned_speed);
   # Confirms a "Recompute Schedule Now" press actually did something, even
   # on days it lands on an identical plan (see the comment in Part 1 of
   # evaluate_speed). Includes the date, not just time-of-day, since this can
@@ -435,6 +447,15 @@ globals:
     type: time_t
     restore_value: false
     initial_value: '0'
+  # What sched_speed_now will become once sched_next_change arrives -- e.g.
+  # "High" for a block's opening boost, "Off" for a block ending, "Medium"/
+  # "High" for a mid-block boost pulse starting, "Low" for one ending.
+  # Meaningless (left at "Off") when sched_next_change is 0 -- the display
+  # sensor below gates on that instead of trusting this value in that case.
+  - id: sched_next_planned_speed
+    type: std::string
+    restore_value: false
+    initial_value: '"Off"'
 
 binary_sensor:
   # Short name deliberately -- HA prefixes the device's own friendly name
@@ -681,40 +702,54 @@ script:
           // live, independent of freeze protection / manual override, so a
           // dashboard can show true plan-vs-actual divergence. =====
           time_t now_ts = id(local_time).now().timestamp;
-          bool in_block = false;
-          time_t block_start = 0;
-          if (now_ts >= id(sched_block1_start) && now_ts < id(sched_block1_end)) {
-            in_block = true;
-            block_start = id(sched_block1_start);
-          } else if (now_ts >= id(sched_block2_start) && now_ts < id(sched_block2_end)) {
-            in_block = true;
-            block_start = id(sched_block2_start);
-          }
 
-          std::string plan = "Off";
-          if (in_block) {
-            plan = "Low";
-            // Every boost_interval_minutes, spend the first
-            // boost_duration_minutes at an elevated speed -- anchored to
-            // when this block started, so it's deterministic across
-            // reboots rather than free-running on the wall clock. Most
-            // pulses run at Medium; every boost_high_every_n-th pulse
-            // (0-indexed, so the block's very first pulse is always one of
-            // them) escalates to High instead, preserving the "every block
-            // starts with a full boost" guarantee from before this was
-            // split into two tiers.
-            time_t boost_interval_sec = (time_t) (id(boost_interval_minutes).state * 60.0f);
-            time_t boost_duration_sec = (time_t) (id(boost_duration_minutes).state * 60.0f);
-            if (boost_interval_sec > 0) {
-              time_t elapsed = now_ts - block_start;
-              time_t phase = elapsed % boost_interval_sec;
-              if (phase < boost_duration_sec) {
-                int every_n = (int) id(boost_high_every_n).state;
-                long pulse_index = elapsed / boost_interval_sec;
-                plan = (pulse_index % every_n == 0) ? "High" : "Medium";
+          // Factored out so Part 2d below can reuse the exact same rules to
+          // answer "what will the plan say at some future instant" (the next
+          // change's target speed) -- rather than hand-deriving speed-
+          // transition rules per candidate type, which would drift out of
+          // sync with this the moment either one changed. Same >= / <
+          // boundary semantics as this "now" evaluation, so calling it with
+          // a transition timestamp itself correctly yields the state just
+          // after that transition.
+          auto plan_at = [&](time_t t) -> std::string {
+            bool in_block = false;
+            time_t block_start = 0;
+            if (t >= id(sched_block1_start) && t < id(sched_block1_end)) {
+              in_block = true;
+              block_start = id(sched_block1_start);
+            } else if (t >= id(sched_block2_start) && t < id(sched_block2_end)) {
+              in_block = true;
+              block_start = id(sched_block2_start);
+            }
+
+            std::string p = "Off";
+            if (in_block) {
+              p = "Low";
+              // Every boost_interval_minutes, spend the first
+              // boost_duration_minutes at an elevated speed -- anchored to
+              // when this block started, so it's deterministic across
+              // reboots rather than free-running on the wall clock. Most
+              // pulses run at Medium; every boost_high_every_n-th pulse
+              // (0-indexed, so the block's very first pulse is always one of
+              // them) escalates to High instead, preserving the "every block
+              // starts with a full boost" guarantee from before this was
+              // split into two tiers.
+              time_t boost_interval_sec = (time_t) (id(boost_interval_minutes).state * 60.0f);
+              time_t boost_duration_sec = (time_t) (id(boost_duration_minutes).state * 60.0f);
+              if (boost_interval_sec > 0) {
+                time_t elapsed = t - block_start;
+                time_t phase = elapsed % boost_interval_sec;
+                if (phase < boost_duration_sec) {
+                  int every_n = (int) id(boost_high_every_n).state;
+                  long pulse_index = elapsed / boost_interval_sec;
+                  p = (pulse_index % every_n == 0) ? "High" : "Medium";
+                }
               }
             }
-          }
+            return p;
+          };
+
+          std::string plan = plan_at(now_ts);
           id(sched_speed_now) = plan;
 
           // ===== Part 2b: "when's the next boost pulse" -- a look-ahead for
@@ -780,6 +815,15 @@ script:
             }
           }
           id(sched_next_change) = next_change;
+
+          // ===== Part 2d: "what speed is that change going to" -- evaluate
+          // the same plan_at() used for "now" above, but at the upcoming
+          // transition instant itself. Correct by construction for every
+          // transition kind (a block starting straight into its boost, a
+          // block ending to Off, a boost pulse starting/ending mid-block)
+          // without hand-listing rules per candidate, and can't drift out of
+          // sync with Part 2's own "now" logic since it's the same function.
+          id(sched_next_planned_speed) = (next_change != 0) ? plan_at(next_change) : "Off";
 
           // ===== Part 3: priority chain, highest wins. =====
           std::string desired = "Off";
