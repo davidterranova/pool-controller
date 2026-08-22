@@ -482,19 +482,21 @@ switch:
     internal: true
 
 script:
-  # Break-before-make sequencing: drop the run contact, settle, select the
-  # new speed, settle again, re-assert run. Guarantees two speed DI lines
-  # are never briefly closed together, and never leaves the run contact
-  # energized while a speed relay is switching.
+  # Run/Stop (relay_run) is only ever toggled to actually start or stop the
+  # pump (Off <-> non-Off). Changing speed while already running (Low <->
+  # Medium <-> High) never drops Run -- only the speed-select relay changes,
+  # break-before-make, with Run left asserted throughout. The pump's own
+  # controller treats a Run/Stop off->on transition as a fresh start and
+  # forces 5 minutes at max power, so cycling Run on every speed/mode change
+  # (as this used to do) meant every such change unintentionally triggered
+  # that startup ritual.
   - id: apply_speed
     # Now that manual_override can trigger this instantly (on_value below)
     # instead of only every 30s, a rapid double-change could otherwise land
     # inside an in-flight run and get silently dropped (default mode:
     # single), leaving last_commanded claiming a speed the relays never
     # actually reached. restart cancels an in-progress run and starts the
-    # new one instead -- safe here because every run unconditionally resets
-    # Run and all three speed relays at the top, regardless of where a
-    # cancelled run was interrupted.
+    # new one instead.
     mode: restart
     parameters:
       speed: string
@@ -502,23 +504,23 @@ script:
       - logger.log:
           format: "Pump: applying speed %s"
           args: ["speed.c_str()"]
-      - switch.turn_off: relay_run
-      - delay: 500ms
-      # Unconditional: clears all three speed relays for every target speed,
-      # including "Off" -- previously this only happened inside the
-      # `speed != "Off"` branch below, so switching to "Off" dropped Run but
-      # left whatever speed relay was last selected still energized.
-      - switch.turn_off: relay_v1
-      - switch.turn_off: relay_v2
-      - switch.turn_off: relay_v3
       - if:
           condition:
-            lambda: 'return speed != "Off";'
+            lambda: 'return speed == "Off";'
           then:
-            # Each branch also explicitly clears the other two speed relays
-            # itself, redundant with the unconditional step above -- keeps
-            # "never two speed relays on at once" true within each branch on
-            # its own, not dependent on remembering a preceding step.
+            # Stopping: drop Run first, settle, then clear all three speed
+            # relays.
+            - switch.turn_off: relay_run
+            - delay: 500ms
+            - switch.turn_off: relay_v1
+            - switch.turn_off: relay_v2
+            - switch.turn_off: relay_v3
+          else:
+            # Starting or changing speed: select the new speed relay
+            # (break-before-make against the other two -- never two speed
+            # DI lines closed together), then assert Run. If Run was already
+            # on (a plain speed change), this re-assert is a no-op and the
+            # pump never sees an off->on edge.
             - if:
                 condition: {lambda: 'return speed == "Low";'}
                 then:
