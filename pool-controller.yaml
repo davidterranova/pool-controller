@@ -408,6 +408,16 @@ globals:
     type: time_t
     restore_value: true
     initial_value: '0'
+  # Today's sunset -- cached alongside the blocks above (same recompute,
+  # same restore_value: true reasoning) purely so Part 3's hot-night
+  # keep-alive can tell overnight apart from daytime without re-querying the
+  # sun component every tick. sched_block1_start doubles as today's sunrise
+  # for that same check (see Part 1). 0 means "not computed yet" -- gates
+  # the keep-alive off until the first successful recompute.
+  - id: sched_sunset
+    type: time_t
+    restore_value: true
+    initial_value: '0'
   # When the plan above was last successfully (re)computed -- day-rollover
   # or the "Recompute Schedule Now" button, see Part 1 in evaluate_speed.
   # Restored like the block boundaries themselves: a real historical fact,
@@ -682,6 +692,14 @@ script:
                   id(sched_block1_end) = b1_end;
                   id(sched_block2_start) = b2_start;
                   id(sched_block2_end) = b2_end;
+                  // Today's real sunset, cached alongside the blocks above
+                  // purely so Part 3's hot-night keep-alive can tell
+                  // overnight apart from daytime without re-querying the
+                  // sun component every tick. b1_start doubles as today's
+                  // sunrise for that same check -- it's never altered after
+                  // being set to sunrise->timestamp above, merge/midnight
+                  // clamping only ever touches the *end* boundaries.
+                  id(sched_sunset) = sunset->timestamp;
                   id(sched_computed_day) = today;
                   // Stamped on every successful recompute (day-rollover or
                   // the "Recompute Schedule Now" button) -- exists purely so
@@ -842,6 +860,30 @@ script:
           // 3. Otherwise, whatever the autonomous plan says right now.
           else {
             desired = id(sched_speed_now);
+
+            // 4. Hot-night keep-alive: outside both scheduled windows (the
+            // plan above is Off) and overnight -- before today's sunrise or
+            // after today's sunset -- keep circulating at Low instead of
+            // sitting idle if the water's still warm. Deliberately Low
+            // only, never boosted: boost pulses are timed from a block's
+            // own start (see plan_at above), and this on purpose isn't a
+            // block, so there's no anchor to pulse from -- the whole point
+            // of this tier is a steady, bump-free overnight trickle, not a
+            // scaled-down daytime block. Gated on sched_sunset != 0 so it
+            // can't misfire before the very first daily recompute has ever
+            // run (both sched_sunset and sched_block1_start default to 0
+            // until then, which would otherwise look like "always night").
+            // Deliberately keyed off the live temperature reading, not a
+            // cached daily value like the blocks above -- unlike filtration
+            // hours, this has to track the water actually cooling below 28
+            // and stop the same tick it does, not hold a stale "still hot"
+            // verdict from this morning's recompute for the rest of the day.
+            if (desired == "Off" && id(sched_sunset) != 0) {
+              bool is_overnight = now_ts < id(sched_block1_start) || now_ts >= id(sched_sunset);
+              if (is_overnight && id(pool_return_temp).state > 28.0) {
+                desired = "Low";
+              }
+            }
           }
 
           if (desired != id(last_commanded)) {

@@ -212,6 +212,24 @@ Re-evaluated every 30 seconds, highest priority wins:
      on a byte-for-byte identical plan (e.g. filtration hours already
      clamped at the same `Max Filtration Hours` ceiling) — that's a correct,
      expected no-op, not the button silently failing to do anything.
+4. **Hot-night keep-alive** — only reached when the autonomous schedule
+   above says `Off` (i.e. outside both blocks) and only overnight, before
+   today's sunrise or after today's sunset: if `Pool Return Temperature` is
+   still above 28°C, run at `Low` instead of stopping, rather than leaving
+   the pool sitting hot and stagnant until Block 1 picks up again at
+   sunrise. Below Manual Override and Freeze Protection, so explicitly
+   overriding to `Off` (or anything else) still wins over this. Always
+   `Low` — never a boost pulse — since boost pulses are timed from a
+   block's own start and this deliberately isn't a block; the point is a
+   steady overnight trickle, not a scaled-down daytime block. Checked
+   against the live temperature every 30s tick (unlike the once-daily
+   cached filtration-hours plan above), so it starts and stops with the
+   water actually crossing 28°C rather than holding a stale verdict from
+   this morning's recompute. **Pump Planned Speed** does *not* reflect this
+   tier — it stays `Off` outside the blocks even on a hot night, so
+   comparing it against **Pump Commanded Speed** still shows the
+   divergence, the same way it already does for freeze protection and
+   manual override.
 
 A new speed is only pushed to the relays when it actually differs from the
 last one commanded, so they aren't re-triggered every 30 seconds for no
@@ -427,3 +445,10 @@ re-add it through the visual entity picker instead.
 The 3°C cutoff is a literal constant inside the schedule lambda (the
 `interval:` block near the bottom of `pool-controller.yaml`), not a
 substitution — edit it directly there if you need a different threshold.
+
+## Changing the hot-night keep-alive threshold
+
+Same deal as the freeze-protection threshold above: the 28°C cutoff for the
+hot-night keep-alive tier (see Control logic) is a literal constant in the
+same schedule lambda, not a substitution — edit it directly there if your
+climate calls for a different value.
