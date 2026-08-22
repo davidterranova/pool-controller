@@ -192,12 +192,44 @@ Re-evaluated every 30 seconds, highest priority wins:
      zero `Boost Pulse Interval`/`Duration`).
      Recomputed every 30s tick, same as **Pump Planned Speed** — a look-ahead
      companion to it, not a stored forecast of every remaining pulse today.
+   - **Next Speed Change** shows the single earliest upcoming transition —
+     whichever comes first among today's remaining block starts/ends and the
+     next boost pulse's own start/end (`--:--` if nothing more is scheduled
+     today). A one-entity answer to "when does the pump's speed next
+     change", instead of comparing **Schedule Block 1/2 Start/End** and
+     **Next Boost Start/End** by hand. Like those, it reflects the
+     autonomous plan alone and keeps advancing even under freeze protection
+     or a manual override.
+   - **Next Planned Speed** shows what speed that change is *to* — e.g.
+     `High` for a block's opening boost, `Off` for a block ending, `Medium`
+     or `High` for a mid-block boost pulse starting, `Low` for one ending
+     (`--` alongside Next Speed Change's `--:--` when nothing more is
+     scheduled today). Pairs with Next Speed Change so a dashboard can show
+     "Next change: 14:30 → High" as one line.
    - **Last Recomputed At** shows exactly when the plan above was last
      (re)computed — the day-rollover recompute, or a **Recompute Schedule
      Now** press. Exists so a press is always confirmable even when it lands
      on a byte-for-byte identical plan (e.g. filtration hours already
      clamped at the same `Max Filtration Hours` ceiling) — that's a correct,
      expected no-op, not the button silently failing to do anything.
+4. **Hot-night keep-alive** — only reached when the autonomous schedule
+   above says `Off` (i.e. outside both blocks) and only overnight, before
+   today's sunrise or after today's sunset: if `Pool Return Temperature` is
+   still above 28°C, run at `Low` instead of stopping, rather than leaving
+   the pool sitting hot and stagnant until Block 1 picks up again at
+   sunrise. Below Manual Override and Freeze Protection, so explicitly
+   overriding to `Off` (or anything else) still wins over this. Always
+   `Low` — never a boost pulse — since boost pulses are timed from a
+   block's own start and this deliberately isn't a block; the point is a
+   steady overnight trickle, not a scaled-down daytime block. Checked
+   against the live temperature every 30s tick (unlike the once-daily
+   cached filtration-hours plan above), so it starts and stops with the
+   water actually crossing 28°C rather than holding a stale verdict from
+   this morning's recompute. **Pump Planned Speed** does *not* reflect this
+   tier — it stays `Off` outside the blocks even on a hot night, so
+   comparing it against **Pump Commanded Speed** still shows the
+   divergence, the same way it already does for freeze protection and
+   manual override.
 
 A new speed is only pushed to the relays when it actually differs from the
 last one commanded, so they aren't re-triggered every 30 seconds for no
@@ -248,14 +280,19 @@ reason.
    - **Text sensors**: Pump Commanded Speed (what's actually applied), Pump
      Planned Speed (what the autonomous schedule alone says right now),
      Schedule Block 1/2 Start/End (today's computed windows), Next Boost
-     Start/End (when the next boost pulse is coming), Last Recomputed
-     At (proof a recompute — automatic or button-triggered — actually ran)
+     Start/End (when the next boost pulse is coming), Next Speed Change and
+     Next Planned Speed (the single next upcoming transition, whichever
+     kind, and what it changes to), Last Recomputed At (proof a recompute —
+     automatic or button-triggered — actually ran)
    - **Numbers**: Min/Max Filtration Hours, Warmest Part of Day Offset,
      Boost Pulse Duration, Boost Pulse Interval, High Boost Frequency
    - **Select**: Manual Override
    - **Button**: Recompute Schedule Now — forces an immediate re-run of the
      daily schedule calc using the current temperature reading, instead of
-     waiting for midnight
+     waiting for midnight. Update Temperature Sensors Now — forces an
+     immediate read of all three DS18B20 sensors instead of waiting for
+     their own poll interval; useful right before Recompute Schedule Now, so
+     that button's plan is based on a fresh reading
    - **Fan**: Pump — a friendlier proxy for Manual Override (on/off +
      Low/Medium/High). Has no way to represent "Auto"; use the Manual
      Override select for that.
@@ -286,6 +323,8 @@ entities:
   - entity: number.pool_controller_high_boost_frequency
   - entity: button.pool_controller_recompute_schedule_now
     name: Recompute Now
+  - entity: button.pool_controller_update_temperature_sensors_now
+    name: Update Temperatures Now
   - entity: sensor.pool_controller_planned_filtration_hours
   - entity: sensor.pool_controller_schedule_block_1_start
     name: Block 1 Start
@@ -299,6 +338,10 @@ entities:
     name: Next Boost Start
   - entity: sensor.pool_controller_next_boost_end
     name: Next Boost End
+  - entity: sensor.pool_controller_next_speed_change
+    name: Next Speed Change
+  - entity: sensor.pool_controller_next_planned_speed
+    name: Next Planned Speed
   - entity: sensor.pool_controller_last_recomputed_at
     name: Last Recomputed At
   - type: section
@@ -402,3 +445,10 @@ re-add it through the visual entity picker instead.
 The 3°C cutoff is a literal constant inside the schedule lambda (the
 `interval:` block near the bottom of `pool-controller.yaml`), not a
 substitution — edit it directly there if you need a different threshold.
+
+## Changing the hot-night keep-alive threshold
+
+Same deal as the freeze-protection threshold above: the 28°C cutoff for the
+hot-night keep-alive tier (see Control logic) is a literal constant in the
+same schedule lambda, not a substitution — edit it directly there if your
+climate calls for a different value.
