@@ -318,6 +318,18 @@ button:
     on_press:
       - lambda: 'id(sched_computed_day) = -1;'
       - script.execute: evaluate_speed
+  - platform: template
+    name: "Update Temperature Sensors Now"
+    icon: mdi:thermometer-refresh
+    # Forces an immediate DS18B20 conversion/read on all three sensors
+    # instead of waiting for their own poll interval -- component.update
+    # works on any PollingComponent, dallas_temp included. Useful right
+    # before pressing Recompute Schedule Now, since that button's plan is
+    # only as fresh as whatever Pool Return Temperature last read.
+    on_press:
+      - component.update: pool_return_temp
+      - component.update: pad_ambient_temp
+      - component.update: outdoor_temp
 
 globals:
   - id: last_commanded

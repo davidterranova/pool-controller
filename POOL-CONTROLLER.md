@@ -255,7 +255,10 @@ reason.
    - **Select**: Manual Override
    - **Button**: Recompute Schedule Now — forces an immediate re-run of the
      daily schedule calc using the current temperature reading, instead of
-     waiting for midnight
+     waiting for midnight. Update Temperature Sensors Now — forces an
+     immediate read of all three DS18B20 sensors instead of waiting for
+     their own poll interval; useful right before Recompute Schedule Now, so
+     that button's plan is based on a fresh reading
    - **Fan**: Pump — a friendlier proxy for Manual Override (on/off +
      Low/Medium/High). Has no way to represent "Auto"; use the Manual
      Override select for that.
@@ -286,6 +289,8 @@ entities:
   - entity: number.pool_controller_high_boost_frequency
   - entity: button.pool_controller_recompute_schedule_now
     name: Recompute Now
+  - entity: button.pool_controller_update_temperature_sensors_now
+    name: Update Temperatures Now
   - entity: sensor.pool_controller_planned_filtration_hours
   - entity: sensor.pool_controller_schedule_block_1_start
     name: Block 1 Start
