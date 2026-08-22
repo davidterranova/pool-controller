@@ -195,11 +195,13 @@ Re-evaluated every 30 seconds, highest priority wins:
    - **Next Speed Change** shows the single earliest upcoming transition —
      whichever comes first among today's remaining block starts/ends and the
      next boost pulse's own start/end (`--:--` if nothing more is scheduled
-     today). A one-entity answer to "when does the pump's speed next
-     change", instead of comparing **Schedule Block 1/2 Start/End** and
-     **Next Boost Start/End** by hand. Like those, it reflects the
-     autonomous plan alone and keeps advancing even under freeze protection
-     or a manual override.
+     today). If the pump is currently mid-pulse, this is the pulse's own end
+     (the drop back to `Low`), not the *following* pulse's start — so it
+     always answers "when does the pump's speed next change", not "when's
+     the next boost". A one-entity answer to that question, instead of
+     comparing **Schedule Block 1/2 Start/End** and **Next Boost Start/End**
+     by hand. Like those, it reflects the autonomous plan alone and keeps
+     advancing even under freeze protection or a manual override.
    - **Next Planned Speed** shows what speed that change is *to* — e.g.
      `High` for a block's opening boost, `Off` for a block ending, `Medium`
      or `High` for a mid-block boost pulse starting, `Low` for one ending

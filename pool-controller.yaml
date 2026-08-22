@@ -777,9 +777,15 @@ script:
           // (Medium or High, whichever evaluate_speed's Part 2 would pick);
           // leaves both globals at 0 if none remain today (already-past
           // blocks, boost pulses disabled via a zero interval/duration, or
-          // the plan hasn't been computed yet).
+          // the plan hasn't been computed yet). If "now" is itself inside a
+          // pulse, next_boost_start/end deliberately skip past it to the
+          // *following* cycle -- that's the right answer for "next boost
+          // pulse" on the dashboard -- but that means the current pulse's
+          // own end (the drop back to Low) needs to be captured separately,
+          // below, so Part 2c doesn't lose track of it.
           time_t next_boost_start = 0;
           time_t next_boost_end = 0;
+          time_t current_boost_end = 0;
           time_t look_interval_sec = (time_t) (id(boost_interval_minutes).state * 60.0f);
           time_t look_duration_sec = (time_t) (id(boost_duration_minutes).state * 60.0f);
           if (look_interval_sec > 0 && look_duration_sec > 0) {
@@ -796,6 +802,13 @@ script:
                 candidate = b_start;  // a block's first pulse starts right on its boundary
               } else if (now_ts < b_end) {
                 time_t phase = (now_ts - b_start) % look_interval_sec;
+                // Same >= / < boundary semantics as plan_at() above: if
+                // we're currently within the boosted portion of this pulse,
+                // record when it drops back to Low so Part 2c can see it.
+                if (phase < look_duration_sec) {
+                  current_boost_end = now_ts - phase + look_duration_sec;
+                  if (current_boost_end > b_end) current_boost_end = b_end;
+                }
                 candidate = now_ts - phase + look_interval_sec;
               } else {
                 continue;  // this block is already over -- try the next one
@@ -814,17 +827,22 @@ script:
 
           // ===== Part 2c: "when's the next speed change, period" -- the
           // earliest still-upcoming boundary among today's block starts/
-          // ends and the boost pulse start/end just computed above. Covers
-          // Off->Low (a block starting), Low->Off (a block ending, unless
-          // merged into the other block), and the Low<->Medium/High boost
-          // transitions Part 2b already found. Like sched_speed_now and
+          // ends and the boost pulse start/end/current-pulse-end just
+          // computed above. Covers Off->Low (a block starting), Low->Off (a
+          // block ending, unless merged into the other block), the
+          // Low<->Medium/High boost transitions Part 2b already found, and
+          // -- via current_boost_end -- Medium/High->Low when "now" is
+          // itself mid-pulse (otherwise this would skip straight to the
+          // *following* pulse's start, showing the next bump instead of the
+          // current one ending). Like sched_speed_now and
           // sched_next_boost_start/end, this reflects the autonomous plan
           // alone -- it keeps advancing even under freeze protection or a
           // manual override, same reasoning as those.
-          time_t candidates[6] = {
+          time_t candidates[7] = {
             id(sched_block1_start), id(sched_block1_end),
             id(sched_block2_start), id(sched_block2_end),
             next_boost_start, next_boost_end,
+            current_boost_end,
           };
           time_t next_change = 0;
           for (time_t c : candidates) {
