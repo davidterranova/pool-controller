@@ -192,6 +192,14 @@ Re-evaluated every 30 seconds, highest priority wins:
      zero `Boost Pulse Interval`/`Duration`).
      Recomputed every 30s tick, same as **Pump Planned Speed** — a look-ahead
      companion to it, not a stored forecast of every remaining pulse today.
+   - **Next Speed Change** shows the single earliest upcoming transition —
+     whichever comes first among today's remaining block starts/ends and the
+     next boost pulse's own start/end (`--:--` if nothing more is scheduled
+     today). A one-entity answer to "when does the pump's speed next
+     change", instead of comparing **Schedule Block 1/2 Start/End** and
+     **Next Boost Start/End** by hand. Like those, it reflects the
+     autonomous plan alone and keeps advancing even under freeze protection
+     or a manual override.
    - **Last Recomputed At** shows exactly when the plan above was last
      (re)computed — the day-rollover recompute, or a **Recompute Schedule
      Now** press. Exists so a press is always confirmable even when it lands
@@ -248,7 +256,8 @@ reason.
    - **Text sensors**: Pump Commanded Speed (what's actually applied), Pump
      Planned Speed (what the autonomous schedule alone says right now),
      Schedule Block 1/2 Start/End (today's computed windows), Next Boost
-     Start/End (when the next boost pulse is coming), Last Recomputed
+     Start/End (when the next boost pulse is coming), Next Speed Change
+     (the single next upcoming transition, whichever kind), Last Recomputed
      At (proof a recompute — automatic or button-triggered — actually ran)
    - **Numbers**: Min/Max Filtration Hours, Warmest Part of Day Offset,
      Boost Pulse Duration, Boost Pulse Interval, High Boost Frequency
@@ -304,6 +313,8 @@ entities:
     name: Next Boost Start
   - entity: sensor.pool_controller_next_boost_end
     name: Next Boost End
+  - entity: sensor.pool_controller_next_speed_change
+    name: Next Speed Change
   - entity: sensor.pool_controller_last_recomputed_at
     name: Last Recomputed At
   - type: section

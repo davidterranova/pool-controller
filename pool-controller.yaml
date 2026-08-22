@@ -182,6 +182,17 @@ text_sensor:
     lambda: |-
       if (id(sched_next_boost_end) == 0) return std::string("--:--");
       return ESPTime::from_epoch_local(id(sched_next_boost_end)).strftime("%H:%M");
+  # The single "when's the next speed change" answer -- earliest of today's
+  # remaining block starts/ends and boost starts/ends (see Part 2c in
+  # evaluate_speed). "--:--" once nothing more is scheduled today.
+  - platform: template
+    name: "Next Speed Change"
+    id: next_change_display
+    icon: mdi:clock-alert-outline
+    update_interval: 30s
+    lambda: |-
+      if (id(sched_next_change) == 0) return std::string("--:--");
+      return ESPTime::from_epoch_local(id(sched_next_change)).strftime("%H:%M");
   # Confirms a "Recompute Schedule Now" press actually did something, even
   # on days it lands on an identical plan (see the comment in Part 1 of
   # evaluate_speed). Includes the date, not just time-of-day, since this can
@@ -410,6 +421,17 @@ globals:
     restore_value: false
     initial_value: '0'
   - id: sched_next_boost_end
+    type: time_t
+    restore_value: false
+    initial_value: '0'
+  # "When will the plan's commanded speed next actually change" -- the
+  # earliest still-upcoming boundary among today's block starts/ends and the
+  # next boost pulse's own start/end (Part 2c). A dashboard-friendly single
+  # answer to "when's the next change", rather than making the user compare
+  # Block 1/2 Start/End and Next Boost Start/End by hand. Same conventions as
+  # sched_next_boost_start/end above: fully recomputed every tick, not
+  # restored, 0 means "no more changes scheduled today".
+  - id: sched_next_change
     type: time_t
     restore_value: false
     initial_value: '0'
@@ -736,6 +758,28 @@ script:
           }
           id(sched_next_boost_start) = next_boost_start;
           id(sched_next_boost_end) = next_boost_end;
+
+          // ===== Part 2c: "when's the next speed change, period" -- the
+          // earliest still-upcoming boundary among today's block starts/
+          // ends and the boost pulse start/end just computed above. Covers
+          // Off->Low (a block starting), Low->Off (a block ending, unless
+          // merged into the other block), and the Low<->Medium/High boost
+          // transitions Part 2b already found. Like sched_speed_now and
+          // sched_next_boost_start/end, this reflects the autonomous plan
+          // alone -- it keeps advancing even under freeze protection or a
+          // manual override, same reasoning as those.
+          time_t candidates[6] = {
+            id(sched_block1_start), id(sched_block1_end),
+            id(sched_block2_start), id(sched_block2_end),
+            next_boost_start, next_boost_end,
+          };
+          time_t next_change = 0;
+          for (time_t c : candidates) {
+            if (c > now_ts && (next_change == 0 || c < next_change)) {
+              next_change = c;
+            }
+          }
+          id(sched_next_change) = next_change;
 
           // ===== Part 3: priority chain, highest wins. =====
           std::string desired = "Off";
