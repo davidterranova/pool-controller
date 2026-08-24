@@ -284,6 +284,11 @@ reason.
     seconds, just long enough for every entity's own initial/restored
     state to settle — real user interactions with the fan afterwards sync
     normally, same as before.
+  - Once the guard clears, `on_boot:` also triggers an immediate speed
+    evaluation instead of waiting for the next 30-second interval tick.
+    Relays always restore to off on boot, so without this, a reboot could
+    leave the pump idle for up to 30 seconds even when the restored
+    schedule or freeze protection call for it to be running right now.
 
 ## Home Assistant configuration
 

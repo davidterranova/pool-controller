@@ -15,6 +15,13 @@ esphome:
     then:
       - delay: 3s
       - lambda: 'id(boot_guard_active) = false;'
+      # Relays restore ALWAYS_OFF on every boot (see switch: below) and would
+      # otherwise sit that way for up to 30s until the next interval: tick --
+      # even when the restored schedule blocks or freeze protection call for
+      # the pump to be running right now. Running evaluate_speed here closes
+      # that gap; it's already safe to call this early since it no-ops on an
+      # invalid time reading or a not-yet-converted temperature sensor.
+      - script.execute: evaluate_speed
 
 esp32:
   board: esp32dev
