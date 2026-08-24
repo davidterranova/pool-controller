@@ -141,7 +141,11 @@ Re-evaluated every 30 seconds, highest priority wins:
    water temperature and today's sunrise/sunset:
    - **Filtration hours** = `Pool Return Temperature / 2`, clamped between
      `Min Filtration Hours` and `Max Filtration Hours` (both HA-editable,
-     default 2h/16h).
+     default 2h/16h), then `Filtration Hour Offset` (HA-editable, default 0,
+     up to 6h) is added on top. The offset is applied *after* the clamp, so
+     it's genuinely additive — useful for pushing extra turnover (e.g.
+     algae) beyond what `Max Filtration Hours` would otherwise allow, rather
+     than being absorbed by that ceiling.
    - **Split into two blocks**: 1/3 of those hours starting at sunrise, the
      remaining 2/3 centered on `solar noon + Warmest Part of Day Offset`
      (HA-editable, default 2.5h — the real lag between solar noon and the
@@ -173,8 +177,9 @@ Re-evaluated every 30 seconds, highest priority wins:
    - The plan is computed **once per day and cached** — not continuously
      recalculated from the live temperature reading, which would make the
      block boundaries drift throughout the day. It's recomputed on a real
-     day change, immediately if you edit `Min`/`Max Filtration Hours` or
-     `Warmest Part of Day Offset`, or on demand via the **Recompute Schedule
+     day change, immediately if you edit `Min`/`Max Filtration Hours`,
+     `Warmest Part of Day Offset`, or `Filtration Hour Offset`, or on demand
+     via the **Recompute Schedule
      Now** button (same effect, just triggered by hand instead of waiting for
      midnight or a tunable edit). A same-day reboot (Wi-Fi watchdog, OTA,
      power blip) resumes the already-computed plan rather than recomputing
@@ -287,7 +292,8 @@ reason.
      kind, and what it changes to), Last Recomputed At (proof a recompute —
      automatic or button-triggered — actually ran)
    - **Numbers**: Min/Max Filtration Hours, Warmest Part of Day Offset,
-     Boost Pulse Duration, Boost Pulse Interval, High Boost Frequency
+     Filtration Hour Offset, Boost Pulse Duration, Boost Pulse Interval,
+     High Boost Frequency
    - **Select**: Manual Override
    - **Button**: Recompute Schedule Now — forces an immediate re-run of the
      daily schedule calc using the current temperature reading, instead of
@@ -320,6 +326,7 @@ entities:
   - entity: number.pool_controller_min_filtration_hours
   - entity: number.pool_controller_max_filtration_hours
   - entity: number.pool_controller_warmest_part_of_day_offset
+  - entity: number.pool_controller_filtration_hour_offset
   - entity: number.pool_controller_boost_pulse_duration
   - entity: number.pool_controller_boost_pulse_interval
   - entity: number.pool_controller_high_boost_frequency
