@@ -556,6 +556,22 @@ binary_sensor:
              fabs(id(max_filtration_hours).state - id(active_max_filtration_hours)) > 0.01 ||
              fabs(id(warmest_offset_hours).state - id(active_warmest_offset_hours)) > 0.01 ||
              fabs(id(filtration_hour_offset).state - id(active_filtration_hour_offset)) > 0.01;
+  # True when the daily plan has never successfully been computed (both
+  # blocks still at their all-zero default -- see Part 1 in evaluate_speed)
+  # a few minutes after boot -- long enough for pool_return_temp's first
+  # DS18B20 conversion and the sun component to be ready, so this can't
+  # false-positive during normal startup. A persistently failing temperature
+  # read or sun lookup would otherwise leave the pump stuck on the Off/
+  # hot-night-keep-alive tiers indefinitely with no alert -- only a stale
+  # "Last Recomputed At: Never" as a silent hint. device_class: problem so
+  # it renders as an alert on typical dashboards.
+  - platform: template
+    name: "Schedule Not Computed"
+    icon: mdi:calendar-alert
+    device_class: problem
+    lambda: |-
+      return id(sched_block1_start) == 0 && id(sched_block2_start) == 0 &&
+             millis() > 5 * 60 * 1000;
 
 # A friendlier, HA-native "Fan" card layered on top of Manual Override: toggling
 # it or picking a preset here just writes into `manual_override` below (same as

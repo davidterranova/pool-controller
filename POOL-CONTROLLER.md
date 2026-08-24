@@ -334,7 +334,10 @@ reason.
      "pump didn't run because the schedule said Off." Filtration Config
      Pending — on whenever a staged number above differs from what's
      actually applied, i.e. there's an edit waiting on Apply Filtration
-     Config.
+     Config. Schedule Not Computed — on if the daily plan still hasn't been
+     computed a few minutes after boot, meaning the temperature reading or
+     sunrise/sunset lookup keeps failing and the pump could otherwise sit
+     off indefinitely with no other warning.
 4. Once paired, HA's ESPHome integration can also push OTA updates directly
    — an alternative to running `make ota` from this repo.
 
@@ -396,6 +399,8 @@ entities:
     name: Planned Speed
   - entity: binary_sensor.pool_controller_status
     name: Online
+  - entity: binary_sensor.pool_controller_schedule_not_computed
+    name: Schedule Not Computed
 ```
 
 **Plan vs. actual, as a graph** — requires the
