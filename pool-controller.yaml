@@ -259,6 +259,24 @@ number:
     on_value:
       - lambda: 'id(sched_computed_day) = -1;'
       - script.execute: evaluate_speed
+  # Extra filtration time added on top of the temperature-derived hours,
+  # for situations (e.g. algae) that call for more turnover than the
+  # normal Min/Max Filtration Hours plan would give. Applied after
+  # clamping, so it's additive on top of Max Filtration Hours rather
+  # than absorbed by it.
+  - platform: template
+    name: "Filtration Hour Offset"
+    id: filtration_hour_offset
+    icon: mdi:timer-plus
+    min_value: 0
+    max_value: 6
+    step: 0.5
+    initial_value: 0
+    restore_value: true
+    optimistic: true
+    on_value:
+      - lambda: 'id(sched_computed_day) = -1;'
+      - script.execute: evaluate_speed
   # These three intentionally do NOT reset the daily cache: evaluate_speed
   # already reads them live every tick regardless of cache state, so forcing
   # a full recompute here would just be wasted work -- and would drag in
@@ -632,7 +650,8 @@ script:
               // it just retries next tick instead.
               if (!isnan(temp)) {
                 float hours = clamp(temp / 2.0f, id(min_filtration_hours).state,
-                                     id(max_filtration_hours).state);
+                                     id(max_filtration_hours).state)
+                              + id(filtration_hour_offset).state;
 
                 // "Today" at local midnight -- forces sunrise()/sunset() to
                 // return TODAY's event even if called after it already
