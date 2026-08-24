@@ -219,6 +219,15 @@ text_sensor:
       return ESPTime::from_epoch_local(id(sched_last_recompute)).strftime("%Y-%m-%d %H:%M:%S");
 
 # --- Autonomous schedule tunables, editable from the Home Assistant dashboard, persisted in flash ---
+# The four schedule-shaping tunables below (Min/Max Filtration Hours, Warmest
+# Part of Day Offset, Filtration Hour Offset) are staged, NOT applied on
+# change: editing one only updates its own number entity, which the schedule
+# engine doesn't read directly. It reads the active_* globals instead, which
+# only move when "Apply Filtration Config" (see button: below) is pressed --
+# so a fat-fingered slider drag can't silently reshape today's plan. "Config
+# Pending" (see binary_sensor: below) lights up whenever a number's value
+# has drifted from its active_* counterpart, as a reminder to press Apply
+# (or to discard by dialing the number back to the active value yourself).
 number:
   - platform: template
     name: "Min Filtration Hours"
@@ -230,9 +239,6 @@ number:
     initial_value: 2
     restore_value: true
     optimistic: true
-    on_value:
-      - lambda: 'id(sched_computed_day) = -1;'
-      - script.execute: evaluate_speed
   - platform: template
     name: "Max Filtration Hours"
     id: max_filtration_hours
@@ -243,9 +249,6 @@ number:
     initial_value: 16
     restore_value: true
     optimistic: true
-    on_value:
-      - lambda: 'id(sched_computed_day) = -1;'
-      - script.execute: evaluate_speed
   - platform: template
     name: "Warmest Part of Day Offset"
     id: warmest_offset_hours
@@ -256,9 +259,6 @@ number:
     initial_value: 2.5
     restore_value: true
     optimistic: true
-    on_value:
-      - lambda: 'id(sched_computed_day) = -1;'
-      - script.execute: evaluate_speed
   # Extra filtration time added on top of the temperature-derived hours,
   # for situations (e.g. algae) that call for more turnover than the
   # normal Min/Max Filtration Hours plan would give. Applied after
@@ -274,14 +274,12 @@ number:
     initial_value: 0
     restore_value: true
     optimistic: true
-    on_value:
-      - lambda: 'id(sched_computed_day) = -1;'
-      - script.execute: evaluate_speed
-  # These three intentionally do NOT reset the daily cache: evaluate_speed
-  # already reads them live every tick regardless of cache state, so forcing
-  # a full recompute here would just be wasted work -- and would drag in
-  # whatever the live temperature happens to be, undermining the "stable
-  # once-daily plan" goal, just because pulse timing was tweaked.
+  # These three intentionally still apply instantly, unlike the four
+  # schedule-shaping tunables above: evaluate_speed already reads them live
+  # every tick regardless of cache state (so there's no "reshapes the whole
+  # day's plan" risk to guard against), and forcing them through the
+  # Apply-button gate too would just add friction to safe, easily-reversible
+  # live tweaks.
   - platform: template
     name: "Boost Pulse Duration"
     id: boost_duration_minutes
@@ -347,15 +345,31 @@ select:
       - script.execute: evaluate_speed
 
 button:
+  # Copies the four staged schedule-shaping numbers (see number: above) into
+  # the active_* globals evaluate_speed actually reads, then forces today's
+  # plan stale and recomputes immediately -- the one and only way those four
+  # numbers take effect. Runs even if nothing changed (e.g. pressed by
+  # habit): harmless, just re-copies the same values and re-derives the same
+  # plan.
+  - platform: template
+    name: "Apply Filtration Config"
+    icon: mdi:check-bold
+    on_press:
+      - lambda: |-
+          id(active_min_filtration_hours) = id(min_filtration_hours).state;
+          id(active_max_filtration_hours) = id(max_filtration_hours).state;
+          id(active_warmest_offset_hours) = id(warmest_offset_hours).state;
+          id(active_filtration_hour_offset) = id(filtration_hour_offset).state;
+          id(sched_computed_day) = -1;
+      - script.execute: evaluate_speed
   - platform: template
     name: "Recompute Schedule Now"
     icon: mdi:refresh
-    # Same escape hatch the Min/Max Filtration Hours and Warmest Part of Day
-    # Offset numbers already use on_value: force the daily cache stale, then
-    # run the same evaluate_speed tick that would otherwise only fire on a
-    # real day change. Uses whatever pool_return_temp reads at press time --
-    # same one-shot-then-hold-for-the-day behavior as the automatic recompute,
-    # just triggered on demand instead of waiting for midnight.
+    # Re-derives today's plan from whatever pool_return_temp reads right now
+    # and the currently-*active* schedule tunables -- NOT the staged number
+    # values, which need Apply Filtration Config above instead. Useful to
+    # refresh the plan against a just-updated temperature reading without
+    # touching any pending, not-yet-applied config edits.
     on_press:
       - lambda: 'id(sched_computed_day) = -1;'
       - script.execute: evaluate_speed
@@ -394,18 +408,45 @@ globals:
     restore_value: false
     initial_value: 'true'
 
+  # --- Applied (confirmed) schedule-shaping tunables ------------------------
+  # What evaluate_speed's Part 1 actually reads -- NOT the Min/Max Filtration
+  # Hours, Warmest Part of Day Offset, and Filtration Hour Offset number
+  # entities' live .state directly. Only "Apply Filtration Config" (see
+  # button: above) copies the numbers' current values in here, so an
+  # in-progress or accidental slider edit can't reshape today's plan before
+  # it's confirmed. restore_value: true and initial_value matching each
+  # number's own initial_value, so a from-scratch flash behaves exactly like
+  # every value having already been applied once.
+  - id: active_min_filtration_hours
+    type: float
+    restore_value: true
+    initial_value: '2'
+  - id: active_max_filtration_hours
+    type: float
+    restore_value: true
+    initial_value: '16'
+  - id: active_warmest_offset_hours
+    type: float
+    restore_value: true
+    initial_value: '2.5'
+  - id: active_filtration_hour_offset
+    type: float
+    restore_value: true
+    initial_value: '0'
+
   # --- Autonomous schedule (tier 3) cache -----------------------------------
   # Computed once per calendar day from pool_return_temp + today's sunrise/
   # sunset, then held fixed for the rest of the day -- deliberately NOT
   # recomputed continuously, which would make the block boundaries an
   # unstable "moving target" as the live temperature reading drifts a few
-  # tenths of a degree. restore_value: true on all five of these (unlike the
-  # two globals above) is deliberate: a same-day reboot -- the WiFi watchdog
-  # above, an OTA update, a power blip -- must resume the plan already
-  # computed that morning, not silently recompute it from whatever the
-  # temperature happens to be at that instant. Only an actual day change, or
-  # an explicit edit of a schedule tunable (see number: below, each resets
-  # this to -1 on_value), should trigger a recompute.
+  # tenths of a degree. restore_value: true on all five of these (unlike
+  # boot_guard_active/syncing_fan_display above) is deliberate: a same-day
+  # reboot -- the WiFi watchdog above, an OTA update, a power blip -- must
+  # resume the plan already computed that morning, not silently recompute it
+  # from whatever the temperature happens to be at that instant. Only an
+  # actual day change, or an explicit "Apply Filtration Config" / "Recompute
+  # Schedule Now" button press (see button: above, each resets this to -1),
+  # should trigger a recompute.
   - id: sched_computed_day
     type: int
     restore_value: true
@@ -492,6 +533,22 @@ binary_sensor:
   - platform: status
     name: "Status"
     device_class: connectivity
+  # True whenever any of the four staged schedule-shaping numbers (see
+  # number: above) differs from the active_* global evaluate_speed is
+  # actually using -- i.e. an edit is waiting on "Apply Filtration Config".
+  # device_class: problem so it renders as an alert (not just an "on/off")
+  # on typical dashboards. The >0.01 tolerance is well under every tunable's
+  # smallest step (0.25h), so it can't ever flip true from float rounding
+  # alone -- only from a real, unapplied edit.
+  - platform: template
+    name: "Filtration Config Pending"
+    icon: mdi:progress-alert
+    device_class: problem
+    lambda: |-
+      return fabs(id(min_filtration_hours).state - id(active_min_filtration_hours)) > 0.01 ||
+             fabs(id(max_filtration_hours).state - id(active_max_filtration_hours)) > 0.01 ||
+             fabs(id(warmest_offset_hours).state - id(active_warmest_offset_hours)) > 0.01 ||
+             fabs(id(filtration_hour_offset).state - id(active_filtration_hour_offset)) > 0.01;
 
 # A friendlier, HA-native "Fan" card layered on top of Manual Override: toggling
 # it or picking a preset here just writes into `manual_override` below (same as
@@ -634,8 +691,9 @@ script:
   # priority chain if it's changed. Runs periodically (below) to catch the
   # freeze-protection/schedule/boost checks, which are purely time/
   # temperature driven and have no "changed" event to react to -- and also
-  # runs immediately on manual_override's and the schedule tunables' on_value,
-  # so changing any of them doesn't wait for up to 30s of polling.
+  # runs immediately on manual_override's on_value and the two schedule
+  # buttons' on_press (Apply Filtration Config, Recompute Schedule Now), so
+  # none of those wait for up to 30s of polling.
   - id: evaluate_speed
     then:
       - lambda: |-
@@ -649,9 +707,9 @@ script:
               // sensor fault) shouldn't lock in a bad plan for the whole day;
               // it just retries next tick instead.
               if (!isnan(temp)) {
-                float hours = clamp(temp / 2.0f, id(min_filtration_hours).state,
-                                     id(max_filtration_hours).state)
-                              + id(filtration_hour_offset).state;
+                float hours = clamp(temp / 2.0f, id(active_min_filtration_hours),
+                                     id(active_max_filtration_hours))
+                              + id(active_filtration_hour_offset);
 
                 // "Today" at local midnight -- forces sunrise()/sunset() to
                 // return TODAY's event even if called after it already
@@ -674,7 +732,7 @@ script:
                   // converts the timestamp to float, which only has ~24 bits
                   // of mantissa and silently rounds to the nearest ~128s at
                   // today's epoch magnitude.
-                  time_t warmest_offset_sec = (time_t) (id(warmest_offset_hours).state * 3600.0f);
+                  time_t warmest_offset_sec = (time_t) (id(active_warmest_offset_hours) * 3600.0f);
                   time_t warmest = noon + warmest_offset_sec;
 
                   time_t total_sec = (time_t) (hours * 3600.0f);
