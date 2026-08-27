@@ -308,7 +308,11 @@ reason.
      Start/End (when the next boost pulse is coming), Next Speed Change and
      Next Planned Speed (the single next upcoming transition, whichever
      kind, and what it changes to), Last Recomputed At (proof a recompute —
-     automatic or button-triggered — actually ran)
+     automatic or button-triggered — actually ran), Device Info — includes
+     the actual reset reason (brownout, task watchdog, software reset,
+     power-on, ...) for the most recent boot, so an unexplained reboot is
+     diagnosable from HA history alone, no USB serial monitor needed at the
+     exact moment it happens
    - **Numbers**: Min/Max Filtration Hours, Warmest Part of Day Offset,
      Filtration Hour Offset — these four are *staged*: editing one just
      updates the number itself; it doesn't reshape today's plan until

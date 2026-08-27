@@ -72,6 +72,12 @@ ota:
   platform: esphome
   password: !secret pool_controller_ota_password
 
+# Pure diagnostics, no effect on control logic -- surfaces the actual reset
+# reason (brownout, task watchdog, software reset, power-on, ...) to HA
+# instead of requiring a USB serial monitor to be attached at the exact
+# moment a reboot happens.
+debug:
+
 time:
   - platform: sntp
     id: local_time
@@ -128,6 +134,13 @@ sensor:
               id(sched_block2_end) - id(sched_block2_start)) / 3600.0f;
 
 text_sensor:
+  # Logs (and exposes to HA) the actual reset reason -- brownout, task
+  # watchdog, software reset, power-on, etc. -- so the next unexplained
+  # reboot is diagnosable from the HA history alone, no USB serial monitor
+  # needed at the exact moment it happens.
+  - platform: debug
+    device:
+      name: "Device Info"
   - platform: template
     name: "Pump Commanded Speed"
     id: pump_status
