@@ -45,6 +45,16 @@ wifi:
   # Reboot and retry if Wi-Fi has been down this long -- recovers from a
   # stuck radio without needing anyone to notice.
   reboot_timeout: 15min
+  # Confirmed via the UniFi controller: this device sits on a marginal link
+  # (-82dBm, ~30% retries, on a distant AP) and shows powersave_enabled: true
+  # as a client -- modem-sleep's periodic radio-off windows make it miss
+  # beacons on a link that weak, so the AP marks it disconnected and it
+  # reassociates a moment later. That's the intermittent online/offline
+  # flapping seen in HA (many sub-second blips -- too short to be an actual
+  # reboot), not a firmware or power-supply issue. `none` keeps the radio
+  # always on, trading a bit of power draw (irrelevant for a mains-powered
+  # controller) for not missing beacons.
+  power_save_mode: none
 
 logger:
   level: INFO
