@@ -38,6 +38,7 @@ substitutions:
   relay_v3_pin: GPIO14    # Relay 3 -> pump DI3 (Speed V3)
   relay_run_pin: GPIO27   # Relay 4 -> pump DI4 (Run/Stop)
   onewire_pin: GPIO4
+  water_meter_pin: GPIO33 # AJN15TI water meter, reed switch dry contact (green wire); black wire -> GND
 
 wifi:
   ssid: !secret wifi_ssid
@@ -101,6 +102,35 @@ sensor:
     id: outdoor_temp
     name: "Outdoor Temperature"
     address: 0xFC00000051AD2428
+  # AJN15TI water meter fill-in, reed switch dry contact -- passive, no
+  # power needed. K = 1 pulse/liter, so pulse_meter's native pulses/minute
+  # already reads as L/min with a 1.0 multiply.
+  - platform: pulse_meter
+    pin:
+      number: ${water_meter_pin}
+      mode:
+        input: true
+        pullup: true
+    unit_of_measurement: 'L/min'
+    name: "Piscine - Débit remplissage"
+    id: piscine_debit
+    icon: mdi:water-pump
+    accuracy_decimals: 2
+    filters:
+      - multiply: 1.0
+    internal_filter: 100ms
+    timeout: 5min
+
+    total:
+      name: "Piscine - Volume total remplissage"
+      id: piscine_volume_total
+      unit_of_measurement: 'L'
+      device_class: water
+      state_class: total_increasing
+      icon: mdi:water
+      accuracy_decimals: 0
+      filters:
+        - multiply: 1.0
   # Derived live from the cached block boundaries below, not stored as its
   # own global -- can't drift out of sync with what Block 1/2 actually say,
   # and it collapses to Block 1's length automatically when they're merged
