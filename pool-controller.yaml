@@ -38,6 +38,7 @@ substitutions:
   relay_v3_pin: GPIO14    # Relay 3 -> pump DI3 (Speed V3)
   relay_run_pin: GPIO27   # Relay 4 -> pump DI4 (Run/Stop)
   onewire_pin: GPIO4
+  water_meter_pin: GPIO33 # AJN15TI water meter, reed switch dry contact (green wire); black wire -> GND
 
 wifi:
   ssid: !secret wifi_ssid
@@ -117,6 +118,35 @@ sensor:
     id: outdoor_temp
     name: "Outdoor Temperature"
     address: 0xFC00000051AD2428
+  # AJN15TI water meter fill-in, reed switch dry contact -- passive, no
+  # power needed. K = 1 pulse/liter, so pulse_meter's native pulses/minute
+  # already reads as L/min with a 1.0 multiply.
+  - platform: pulse_meter
+    pin:
+      number: ${water_meter_pin}
+      mode:
+        input: true
+        pullup: true
+    unit_of_measurement: 'L/min'
+    name: "Piscine - Débit remplissage"
+    id: piscine_debit
+    icon: mdi:water-pump
+    accuracy_decimals: 2
+    filters:
+      - multiply: 1.0
+    internal_filter: 100ms
+    timeout: 5min
+
+    total:
+      name: "Piscine - Volume total remplissage"
+      id: piscine_volume_total
+      unit_of_measurement: 'L'
+      device_class: water
+      state_class: total_increasing
+      icon: mdi:water
+      accuracy_decimals: 0
+      filters:
+        - multiply: 1.0
   # Derived live from the cached block boundaries below, not stored as its
   # own global -- can't drift out of sync with what Block 1/2 actually say,
   # and it collapses to Block 1's length automatically when they're merged
@@ -372,6 +402,12 @@ select:
     # schedule/freeze-protection checks below which are inherently tied to
     # the clock/temperature anyway and have nothing to react to sooner.
     on_value:
+      # Stamp/clear the "how long has this override been up" clock that the
+      # "Manual Override Active" alert reads (see globals: and binary_sensor:
+      # below). Done here rather than inside evaluate_speed because that
+      # script also runs on a 30s interval, which would restamp the clock
+      # every tick and the alert would never fire.
+      - lambda: 'id(override_since_ms) = (x == "Auto") ? 0 : millis();'
       - script.execute: evaluate_speed
 
 button:
@@ -437,6 +473,20 @@ globals:
     type: bool
     restore_value: false
     initial_value: 'true'
+  # millis() at the moment Manual Override was last set to anything other than
+  # "Auto"; 0 means it's currently in Auto. Feeds the "Manual Override Active"
+  # alert below -- the point is to notice an override nobody remembers setting,
+  # so re-picking a *different* non-Auto speed restamps this: what's being
+  # measured is time since the last deliberate interaction, not since the
+  # override chain first started. Deliberately millis() rather than a wall
+  # clock (like "Schedule Not Computed" below): this only ever has meaning
+  # within one boot session, so it needs neither restore_value nor a valid
+  # SNTP reading to work. Unsigned subtraction makes the ~49.7-day millis()
+  # rollover a non-issue.
+  - id: override_since_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
 
   # --- Applied (confirmed) schedule-shaping tunables ------------------------
   # What evaluate_speed's Part 1 actually reads -- NOT the Min/Max Filtration
@@ -595,6 +645,29 @@ binary_sensor:
     lambda: |-
       return id(sched_block1_start) == 0 && id(sched_block2_start) == 0 &&
              millis() > 5 * 60 * 1000;
+  # True when Manual Override has been sitting on something other than "Auto"
+  # for over 30 minutes. Manual Override outranks the whole autonomous
+  # schedule and never expires on its own -- the only thing that clears it is
+  # a reboot (see restore_value: false on the select above) -- so anything
+  # that writes "Off" into it parks the pump indefinitely, with nothing but a
+  # Planned-vs-Commanded divergence on the dashboard to show for it. That is
+  # not hypothetical: an Apple Home room/scene "off" reached the Pump fan
+  # entity once (the fan's on_state handler below maps any fan-off to
+  # Manual Override "Off"), and the pump sat idle for 16 hours across a night
+  # and a morning before anyone noticed. Voice assistants, HA automations and
+  # a mis-tapped dashboard card can all do the same thing, so this alerts on
+  # the *state* rather than trying to enumerate the causes.
+  # 30 minutes is chosen to sit well above deliberate hands-on use -- running
+  # the pump up to High to vacuum or backwash, then putting it back to Auto --
+  # while still catching an override the same evening it was left behind.
+  # device_class: problem so it renders as an alert on typical dashboards.
+  - platform: template
+    name: "Manual Override Active"
+    icon: mdi:hand-back-right
+    device_class: problem
+    lambda: |-
+      if (id(override_since_ms) == 0) return false;
+      return (millis() - id(override_since_ms)) > 30 * 60 * 1000;
 
 # A friendlier, HA-native "Fan" card layered on top of Manual Override: toggling
 # it or picking a preset here just writes into `manual_override` below (same as
