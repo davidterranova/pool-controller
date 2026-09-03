@@ -136,7 +136,16 @@ Re-evaluated every 30 seconds, highest priority wins:
    force `Low` speed. This overrides everything else, including manual
    override, unconditionally.
 2. **Manual Override** (select, HA-editable) — if set to anything other
-   than `Auto`, forces that speed.
+   than `Auto`, forces that speed. It **never expires**: the only thing that
+   returns the controller to `Auto` on its own is a reboot (see *Why it
+   doesn't depend on Home Assistant* below). Anything able to write to the
+   `Pump` fan entity can therefore park the pump indefinitely, because that
+   entity maps a fan-off to Manual Override `Off` — an Apple Home
+   room/scene "off" did exactly that once and the pump sat idle for 16 hours
+   across a night and the following morning. **Manual Override Active**
+   (binary sensor, `device_class: problem`) turns on once the override has
+   been off `Auto` for more than 30 minutes, so that state is visible
+   instead of silent. See *Changing the Manual Override alert delay* below.
 3. **Autonomous schedule** — computed on-device, once per calendar day, from
    water temperature and today's sunrise/sunset:
    - **Filtration hours** = `Pool Return Temperature / 2`, clamped between
@@ -337,7 +346,9 @@ reason.
      Config. Schedule Not Computed — on if the daily plan still hasn't been
      computed a few minutes after boot, meaning the temperature reading or
      sunrise/sunset lookup keeps failing and the pump could otherwise sit
-     off indefinitely with no other warning.
+     off indefinitely with no other warning. Manual Override Active — on
+     when Manual Override has been on something other than `Auto` for over
+     30 minutes (see below).
 4. Once paired, HA's ESPHome integration can also push OTA updates directly
    — an alternative to running `make ota` from this repo.
 
@@ -498,3 +509,24 @@ Same deal as the freeze-protection threshold above: the 28°C cutoff for the
 hot-night keep-alive tier (see Control logic) is a literal constant in the
 same schedule lambda, not a substitution — edit it directly there if your
 climate calls for a different value.
+
+## Changing the Manual Override alert delay
+
+The 30-minute delay before **Manual Override Active** turns on is a literal
+constant in that binary sensor's own lambda (`binary_sensor:` in
+`pool-controller.yaml`), same as the two thresholds above. It's a compromise
+between the two ways the alert can be wrong: short enough to catch an
+override left behind the same evening, long enough not to nag during
+deliberate hands-on work — running the pump up to `High` to vacuum or
+backwash and then putting it back to `Auto`.
+
+The clock behind it is `millis()`-based and *restamps* whenever a different
+non-`Auto` speed is picked, so what's measured is time since the last
+deliberate interaction rather than since the override chain first started.
+Because it's `millis()` and not a wall clock, it survives a dead SNTP
+server, and it resets on reboot — which is correct, since a reboot puts
+Manual Override back to `Auto` anyway.
+
+Note this is an *alert*, not a correction: it makes a stuck override visible
+but never clears it for you. Deciding to auto-expire the override instead is
+a separate change to the priority chain in `evaluate_speed`.
