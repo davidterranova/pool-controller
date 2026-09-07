@@ -157,6 +157,28 @@ sensor:
     lambda: |-
       return (id(sched_block1_end) - id(sched_block1_start) +
               id(sched_block2_end) - id(sched_block2_start)) / 3600.0f;
+  # The measured counterpart to Planned Filtration Hours above: what the pump
+  # actually did today, counted on-device. See filtration_ms_today in
+  # globals: below for why this isn't left to Home Assistant to derive.
+  # state_class: measurement rather than the total_increasing this shape of
+  # value would normally get: the planned-vs-actual dashboard charts read
+  # HA's hourly/daily `max` statistic, and HA only records min/mean/max for
+  # measurement -- a total_* class stores sum/state instead and would leave
+  # those charts with nothing to plot.
+  - platform: template
+    name: "Filtration Hours Today"
+    id: filtration_hours_today
+    icon: mdi:timer-check
+    unit_of_measurement: "h"
+    accuracy_decimals: 2
+    state_class: measurement
+    update_interval: 60s
+    lambda: |-
+      // Accrue first so every value HA records is preceded by a midnight
+      // rollover check, and can therefore never include a slice of
+      // yesterday's runtime.
+      id(filtration_accrue).execute();
+      return id(filtration_ms_today) / 3600000.0f;
 
 text_sensor:
   - platform: template
