@@ -63,6 +63,17 @@ ota:
   platform: esphome
   password: !secret pool_controller_ota_password
 
+# Every `restore_value: true` global below is persisted on this cadence
+# rather than ESPHome's 60s default, because of one of them: the filtration
+# runtime accumulator (see globals:) advances on every accrual while the
+# pump is running, and 60s would mean several hundred flash writes across a
+# 14-hour filtration day. The trade is bounded and cheap -- an unexpected
+# reset (power blip, watchdog) loses at most 5 minutes of accrued runtime,
+# and at worst forces a schedule recompute, which evaluate_speed already
+# handles as a normal case.
+preferences:
+  flash_write_interval: 5min
+
 time:
   - platform: sntp
     id: local_time
@@ -465,6 +476,45 @@ globals:
     restore_value: false
     initial_value: '0'
 
+  # --- Measured filtration runtime (today) ---------------------------------
+  # How long the pump has actually run today, in milliseconds, counted here
+  # rather than in Home Assistant. HA used to derive this from the Pump fan
+  # entity's own recorded history (a history_stats helper summing time in
+  # state "on"), which meant any interval HA saw as `unavailable` counted as
+  # "not filtering" -- an OTA flash, a Wi-Fi drop, the 15min Wi-Fi watchdog
+  # reboot above, an HA restart or upgrade -- even though the relays never
+  # stopped in any of those cases (see on_boot above: a reboot re-asserts
+  # them within ~3s, and a Wi-Fi drop doesn't touch them at all). Same
+  # reasoning as reboot_timeout: 0s on the api: block -- what this device
+  # did must not depend on whether HA happened to be watching.
+  # Milliseconds, not seconds, deliberately: accruing in seconds would throw
+  # away the sub-second remainder on every accrual, and with an accrual a
+  # minute that rounding alone would lose minutes a day. uint32_t holds
+  # 49.7 days of ms, far past the 24h this ever accumulates.
+  - id: filtration_ms_today
+    type: uint32_t
+    restore_value: true
+    initial_value: '0'
+  # Which day (day_of_year) filtration_ms_today is currently accumulating
+  # into. Deliberately NOT reusing sched_computed_day below: the "Apply
+  # Filtration Config" and "Recompute Schedule Now" buttons reset that one to
+  # -1 to force a replan, which would zero today's measured runtime as a
+  # side effect. Restored, so a same-day reboot resumes today's tally rather
+  # than starting it over.
+  - id: filtration_counted_day
+    type: int
+    restore_value: true
+    initial_value: '-1'
+  # millis() at the moment the Run relay last closed; 0 while the pump is
+  # stopped. Not restored -- it only has meaning within one boot session, and
+  # on_boot's evaluate_speed re-stamps it within ~3s if the pump should be
+  # running right now. Unsigned subtraction makes the ~49.7-day millis()
+  # rollover a non-issue, same as override_since_ms above.
+  - id: filtration_run_since_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+
   # --- Applied (confirmed) schedule-shaping tunables ------------------------
   # What evaluate_speed's Part 1 actually reads -- NOT the Min/Max Filtration
   # Hours, Warmest Part of Day Offset, and Filtration Hour Offset number
@@ -716,8 +766,68 @@ switch:
       inverted: true
     restore_mode: ALWAYS_OFF
     internal: true
+    # Run/Stop is the physical truth of whether the pump is moving water, so
+    # it -- not the fan entity, not last_commanded -- is what drives the
+    # runtime tally. Speed changes deliberately leave Run asserted (see
+    # apply_speed below), so these two fire only on a real start or stop,
+    # which is also what keeps the flash writes down to a handful a day.
+    on_turn_on:
+      - lambda: |-
+          // Accrue before re-stamping: a no-op when the pump was already
+          // stopped (filtration_run_since_ms == 0), but it means a stamp
+          // can never silently overwrite an unaccrued segment.
+          id(filtration_accrue).execute();
+          id(filtration_run_since_ms) = millis();
+    on_turn_off:
+      - lambda: |-
+          id(filtration_accrue).execute();
+          id(filtration_run_since_ms) = 0;
 
 script:
+  # Folds however long the Run relay has been closed since the last call into
+  # filtration_ms_today, and rolls that tally over at local midnight. Called
+  # from three places, each for its own reason: the Run relay's own
+  # on_turn_on/on_turn_off (so a start and a stop are accounted for exactly),
+  # the 5min interval at the bottom of this file (so an unexpected reset
+  # loses at most that much accrued runtime), and Filtration Hours Today's
+  # own lambda (so no value HA records can straddle midnight).
+  # Idempotent and cheap by design -- calling it more often only shortens
+  # each accrued segment, it never double-counts.
+  - id: filtration_accrue
+    then:
+      - lambda: |-
+          uint32_t now_ms = millis();
+          uint32_t seg_ms = id(filtration_run_since_ms) == 0
+                                ? 0
+                                : now_ms - id(filtration_run_since_ms);
+          auto t = id(local_time).now();
+          if (t.is_valid() && t.day_of_year != id(filtration_counted_day)) {
+            // Crossed midnight (or this is the first valid clock reading
+            // since a boot that spanned a day change). Split the in-flight
+            // run: whatever ran before midnight belongs to the day just
+            // ended, the remainder opens the new day. The overnight hot-water
+            // keep-alive tier means the pump genuinely is often running at
+            // this moment, so the split is worth getting right.
+            // Nothing is published for the day just ended, deliberately: a
+            // post-midnight publish would be timestamped into the NEW day
+            // and permanently inflate its own total. The closing figure HA
+            // records for yesterday is therefore Filtration Hours Today's
+            // last sample before midnight -- accurate to within one
+            // update_interval (60s).
+            uint32_t since_midnight_ms =
+                (uint32_t) (t.hour * 3600 + t.minute * 60 + t.second) * 1000UL;
+            id(filtration_ms_today) =
+                seg_ms < since_midnight_ms ? seg_ms : since_midnight_ms;
+            id(filtration_counted_day) = t.day_of_year;
+          } else {
+            id(filtration_ms_today) += seg_ms;
+          }
+          // Leave a stopped pump stopped; only re-stamp a live run, so the
+          // segment just accrued isn't counted again on the next call.
+          if (id(filtration_run_since_ms) != 0) {
+            id(filtration_run_since_ms) = now_ms;
+          }
+
   # Run/Stop (relay_run) is only ever toggled to actually start or stop the
   # pump (Off <-> non-Off). Changing speed while already running (Low <->
   # Medium <-> High) never drops Run -- only the speed-select relay changes,
@@ -1095,3 +1205,11 @@ interval:
   - interval: 30s
     then:
       - script.execute: evaluate_speed
+  # Purely a durability floor for the runtime tally: the Run relay's own
+  # transitions already account for every start and stop exactly, and
+  # Filtration Hours Today accrues on each publish. This just bounds how much
+  # of an in-flight run an unexpected reset can lose (see preferences: above)
+  # to the 5min flash-write interval rather than to the whole run.
+  - interval: 5min
+    then:
+      - script.execute: filtration_accrue
