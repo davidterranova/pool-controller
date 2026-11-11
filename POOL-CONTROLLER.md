@@ -136,16 +136,23 @@ Re-evaluated every 30 seconds, highest priority wins:
    force `Low` speed. This overrides everything else, including manual
    override, unconditionally.
 2. **Manual Override** (select, HA-editable) — if set to anything other
-   than `Auto`, forces that speed. It **never expires**: the only thing that
-   returns the controller to `Auto` on its own is a reboot (see *Why it
-   doesn't depend on Home Assistant* below). Anything able to write to the
-   `Pump` fan entity can therefore park the pump indefinitely, because that
-   entity maps a fan-off to Manual Override `Off` — an Apple Home
-   room/scene "off" did exactly that once and the pump sat idle for 16 hours
-   across a night and the following morning. **Manual Override Active**
-   (binary sensor, `device_class: problem`) turns on once the override has
-   been off `Auto` for more than 30 minutes, so that state is visible
-   instead of silent. See *Changing the Manual Override alert delay* below.
+   than `Auto`, forces that speed. It **ends on its own** after **Manual
+   Override Timeout** minutes (number, HA-editable, default 60, step 5, up
+   to 480): on the next 30-second tick past the deadline the controller puts
+   the select back to `Auto` itself, with or without Home Assistant. Setting
+   the timeout to `0` makes the override open-ended again — then only a hand
+   or a reboot returns it to `Auto` (see *Why it doesn't depend on Home
+   Assistant* below). The timeout applies to every way of setting an
+   override, not just the select: the `Pump` fan entity maps a fan-off to
+   Manual Override `Off`, and an Apple Home room/scene "off" once did
+   exactly that and parked the pump for 16 hours across a night and the
+   following morning — with the timeout non-zero, that override would have
+   expired. Picking a different speed, or editing the timeout, restarts the
+   clock from that moment. **Manual Override Active** (binary sensor,
+   `device_class: problem`) covers the open-ended case: it turns on once a
+   timeout-`0` override has been off `Auto` for more than 30 minutes, so
+   that state is visible instead of silent. See *Manual Override timeout
+   and alert* below.
 3. **Autonomous schedule** — computed on-device, once per calendar day, from
    water temperature and today's sunrise/sunset:
    - **Filtration hours** = `Pool Return Temperature / 2`, clamped between
@@ -281,6 +288,13 @@ reason.
   an unattended power event, instead of the pump silently staying wherever a
   stale manual override left it until someone happens to check the
   dashboard.
+  - **Its expiry is on-device too.** Manual Override Timeout is a number
+    persisted on the controller and the deadline is checked against the
+    device's own `millis()` clock on the 30-second interval — not an HA
+    timer and automation writing `Auto` back. An HA-side timer was the first
+    cut, and it guarded the pump exactly as long as HA and the Wi-Fi link
+    were up: the one moment it had to act was the one moment it could be
+    missing. With the clock here, HA only ever chooses the duration.
   - **This alone isn't sufficient**, because of a second interaction: the
     **Pump** fan entity (the friendlier proxy for Manual Override) has no
     restore state of its own, so it always boots into a default "off"
@@ -323,7 +337,10 @@ reason.
      updates the number itself; it doesn't reshape today's plan until
      **Apply Filtration Config** is pressed (see below). Boost Pulse
      Duration, Boost Pulse Interval, High Boost Frequency — these three
-     still apply instantly, unaffected by the staging above.
+     still apply instantly, unaffected by the staging above. Manual
+     Override Timeout — minutes before a Manual Override returns to `Auto`
+     on its own, `0` for never; applies instantly, and editing it during an
+     override restarts that override's clock from now.
    - **Select**: Manual Override
    - **Button**: Apply Filtration Config — copies the four staged numbers
      above into the schedule engine's active values and forces an immediate
@@ -347,8 +364,9 @@ reason.
      computed a few minutes after boot, meaning the temperature reading or
      sunrise/sunset lookup keeps failing and the pump could otherwise sit
      off indefinitely with no other warning. Manual Override Active — on
-     when Manual Override has been on something other than `Auto` for over
-     30 minutes (see below).
+     when an open-ended Manual Override (timeout `0`) has been on something
+     other than `Auto` for over 30 minutes (see below); a timed override
+     never raises it, since the controller ends that one itself.
 4. Once paired, HA's ESPHome integration can also push OTA updates directly
    — an alternative to running `make ota` from this repo.
 
@@ -510,23 +528,38 @@ hot-night keep-alive tier (see Control logic) is a literal constant in the
 same schedule lambda, not a substitution — edit it directly there if your
 climate calls for a different value.
 
-## Changing the Manual Override alert delay
+## Manual Override timeout and alert
 
-The 30-minute delay before **Manual Override Active** turns on is a literal
-constant in that binary sensor's own lambda (`binary_sensor:` in
-`pool-controller.yaml`), same as the two thresholds above. It's a compromise
-between the two ways the alert can be wrong: short enough to catch an
-override left behind the same evening, long enough not to nag during
-deliberate hands-on work — running the pump up to `High` to vacuum or
-backwash and then putting it back to `Auto`.
+A Manual Override has one clock, the `millis()` stamp taken when the select
+leaves `Auto`, and two consumers of it:
 
-The clock behind it is `millis()`-based and *restamps* whenever a different
-non-`Auto` speed is picked, so what's measured is time since the last
-deliberate interaction rather than since the override chain first started.
-Because it's `millis()` and not a wall clock, it survives a dead SNTP
-server, and it resets on reboot — which is correct, since a reboot puts
+- **Manual Override Timeout** (number, default 60 min, `0` = never) — the
+  *correction*. The 30-second `interval:` block at the bottom of
+  `pool-controller.yaml` compares the stamp against the timeout and, once
+  past it, writes `Auto` back into the select exactly as a hand would, so
+  the fan display, the alert clock and Home Assistant all follow through the
+  normal path. The expiry lands within 30 s of the deadline. It is not
+  inside `evaluate_speed` on purpose: writing the select fires its
+  `on_value`, which runs `evaluate_speed` itself, and a script can't be
+  re-entered from its own lambda.
+- **Manual Override Active** (binary sensor) — the *alert*, for the
+  open-ended case only. It turns on once a timeout-`0` override has been up
+  for 30 minutes; a timed override never raises it, since the device is
+  about to end it anyway and a reminder half-way through a chosen 1 h or
+  2 h run would be noise. The 30-minute delay is a literal constant in that
+  binary sensor's lambda, same as the two thresholds above: short enough to
+  catch an override left behind the same evening, long enough not to nag
+  during deliberate hands-on work — running the pump up to `High` to vacuum
+  or backwash and then putting it back to `Auto`.
+
+The clock *restamps* whenever a different non-`Auto` speed is picked and
+whenever the timeout itself is edited, so what's measured is time since the
+last deliberate interaction rather than since the override chain first
+started: "two more hours" set mid-override means two hours from that
+moment. Because it's `millis()` and not a wall clock, it survives a dead
+SNTP server, and it resets on reboot — which is correct, since a reboot puts
 Manual Override back to `Auto` anyway.
 
-Note this is an *alert*, not a correction: it makes a stuck override visible
-but never clears it for you. Deciding to auto-expire the override instead is
-a separate change to the priority chain in `evaluate_speed`.
+The timeout number is persisted (`restore_value: true`), so whatever
+duration was last chosen — from a dashboard picker or by hand — is the one
+that applies to the next override, whichever entity set it.
