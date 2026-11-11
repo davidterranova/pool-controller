@@ -287,6 +287,30 @@ text_sensor:
     lambda: |-
       if (id(sched_last_recompute) == 0) return std::string("Never");
       return ESPTime::from_epoch_local(id(sched_last_recompute)).strftime("%Y-%m-%d %H:%M:%S");
+  # When the current Manual Override will end on its own, per Manual Override
+  # Timeout (number: below) -- the device's own deadline, derived from the
+  # same millis() stamp the expiry reads, not a copy of anything HA computed.
+  # "--" while in Auto, with the timeout at 0, or before SNTP has synced.
+  # Full date+time rather than %H:%M like the block sensors, since a
+  # late-evening override can run past midnight and a dashboard needs to
+  # tell "01:30 tonight" from "01:30 this morning" to draw it. Refreshed on
+  # the spot by the select's and the timeout's on_value (see below) so a
+  # dashboard shows the new deadline right away, not up to 30s later.
+  - platform: template
+    name: "Manual Override Ends At"
+    id: override_ends_display
+    icon: mdi:timer-sand-complete
+    update_interval: 30s
+    lambda: |-
+      if (id(override_since_ms) == 0) return std::string("--");
+      float timeout_min = id(manual_override_timeout_minutes).state;
+      if (!(timeout_min > 0)) return std::string("--");
+      if (!id(local_time).now().is_valid()) return std::string("--");
+      uint32_t timeout_ms = (uint32_t) (timeout_min * 60000.0f);
+      uint32_t elapsed_ms = millis() - id(override_since_ms);
+      uint32_t remaining_ms = elapsed_ms >= timeout_ms ? 0 : timeout_ms - elapsed_ms;
+      time_t ends = id(local_time).now().timestamp + (time_t) (remaining_ms / 1000);
+      return ESPTime::from_epoch_local(ends).strftime("%Y-%m-%d %H:%M:%S");
 
 # --- Autonomous schedule tunables, editable from the Home Assistant dashboard, persisted in flash ---
 # The four schedule-shaping tunables below (Min/Max Filtration Hours, Warmest
@@ -391,6 +415,44 @@ number:
     optimistic: true
     on_value:
       - script.execute: evaluate_speed
+  # How long a Manual Override stays in force before the controller puts
+  # itself back to Auto, in minutes; 0 disables the expiry, and the override
+  # then only ends when someone clears it or the device reboots. Lives on the
+  # device for the same reason as everything else in this file: the pump has
+  # to come back to its plan whether or not Home Assistant is up to remind
+  # it (an HA-side timer was the first cut, and it left the pump unguarded
+  # exactly when HA or the Wi-Fi link was the thing that failed). The HA
+  # dashboard's duration picker writes this number, so it holds the last
+  # duration chosen there -- and it applies just the same to an override set
+  # any other way (the Pump fan entity, an Apple Home scene, the select
+  # itself): the 16-hour incident described at binary_sensor: below can't
+  # recur while this is non-zero.
+  # Checked on the 30s interval against the millis() stamp the Manual
+  # Override Active alert already keeps (see globals: override_since_ms),
+  # so an override ends within 30s of its deadline. Edited mid-override,
+  # the clock restarts from now (on_value below): "two more hours" means
+  # two hours from this moment. That restamps the alert's clock too, which
+  # is consistent with it measuring time since the last deliberate
+  # interaction. Keyed on the stamp rather than the select's option so a
+  # boot-time on_value (restore_value) can't start a clock before the select
+  # has even settled on its own Auto default.
+  - platform: template
+    name: "Manual Override Timeout"
+    id: manual_override_timeout_minutes
+    icon: mdi:timer-outline
+    unit_of_measurement: min
+    device_class: duration
+    mode: box
+    min_value: 0
+    max_value: 480
+    step: 5
+    initial_value: 60
+    restore_value: true
+    optimistic: true
+    on_value:
+      - lambda: |-
+          if (id(override_since_ms) != 0) id(override_since_ms) = millis();
+      - component.update: override_ends_display
 
 select:
   - platform: template
@@ -404,7 +466,9 @@ select:
     # the autonomous schedule are back in control on their own. Restoring a
     # stale "Off" or a fixed speed across an unattended power event would
     # silently leave the pump stuck there, unmonitored, for however long
-    # until someone happens to check the dashboard.
+    # until someone happens to check the dashboard. Between reboots, Manual
+    # Override Timeout (number: above) is what ends an override on its own;
+    # the expiry itself runs on the 30s interval: at the bottom of the file.
     restore_value: false
     optimistic: true
     # React immediately instead of waiting for the next 30s interval tick --
@@ -418,6 +482,7 @@ select:
       # script also runs on a 30s interval, which would restamp the clock
       # every tick and the alert would never fire.
       - lambda: 'id(override_since_ms) = (x == "Auto") ? 0 : millis();'
+      - component.update: override_ends_display
       - script.execute: evaluate_speed
 
 button:
@@ -484,11 +549,12 @@ globals:
     restore_value: false
     initial_value: 'true'
   # millis() at the moment Manual Override was last set to anything other than
-  # "Auto"; 0 means it's currently in Auto. Feeds the "Manual Override Active"
-  # alert below -- the point is to notice an override nobody remembers setting,
-  # so re-picking a *different* non-Auto speed restamps this: what's being
-  # measured is time since the last deliberate interaction, not since the
-  # override chain first started. Deliberately millis() rather than a wall
+  # "Auto"; 0 means it's currently in Auto. Feeds both the "Manual Override
+  # Active" alert below and the Manual Override Timeout expiry (number: above,
+  # interval: below) -- the point is to notice, or end, an override nobody
+  # remembers setting, so re-picking a *different* non-Auto speed (or editing
+  # the timeout) restamps this: what's being measured is time since the last
+  # deliberate interaction, not since the override chain first started. Deliberately millis() rather than a wall
   # clock (like "Schedule Not Computed" below): this only ever has meaning
   # within one boot session, so it needs neither restore_value nor a valid
   # SNTP reading to work. Unsigned subtraction makes the ~49.7-day millis()
@@ -694,11 +760,12 @@ binary_sensor:
     lambda: |-
       return id(sched_block1_start) == 0 && id(sched_block2_start) == 0 &&
              millis() > 5 * 60 * 1000;
-  # True when Manual Override has been sitting on something other than "Auto"
-  # for over 30 minutes. Manual Override outranks the whole autonomous
-  # schedule and never expires on its own -- the only thing that clears it is
-  # a reboot (see restore_value: false on the select above) -- so anything
-  # that writes "Off" into it parks the pump indefinitely, with nothing but a
+  # True when an open-ended Manual Override (Manual Override Timeout set to
+  # 0) has been sitting on something other than "Auto" for over 30 minutes.
+  # Manual Override outranks the whole autonomous schedule, and with the
+  # timeout disabled the only things that clear it are a hand or a reboot
+  # (see restore_value: false on the select above) -- so anything that writes
+  # "Off" into it parks the pump indefinitely, with nothing but a
   # Planned-vs-Commanded divergence on the dashboard to show for it. That is
   # not hypothetical: an Apple Home room/scene "off" reached the Pump fan
   # entity once (the fan's on_state handler below maps any fan-off to
@@ -706,6 +773,10 @@ binary_sensor:
   # and a morning before anyone noticed. Voice assistants, HA automations and
   # a mis-tapped dashboard card can all do the same thing, so this alerts on
   # the *state* rather than trying to enumerate the causes.
+  # A timed override (timeout > 0) ends on its own on the 30s interval below,
+  # so it is deliberately not alerted on: with the device holding the
+  # deadline there is no failure mode in which it silently outlives it, and
+  # a reminder half-way through a chosen 1h or 2h run would just be noise.
   # 30 minutes is chosen to sit well above deliberate hands-on use -- running
   # the pump up to High to vacuum or backwash, then putting it back to Auto --
   # while still catching an override the same evening it was left behind.
@@ -716,6 +787,7 @@ binary_sensor:
     device_class: problem
     lambda: |-
       if (id(override_since_ms) == 0) return false;
+      if (id(manual_override_timeout_minutes).state > 0) return false;
       return (millis() - id(override_since_ms)) > 30 * 60 * 1000;
 
 # A friendlier, HA-native "Fan" card layered on top of Manual Override: toggling
@@ -1226,6 +1298,27 @@ script:
 interval:
   - interval: 30s
     then:
+      # Manual Override expiry -- tier 2 of the priority chain ending on its
+      # own, per Manual Override Timeout (see number: above). It lives here on
+      # the tick rather than inside evaluate_speed because it goes through
+      # the select: writing "Auto" there fires the select's on_value, which
+      # clears the stamp and runs evaluate_speed itself, and a script can't
+      # re-enter from inside its own lambda. Going through the select rather
+      # than poking a global keeps one source of truth -- HA sees the change,
+      # the fan display follows, the stamp clears -- exactly as if someone
+      # had picked Auto by hand. The evaluate_speed right after is then a
+      # no-op for the relays (last_commanded already matches).
+      # Unsigned arithmetic, same as the alert: the ~49.7-day millis()
+      # rollover is a non-issue.
+      - lambda: |-
+          if (id(override_since_ms) == 0) return;
+          float timeout_min = id(manual_override_timeout_minutes).state;
+          if (!(timeout_min > 0)) return;
+          uint32_t timeout_ms = (uint32_t) (timeout_min * 60000.0f);
+          if ((millis() - id(override_since_ms)) < timeout_ms) return;
+          ESP_LOGI("pump", "Manual Override '%s' expired after %.0f min -- back to Auto",
+                   id(manual_override).current_option().c_str(), timeout_min);
+          id(manual_override).make_call().set_option("Auto").perform();
       - script.execute: evaluate_speed
   # Purely a durability floor for the runtime tally: the Run relay's own
   # transitions already account for every start and stop exactly, and
