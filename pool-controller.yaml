@@ -287,6 +287,30 @@ text_sensor:
     lambda: |-
       if (id(sched_last_recompute) == 0) return std::string("Never");
       return ESPTime::from_epoch_local(id(sched_last_recompute)).strftime("%Y-%m-%d %H:%M:%S");
+  # When the current Manual Override will end on its own, per Manual Override
+  # Timeout (number: below) -- the device's own deadline, derived from the
+  # same millis() stamp the expiry reads, not a copy of anything HA computed.
+  # "--" while in Auto, with the timeout at 0, or before SNTP has synced.
+  # Full date+time rather than %H:%M like the block sensors, since a
+  # late-evening override can run past midnight and a dashboard needs to
+  # tell "01:30 tonight" from "01:30 this morning" to draw it. Refreshed on
+  # the spot by the select's and the timeout's on_value (see below) so a
+  # dashboard shows the new deadline right away, not up to 30s later.
+  - platform: template
+    name: "Manual Override Ends At"
+    id: override_ends_display
+    icon: mdi:timer-sand-complete
+    update_interval: 30s
+    lambda: |-
+      if (id(override_since_ms) == 0) return std::string("--");
+      float timeout_min = id(manual_override_timeout_minutes).state;
+      if (!(timeout_min > 0)) return std::string("--");
+      if (!id(local_time).now().is_valid()) return std::string("--");
+      uint32_t timeout_ms = (uint32_t) (timeout_min * 60000.0f);
+      uint32_t elapsed_ms = millis() - id(override_since_ms);
+      uint32_t remaining_ms = elapsed_ms >= timeout_ms ? 0 : timeout_ms - elapsed_ms;
+      time_t ends = id(local_time).now().timestamp + (time_t) (remaining_ms / 1000);
+      return ESPTime::from_epoch_local(ends).strftime("%Y-%m-%d %H:%M:%S");
 
 # --- Autonomous schedule tunables, editable from the Home Assistant dashboard, persisted in flash ---
 # The four schedule-shaping tunables below (Min/Max Filtration Hours, Warmest
@@ -428,6 +452,7 @@ number:
     on_value:
       - lambda: |-
           if (id(override_since_ms) != 0) id(override_since_ms) = millis();
+      - component.update: override_ends_display
 
 select:
   - platform: template
@@ -457,6 +482,7 @@ select:
       # script also runs on a 30s interval, which would restamp the clock
       # every tick and the alert would never fire.
       - lambda: 'id(override_since_ms) = (x == "Auto") ? 0 : millis();'
+      - component.update: override_ends_display
       - script.execute: evaluate_speed
 
 button:

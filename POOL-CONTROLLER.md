@@ -331,7 +331,9 @@ reason.
      Start/End (when the next boost pulse is coming), Next Speed Change and
      Next Planned Speed (the single next upcoming transition, whichever
      kind, and what it changes to), Last Recomputed At (proof a recompute —
-     automatic or button-triggered — actually ran)
+     automatic or button-triggered — actually ran), Manual Override Ends
+     At (the device's own deadline for the current override, full
+     date+time; `--` in Auto or with the timeout at `0`)
    - **Numbers**: Min/Max Filtration Hours, Warmest Part of Day Offset,
      Filtration Hour Offset — these four are *staged*: editing one just
      updates the number itself; it doesn't reshape today's plan until
@@ -563,3 +565,9 @@ Manual Override back to `Auto` anyway.
 The timeout number is persisted (`restore_value: true`), so whatever
 duration was last chosen — from a dashboard picker or by hand — is the one
 that applies to the next override, whichever entity set it.
+
+**Manual Override Ends At** (text sensor) publishes that deadline as a
+local date+time for dashboards — a "back to Auto at 18:30" line, or the
+extent of the override on a day timeline — computed on the device from the
+same stamp, so it can never disagree with when the expiry actually fires.
+It reads `--` in `Auto`, with the timeout at `0`, or before SNTP has synced.
