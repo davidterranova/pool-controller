@@ -18,6 +18,7 @@ repo itself — layout and tooling.
 | `pool-controller.yaml` | The ESPHome device config — this *is* the firmware source. |
 | `secrets.yaml` | Wi-Fi credentials, API encryption key, OTA password. Gitignored — create your own (see below). |
 | `Makefile` | Validate / build / flash / OTA / status tooling. |
+| `tools/webui-mock/` | Local mock of the device's web UI, for working on the page without flashing (see below). |
 | `.gitignore` | Excludes `secrets.yaml`, `.esphome/` (build cache), `.vscode/`. |
 
 ## Toolchain
@@ -77,11 +78,40 @@ repo itself — layout and tooling.
 | `make kill-port` | Kill whatever process (a leftover `screen`/monitor session, usually) is holding the serial port open. |
 | `make ota` | Rebuild, then push the firmware over Wi-Fi instead of USB. Only works once the device has already joined Wi-Fi at least once. |
 | `make ip` | Resolve and print the device's current IP via mDNS. |
+| `make mock-ui` | Serve a local mock of the device's web UI at http://localhost:8080/ (see below). `MOCK_PORT=` to change the port, `MOCK_INDEX=path.html` to serve your own page. |
+| `make mock-ui-check` | Print the web UI layout (sections and order) and fail on any entity type the mock can't render. Runs in CI. |
 | `make clean` | Remove the local build cache (`.esphome/`). |
 
 `PORT` (serial) and `HOST` (network) both auto-detect and can be overridden
 on the command line, e.g. `make flash PORT=/dev/cu.usbserial-XXXX` or
 `make ota HOST=192.168.4.72`.
+
+## Working on the web UI without flashing
+
+`make mock-ui` runs [tools/webui-mock/mock_server.py](tools/webui-mock/mock_server.py)
+in the same ESPHome image as `make build` and serves the device's web UI at
+<http://localhost:8080/>. The UI is the page your firmware build embeds, decoded
+from the image, so it always matches the ESPHome version you build with.
+
+- **The layout comes from the YAML.** Entities, names, icons, number ranges and
+  the `web_server` sorting groups are read from `pool-controller.yaml`. Save
+  the file and the open page reloads with the change. No build, no flash.
+- **The controls act like the device.** A small simulation behind the
+  entities computes today's plan, the boosts, the Manual Override and its
+  timeout, the Apply gate and filtration hours. Changing a setting moves the
+  values the way it would on the device. The simulation is an approximation
+  for UI work, not a test of the control logic. Sunrise/sunset are fixed
+  (07:45 / 17:15), and the clock is your machine's.
+- **Same protocol as the device.** The mock implements the `/events` stream
+  and the REST endpoints the page calls, so `MOCK_INDEX=my-page.html make
+  mock-ui` serves your own HTML against the same API. That's the way to
+  prototype a custom page before deciding to put it on the device.
+- **No login.** Unlike the device, the mock has no auth, to keep iteration
+  quick.
+- An entity the simulation doesn't know (e.g. one you just added) still
+  shows up, with a static value. `make mock-ui-check` marks it
+  `[static: not simulated]`. Add it to the `N` map in `mock_server.py` to make
+  it move.
 
 ## Updating firmware after the first flash
 

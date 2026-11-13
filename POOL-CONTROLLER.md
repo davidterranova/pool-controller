@@ -544,7 +544,8 @@ Each entity's section and position come from its own
 `web_server: {sorting_group_id: ..., sorting_weight: ...}` line in
 `pool-controller.yaml`; the sections themselves are the `sorting_groups:`
 under `web_server:`. A new entity with no such
-line still shows up, just outside the four sections.
+line still shows up, just outside the four sections. To try a layout change
+without flashing, use `make mock-ui` (see the README).
 
 What to know:
 
