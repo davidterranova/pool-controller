@@ -41,6 +41,8 @@ repo itself — layout and tooling.
    #   python3 -c "import os,base64; print(base64.b64encode(os.urandom(32)).decode())"
    pool_controller_api_key: "..."
    pool_controller_ota_password: "..."
+   # Local web UI at http://pool-controller.local/ (username: admin):
+   pool_controller_web_password: "..."
    # Used by the autonomous filtration schedule for sunrise/sunset + local
    # midnight -- decimal degrees and an IANA zone name:
    pool_latitude: "..."
