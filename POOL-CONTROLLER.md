@@ -313,6 +313,12 @@ reason.
     leave the pump idle for up to 30 seconds even when the restored
     schedule or freeze protection call for it to be running right now.
 
+- **A local web UI on the device itself.** `web_server:` serves
+  `http://pool-controller.local/` straight from the ESP32 — every control
+  and reading from the HA entities card, so the pump can still be checked
+  and driven while HA or the link to it is down. See
+  [Local web UI](#local-web-ui).
+
 ## Home Assistant configuration
 
 1. **Settings → Devices & Services → Add Integration → ESPHome.** It should
@@ -516,6 +522,51 @@ device (both ESPHome `sensor:` and `text_sensor:` entities surface under the
 confirmed live read — if a row shows "Entity not available," check Developer
 Tools → States (filter `pool_controller`) and fix that line, or delete and
 re-add it through the visual entity picker instead.
+
+## Local web UI
+
+The controller serves its own page at `http://pool-controller.local/` (or
+the device's IP), via ESPHome's
+[`web_server`](https://esphome.io/components/web_server.html) component —
+no Home Assistant involved. Log in as `admin` with
+`pool_controller_web_password` from `secrets.yaml` (digest auth).
+
+It's laid out in the same sections as the HA entities card above:
+
+| Section | What's in it |
+|---|---|
+| **Pump** | Pump fan, Manual Override, Manual Override Timeout / Ends At, Commanded vs. Planned Speed, Manual Override Active |
+| **Today's Plan** | Planned vs. actual filtration hours, Block 1/2 Start/End, Next Speed Change / Next Planned Speed, Next Boost Start/End, Last Recomputed At, Schedule Not Computed, Recompute Schedule Now |
+| **Filtration Settings** | The four staged tunables + Filtration Config Pending + Apply Filtration Config, then the three live boost tunables |
+| **Sensors** | The three temperatures, Update Temperature Sensors Now, Status, fill-water flow and total volume |
+
+Each entity's section and position come from its own
+`web_server: {sorting_group_id: ..., sorting_weight: ...}` line in
+`pool-controller.yaml`; the sections themselves are the `sorting_groups:`
+under `web_server:`. A new entity with no such
+line still shows up, just outside the four sections.
+
+What to know:
+
+- **Same entities, same rules.** The page drives exactly the entities HA
+  does. A Manual Override picked here goes through the select like any
+  other, so freeze protection still wins, the override timeout still ends
+  it, and the relays still go through `apply_speed`'s break-before-make
+  sequencing. The four schedule-shaping numbers are still staged until
+  Apply Filtration Config. The relays themselves are `internal: true` and
+  never appear on the page.
+- **Live values only, no history.** The device has no recorder, so the
+  plan-vs-actual graph stays an HA thing; the page shows the current state
+  and updates it live.
+- **Works offline.** `local: true` bundles the page's JS/CSS into the
+  firmware (about 140 KB of flash) instead of fetching them from a CDN.
+- **LAN only.** Digest auth keeps the password off the wire, but the page is
+  plain HTTP — fine on a trusted home network, not something to expose to
+  the internet. There's no firmware upload from the page; OTA stays on
+  `make ota` / HA's ESPHome integration.
+- It also exposes ESPHome's REST API and `/events` stream on the same port,
+  behind the same login, if you ever want to script against the device
+  without HA.
 
 ## Changing the freeze-protection threshold
 
