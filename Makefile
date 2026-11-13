@@ -14,7 +14,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build flash status kill-port ota ip logs clean
+.PHONY: validate build flash status kill-port ota ip logs mock-ui mock-ui-check clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate:
@@ -73,6 +73,25 @@ ip:
 logs:
 	@test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
 	docker run --rm -it -v "$(CURDIR):/config" ghcr.io/esphome/esphome logs $(CONFIG) --device $(HOST) --states
+
+# Local mock of the device's web UI (tools/webui-mock/), for iterating on the
+# page without a build or a flash: http://localhost:$(MOCK_PORT)/. Serves the
+# exact page this ESPHome image embeds, with entities and sorting groups read
+# from $(CONFIG) and a small simulation behind them; saving $(CONFIG) reloads
+# the page. Pass MOCK_INDEX=path/to/page.html to serve your own page instead.
+# MOCK_TZ is the host's IANA zone, so the simulated schedule runs on your
+# wall clock rather than the container's UTC.
+MOCK_PORT ?= 8080
+MOCK_TZ ?= $(shell readlink /etc/localtime 2>/dev/null | sed -E 's|.*/zoneinfo/||')
+MOCK := docker run --rm -v "$(CURDIR):/config" -e TZ=$(MOCK_TZ) --entrypoint python3 ghcr.io/esphome/esphome /config/tools/webui-mock/mock_server.py
+
+mock-ui:
+	$(subst docker run --rm,docker run --rm -it -p $(MOCK_PORT):8080,$(MOCK)) $(if $(MOCK_INDEX),--index /config/$(MOCK_INDEX)) /config/$(CONFIG)
+
+# Prints the page layout (sections, order, which entities the simulation
+# drives) and fails if $(CONFIG) has an entity type the mock can't render.
+mock-ui-check:
+	$(MOCK) --check /config/$(CONFIG)
 
 clean:
 	rm -rf .esphome

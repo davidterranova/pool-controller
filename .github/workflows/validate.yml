@@ -31,3 +31,9 @@ jobs:
 
       - name: make validate
         run: make validate
+
+      # Prints the web UI layout and fails if pool-controller.yaml gains an
+      # entity type the local mock (tools/webui-mock/) can't render, so the
+      # mock can't silently fall behind the firmware.
+      - name: make mock-ui-check
+        run: make mock-ui-check
