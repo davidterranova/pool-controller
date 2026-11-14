@@ -1,7 +1,7 @@
 /*
  * The controller's own page: « Contrôle » runs Home Assistant's piscine-card (unchanged, fed by
  * esphome-hass.js) next to HA-style tiles; « Avancé » has the settings, today's plan, the device's
- * sensors and its live log; « Wi-Fi » (proposed, wifi-setup.yaml) its connection, statistics and a way to
+ * sensors and its live log; « Wi-Fi » (wifi-setup.yaml) its connection, statistics and a way to
  * join a network. No charts: the device keeps no history of its sensors, only what it records
  * itself (today's water min/max, and each of the last 7 days). Everything talks to the ESP32 only,
  * so it keeps working while Home Assistant is down.
@@ -328,7 +328,7 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
   });
 }
 
-/* ---- Wi-Fi and clock (proposed: wifi-setup.yaml) */
+/* ---- Wi-Fi and clock (wifi-setup.yaml) */
 const AP_SSID = "pool-controller";
 const CLOCK_SOURCE = {
   SNTP: "Synchronisée par internet",

@@ -1,21 +1,13 @@
-# Proposed: Wi-Fi setup and statistics for the device's own page.
-#
-# NOT part of the firmware yet. pool-controller.yaml doesn't include it; the
-# local mock loads it next to pool-controller.yaml (`make mock-webui`) so the
-# page can be designed against these entities first. To adopt it, add to
-# pool-controller.yaml:
-#
-#   packages:
-#     wifi_setup: !include wifi-setup.yaml
-#
-# and drop `reboot_timeout: 15min` from its wifi: block (see the interval
-# below for why).
+# Wi-Fi setup and statistics for the device's own page. Included by
+# pool-controller.yaml (packages: wifi_setup), which therefore has no
+# `reboot_timeout` of its own (see the interval at the bottom).
 #
 # What it adds:
 #   - a fallback hotspot, "pool-controller", started after 1 min without a
 #     Wi-Fi connection: a new device with no network, a router outage, a
 #     changed password. The device's page (web_server, still behind its
-#     login) answers on it at http://192.168.4.1.
+#     login) answers on it at http://192.168.4.1. The device keeps trying
+#     its network meanwhile.
 #     Deliberately NOT ESPHome's captive_portal: while the hotspot is up it
 #     answers every GET request itself, without auth, so the page would be
 #     unreachable on the hotspot.

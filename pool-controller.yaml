@@ -43,9 +43,14 @@ substitutions:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-  # Reboot and retry if Wi-Fi has been down this long -- recovers from a
-  # stuck radio without needing anyone to notice.
-  reboot_timeout: 15min
+  # No reboot_timeout: ESPHome turns it off once a hotspot is configured
+  # (wifi-setup.yaml, below), so that package brings its own -- reboot after
+  # 15 min without Wi-Fi, unless someone is on the hotspot.
+
+# The fallback hotspot, joining a network from the device's page, Wi-Fi
+# statistics and setting the clock from the browser: see wifi-setup.yaml.
+packages:
+  wifi_setup: !include wifi-setup.yaml
 
 logger:
   level: INFO
