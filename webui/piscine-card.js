@@ -1,0 +1,1 @@
+../home-assistant/piscine-card.js

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="data:,">
+  <title>Piscine</title>
+  <link rel="stylesheet" href="app.css">
+  <!-- The Home Assistant card (home-assistant/piscine-card.js, linked here), unchanged; app.js feeds it
+       a hass object built from /events. -->
+  <script src="piscine-card.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="title">
+      <h1>Piscine</h1>
+      <p id="subtitle" class="num">–</p>
+    </div>
+    <span class="chip" id="conn">Connexion…</span>
+  </header>
+  <nav class="tabs" role="tablist">
+    <a role="tab" href="#controle" data-tab="controle" data-icon="pump">Contrôle</a>
+    <a role="tab" href="#avance" data-tab="avance" data-icon="tune-vertical">Avancé</a>
+    <!-- Proposed (wifi-setup.yaml): app.js hides this tab on a firmware without those entities. -->
+    <a role="tab" href="#wifi" data-tab="wifi" data-icon="wifi" hidden>Wi-Fi</a>
+  </nav>
+
+  <main>
+    <div class="alerts" id="alerts"></div>
+    <!-- ============================================================ Contrôle -->
+    <section id="tab-controle" class="cols control" role="tabpanel">
+      <div class="stack">
+        <h2 class="heading" data-icon="pump">Filtration</h2>
+        <div class="card panel-host" id="cardHost"></div>
+      </div>
+      <div class="stack">
+        <h2 class="heading" data-icon="thermometer-water">Températures</h2>
+        <div class="tiles" id="tilesTemps"></div>
+        <h2 class="heading sub" data-icon="water">Eau</h2>
+        <div class="tiles" id="tilesWater"></div>
+      </div>
+    </section>
+
+    <!-- ============================================================ Avancé -->
+    <section id="tab-avance" class="cols advanced" role="tabpanel" hidden>
+      <!-- Two independent columns from 1000px, so a tall card on one side leaves no gap on the other.
+           Below that the columns dissolve and o1..o5 keep the reading order. -->
+      <div class="stack">
+        <div class="card o1">
+          <h2 data-icon="tune-vertical">Réglages <span class="chip warn" id="pendingChip" hidden>En attente</span></h2>
+          <div class="body">
+            <div class="banner" id="pendingBanner" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13,14H11V9H13M13,18H11V16H13M1,21H23L12,2L1,21Z"/></svg>
+              <span>Durée de filtration modifiée : elle ne compte qu'une fois appliquée, ce qui recalcule le plan du jour.</span>
+              <button class="btn fill" id="applyNow">Appliquer</button>
+            </div>
+            <div class="rows" id="settingsRows"></div>
+          </div>
+        </div>
+        <div class="card o4">
+          <h2 data-icon="chip">Capteurs internes</h2>
+          <div class="body"><div class="rows" id="deviceRows"></div></div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card o2">
+          <h2 data-icon="calendar-clock">Plan du jour</h2>
+          <div class="body"><div class="rows" id="planRows"></div></div>
+        </div>
+        <div class="card o3">
+          <h2 data-icon="calendar-check">7 derniers jours</h2>
+          <div class="body"><div class="days" id="days"></div></div>
+        </div>
+        <div class="card o5">
+          <h2 data-icon="console">Journal <span class="chip" id="logCount">0 ligne</span></h2>
+          <div class="logbar">
+            <div class="seg" id="logSeg" role="radiogroup" aria-label="Niveau">
+              <button role="radio" data-f="all" aria-checked="true">Tout</button>
+              <button role="radio" data-f="warn" aria-checked="false">Avertissements</button>
+              <button role="radio" data-f="error" aria-checked="false">Erreurs</button>
+            </div>
+            <span class="grow"></span>
+            <button class="btn" id="logPause" title="Pause" aria-label="Pause" data-icon="pause"></button>
+            <button class="btn" id="logClear" title="Vider" aria-label="Vider" data-icon="delete-outline"></button>
+          </div>
+          <div class="log" id="log" role="log" aria-live="off"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ Wi-Fi (proposed: wifi-setup.yaml) -->
+    <section id="tab-wifi" class="cols wifi" role="tabpanel" hidden>
+      <div class="card">
+        <h2 data-icon="wifi">Connexion <span class="chip" id="wifiChip"></span></h2>
+        <div class="body">
+          <div class="wifi-hero" id="wifiHero"></div>
+          <div class="rows" id="wifiRows"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 data-icon="wifi-arrow-right">Rejoindre un réseau</h2>
+        <div class="body">
+          <div class="nets" id="nets"></div>
+          <form class="join" id="joinForm" autocomplete="off">
+            <label>Réseau <input id="joinSsid" maxlength="32" required autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+            <label>Mot de passe
+              <span class="pw"><input id="joinPw" type="password" maxlength="64" autocomplete="new-password">
+                <button type="button" class="btn" id="pwShow" title="Afficher" aria-label="Afficher le mot de passe" data-icon="eye"></button></span>
+            </label>
+            <p class="hint" id="joinHint"></p>
+            <button class="btn fill" id="joinBtn">Se connecter</button>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+  <div class="toast" id="toast" role="status"></div>
+</body>
+</html>
