@@ -549,21 +549,20 @@ the device's IP), via ESPHome's
 no Home Assistant involved. Log in as `admin` with
 `pool_controller_web_password` from `secrets.yaml` (digest auth).
 
-It's laid out in the same sections as the HA entities card above:
+The page is our own, not ESPHome's stock one: it has the look of the Home
+Assistant dashboard and runs HA's pool card unchanged (see the README, "The
+device's page"). Three tabs:
 
-| Section | What's in it |
+| Tab | What's in it |
 |---|---|
-| **Pump** | Pump fan, Manual Override, Manual Override Timeout / Ends At, Commanded vs. Planned Speed, Manual Override Active |
-| **Today's Plan** | Planned vs. actual filtration hours, Daily History (last 7 days), Block 1/2 Start/End, Next Speed Change / Next Planned Speed, Next Boost Start/End, Last Recomputed At, Schedule Not Computed, Recompute Schedule Now |
-| **Filtration Settings** | The four staged tunables + Filtration Config Pending + Apply Filtration Config, then the three live boost tunables |
-| **Sensors** | The three temperatures and today's water min/max, Update Temperature Sensors Now, Status, fill-water flow and total volume |
+| **Contrôle** | The pool card's panel (pump state, today's plan timeline, Auto/Manuel, forced speed and duration), the temperatures with today's pool min/max, the fill-water meter |
+| **Avancé** | Filtration settings with their Apply gate, today's plan in detail, the last 7 days (Daily History), the device's sensors, its live log |
+| **Wi-Fi** | The connection and its statistics, joining another network, the device's clock (see "Wi-Fi and the fallback hotspot" below) |
 
-Each entity's section and position come from its own
-`web_server: {sorting_group_id: ..., sorting_weight: ...}` line in
-`pool-controller.yaml`; the sections themselves are the `sorting_groups:`
-under `web_server:`. A new entity with no such
-line still shows up, just outside the four sections. To try a layout change
-without flashing, use `make mock-ui` (see the README).
+The `sorting_groups:` under `web_server:` (Pump, Today's Plan, Filtration
+Settings, Sensors, Wi-Fi) and each entity's `web_server: {sorting_group_id,
+sorting_weight}` still travel with every entity; they lay out ESPHome's
+stock page if you go back to it, and `make mock-ui-check` prints them.
 
 What to know:
 
@@ -577,8 +576,9 @@ What to know:
 - **Live values only, no history.** The device has no recorder, so the
   plan-vs-actual graph stays an HA thing; the page shows the current state
   and updates it live.
-- **Works offline.** `local: true` bundles the page's JS/CSS into the
-  firmware (about 140 KB of flash) instead of fetching them from a CDN.
+- **Works offline.** The page is built into the firmware (`make webui`,
+  about 35 KB) and fetches nothing from the internet, so it works on the
+  fallback hotspot too.
 - **LAN only.** Digest auth keeps the password off the wire, but the page is
   plain HTTP — fine on a trusted home network, not something to expose to
   the internet. There's no firmware upload from the page; OTA stays on
@@ -586,6 +586,31 @@ What to know:
 - It also exposes ESPHome's REST API and `/events` stream on the same port,
   behind the same login, if you ever want to script against the device
   without HA.
+
+### Wi-Fi and the fallback hotspot
+
+From [wifi-setup.yaml](wifi-setup.yaml), a package of the firmware:
+
+- **Fallback hotspot.** After 1 minute without a Wi-Fi connection (new
+  install, router down, changed password), the device opens an **open**
+  network named `pool-controller` and keeps trying its own network
+  meanwhile. Its page answers at http://192.168.4.1, behind the same login.
+  Anyone in range can join the hotspot itself; the page, the API and OTA
+  each still need their own password. A WPA2 password for the hotspot is
+  one commented line in the package.
+- **Joining a network from the page** (Wi-Fi tab): the device tries the new
+  network for 30 s and saves it only if it connects, otherwise it stays on
+  the current one. A saved network takes precedence over the one in
+  `secrets.yaml`. The password is never sent back to a page or to HA.
+- **Clock without internet.** On the hotspot alone there's no SNTP, so no
+  daily plan (freeze protection still runs). The page sets the device's
+  clock to the browser's time when it has none, and says so; `Clock
+  Source` tells which it is (`SNTP`, `Browser` or `None`).
+- **Reboot watchdog.** ESPHome turns `wifi: reboot_timeout` off once a
+  hotspot is configured, so the package brings its own: reboot after
+  15 min without Wi-Fi, unless someone is connected to the hotspot.
+- Diagnostic entities, in HA too: WiFi Mode, Signal, SSID, BSSID, IP and
+  MAC Address, Networks Nearby, Disconnects, Hotspot Clients, Clock Source.
 
 ## Changing the freeze-protection threshold
 

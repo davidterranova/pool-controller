@@ -16,13 +16,13 @@ repo itself — layout and tooling.
 | File | Purpose |
 |---|---|
 | `pool-controller.yaml` | The ESPHome device config — this *is* the firmware source. |
-| `wifi-setup.yaml` | Proposed package: fallback hotspot, joining a network from the page, Wi-Fi statistics, clock from the browser. Not included in the firmware yet (see below). |
+| `wifi-setup.yaml` | Package included by `pool-controller.yaml`: fallback hotspot, joining a network from the page, Wi-Fi statistics, clock from the browser (see below). |
 | `secrets.yaml` | Wi-Fi credentials, API encryption key, OTA password. Gitignored — create your own (see below). |
 | `Makefile` | Validate / build / flash / OTA / status tooling. |
 | `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS). |
 | `hacs.json` | Tells the Marketplace (HACS) which file this repo publishes: the card above, from each GitHub release. |
 | `tools/webui-mock/` | Local mock of the device's web UI, for working on the page without flashing (see below). |
-| `webui/` | Prototype of a custom page for the device, built around the same `piscine-card` (see below). Not on the device yet. |
+| `webui/` | The device's own web page, built around the same `piscine-card` (see below). `make webui` bundles it into `webui/dist/` (gitignored), which the firmware embeds. |
 | `.gitignore` | Excludes `secrets.yaml`, `.esphome/` (build cache), `.vscode/`. |
 | `LICENSE` | MIT. |
 
@@ -78,13 +78,14 @@ repo itself — layout and tooling.
 |---|---|
 | `make validate` | Parse + schema-check `pool-controller.yaml`, no compile. |
 | `make build` | Compile the firmware (also catches errors inside C++ lambdas, which `validate` can't). |
+| `make webui` | Bundle the page in `webui/` into the two files the firmware embeds (`webui/dist/`). Run by `validate`, `build` (so `ota` and `flash`) and `mock-ui` whenever a page source changed. |
 | `make flash` | Rebuild, then flash over USB via esptool. Auto-detects the serial port; override with `PORT=/dev/cu.xxxx`. |
 | `make status` | Query the connected board over USB: chip type, revision, MAC address. |
 | `make kill-port` | Kill whatever process (a leftover `screen`/monitor session, usually) is holding the serial port open. |
 | `make ota` | Rebuild, then push the firmware over Wi-Fi instead of USB. Only works once the device has already joined Wi-Fi at least once. |
 | `make ip` | Resolve and print the device's current IP via mDNS. |
 | `make mock-ui` | Serve a local mock of the device's web UI at http://localhost:8080/ (see below). `MOCK_PORT=` to change the port, `MOCK_INDEX=path.html` to serve your own page. |
-| `make mock-webui` | `make mock-ui` with the custom page in `webui/` and the proposed Wi-Fi package (see below). `MOCK_HOTSPOT=1` starts the simulated device on its hotspot, with no clock. |
+| `make mock-webui` | `make mock-ui` serving the page from its sources in `webui/`, reloading on save (see below). `MOCK_HOTSPOT=1` starts the simulated device on its hotspot, with no clock. |
 | `make mock-ui-check` | Print the web UI layout (sections and order) and fail on any entity type the mock can't render. Runs in CI. |
 | `make clean` | Remove the local build cache (`.esphome/`). |
 
@@ -96,8 +97,10 @@ on the command line, e.g. `make flash PORT=/dev/cu.usbserial-XXXX` or
 
 `make mock-ui` runs [tools/webui-mock/mock_server.py](tools/webui-mock/mock_server.py)
 in the same ESPHome image as `make build` and serves the device's web UI at
-<http://localhost:8080/>. The UI is the page your firmware build embeds, decoded
-from the image, so it always matches the ESPHome version you build with.
+<http://localhost:8080/>. The UI is the page your firmware build serves: the
+index.html ESPHome builds from the `web_server` block, and the bundle from
+`make webui` behind it (or ESPHome's stock page, decoded from the image, if
+you set `local: true` back).
 
 - **The layout comes from the YAML.** Entities, names, icons, number ranges and
   the `web_server` sorting groups are read from `pool-controller.yaml`. Save
@@ -185,10 +188,10 @@ checkout, not released.
 The card's history up to 1.2.0 is in the local-k3s repo's git log, where it
 was first written (`bridges/homeassistant/config/www/piscine/`).
 
-## Custom page prototype (`webui/`)
+## The device's page (`webui/`)
 
-`make mock-webui` serves a page of our own instead of ESPHome's stock one,
-with the look of the Home Assistant dashboard. It has three tabs:
+The device serves a page of our own instead of ESPHome's stock one, with the
+look of the Home Assistant dashboard. It has three tabs:
 
 - **Contrôle**, for daily use: Home Assistant's `piscine-card` panel (the
   pump's state, today's plan timeline, Auto/Manuel, forced speed and its
@@ -197,8 +200,8 @@ with the look of the Home Assistant dashboard. It has three tabs:
 - **Avancé**: the filtration settings with their Apply gate, today's plan in
   detail, the last 7 days (hours filtered, pool min/max), the device's
   sensors, and its live log.
-- **Wi-Fi** (proposed, see below): the connection and its statistics, and a
-  way to join a network. Only shown when the device has those entities.
+- **Wi-Fi** (see below): the connection and its statistics, and a way to
+  join a network. Only shown when the device has those entities.
 
 How it fits together:
 
@@ -220,22 +223,47 @@ How it fits together:
   and the pool's min/max (Daily History). The page only keeps the Manual
   Override's changes in memory from the moment it opens (gone on reload),
   for the card's record of today's overrides.
-- **No framework, no build step for the prototype.** Icons are path data
-  from `@mdi/js` (the set HA uses), in [icons.js](webui/icons.js). The
-  whole page is about 30 KB gzipped once minified, against 78 KB for the
-  stock page the firmware embeds today.
+- **No framework.** Icons are path data from `@mdi/js` (the set HA uses),
+  in [icons.js](webui/icons.js).
 - **What's missing on the device:** sunrise/sunset (the card's timeline has
   no sun marks), and when an override started if this page didn't see it
   happen. The card's "since" is then estimated from the override's deadline.
 
-Putting the page on the device (bundling it into a `web_server` `js_include`)
-is a separate step, not done yet.
+### How it gets on the device
 
-### Proposed: Wi-Fi setup and statistics (`wifi-setup.yaml`)
+ESPHome's `web_server` builds a tiny index.html that only loads `/0.css` and
+`/0.js`, which it embeds from `css_include` and `js_include` in
+`pool-controller.yaml` (with `local` off and `js_url` empty, so the stock
+page is neither embedded nor fetched). `make webui` bundles the page into
+those two files with esbuild, in a `node` container:
 
-Not in the firmware yet. [wifi-setup.yaml](wifi-setup.yaml) is an ESPHome
-package (it builds when included; it isn't), and `make mock-webui` loads it
-next to `pool-controller.yaml` so the page can be designed against it:
+- `webui/dist/device.js` from [device.js](webui/device.js): the markup of
+  [index.html](webui/index.html) (inlined, and rebuilt into ESPHome's page
+  by [device-shell.js](webui/device-shell.js)), then the card, then the app.
+  So `index.html` stays the one source for both the mock and the device.
+- `webui/dist/device.css`: `app.css`, minified.
+
+About 35 KB gzipped together, against 78 KB for the stock page it replaces.
+`make build`, `make ota` and `make flash` rebuild it first when a page source
+changed, so a change to the page ships with the next `make ota`.
+
+Two ways to check it before flashing:
+
+- `make mock-webui` serves the source files, and reloads on save: the way to
+  work on the page.
+- `make mock-ui` serves exactly what the firmware will: ESPHome's index and
+  the bundle.
+
+The stock page had a firmware upload form and listed every entity; this one
+doesn't upload firmware (use `make ota`). To get the stock page back, set
+`local: true` in the `web_server` block and drop `js_url`, `css_include` and
+`js_include`.
+
+### Wi-Fi setup and statistics (`wifi-setup.yaml`)
+
+[wifi-setup.yaml](wifi-setup.yaml) is an ESPHome package that
+`pool-controller.yaml` includes (`packages:`), and the mock reads it the
+same way:
 
 - **Fallback hotspot.** After 1 minute without Wi-Fi (no network yet, router
   down, password changed), the device opens an open network named
@@ -246,7 +274,8 @@ next to `pool-controller.yaml` so the page can be designed against it:
   nearby or type it, give the password, « Se connecter ». The device tries
   for 30 s and saves the network only if it connects; otherwise it keeps the
   current one. The password is held on the device and never sent back to a
-  page or to HA.
+  page or to HA. A network saved this way takes precedence over the one in
+  `secrets.yaml`, until it's replaced the same way.
 - **Wi-Fi statistics:** signal (dBm and %), network, router (BSSID), IP and
   MAC addresses, disconnections since boot, devices on the hotspot.
 - **Clock.** On the hotspot alone there's no internet, so no time, so no
@@ -259,8 +288,7 @@ next to `pool-controller.yaml` so the page can be designed against it:
 In the mock, joining `Maison` or `Maison-Invités` works with any password
 of 8 characters or more; the other networks fail, as with a wrong password.
 `MOCK_HOTSPOT=1 make mock-webui` starts on the hotspot with no clock, as a
-new install would. The page's Wi-Fi tab and banners only appear when the
-device has these entities.
+new install would.
 
 ## Updating firmware after the first flash
 
