@@ -63,6 +63,49 @@ ota:
   platform: esphome
   password: !secret pool_controller_ota_password
 
+# A local web UI at http://pool-controller.local/ -- the same controls and
+# readings as the Home Assistant entities card, served by the device itself,
+# so the pump can still be inspected and driven while HA (or the link to it)
+# is down. Same reasoning as reboot_timeout: 0s on the api: block above: HA
+# is a convenience on top of this device, not a dependency of it.
+# It drives the exact same entities HA does (a Manual Override picked here
+# goes through the select's on_value like any other), so freeze protection,
+# the override timeout and the break-before-make relay sequencing all apply
+# unchanged; the relays themselves stay internal: and never appear here.
+# - local: true bundles the page's JS/CSS into flash, so it loads with no
+#   internet access (the default fetches it from a CDN on every page load).
+# - auth: is required, not optional -- without it anyone on the LAN could
+#   park the pump. Digest rather than basic, so the password never crosses
+#   the network in reversible form -- but it is still plain HTTP, which keeps
+#   out casual access on a trusted home network; it is not meant for
+#   internet exposure.
+# - No firmware upload from the page: that would take an
+#   `ota: - platform: web_server` entry, deliberately not added, so OTA
+#   stays on the password-protected esphome platform above.
+# Sections mirror the HA entities card in POOL-CONTROLLER.md; each entity
+# below opts into one with `web_server: {sorting_group_id: ...}`.
+web_server:
+  port: 80
+  version: 3
+  local: true
+  auth:
+    type: digest
+    username: admin
+    password: !secret pool_controller_web_password
+  sorting_groups:
+    - id: grp_pump
+      name: "Pump"
+      sorting_weight: 10
+    - id: grp_plan
+      name: "Today's Plan"
+      sorting_weight: 20
+    - id: grp_config
+      name: "Filtration Settings"
+      sorting_weight: 30
+    - id: grp_sensors
+      name: "Sensors"
+      sorting_weight: 40
+
 # Every `restore_value: true` global below is persisted on this cadence
 # rather than ESPHome's 60s default, because of one of them: the filtration
 # runtime accumulator (see globals:) advances on every accrual while the
@@ -102,16 +145,19 @@ sensor:
   - platform: dallas_temp
     id: pool_return_temp
     name: "Pool Return Temperature"
+    web_server: {sorting_group_id: grp_sensors, sorting_weight: 10}
     address: 0x52000000518FE928   # current bench-test sensor; was 0x1c3c01d075640128 before the swap
     filters:
       - median: {window_size: 5, send_every: 5}
   - platform: dallas_temp
     id: pad_ambient_temp
     name: "Equipment Pad Temperature"
+    web_server: {sorting_group_id: grp_sensors, sorting_weight: 20}
     address: 0xFF00000026007028   # was 0x3c2c01d0756a0328 before the sensor swap
   - platform: dallas_temp
     id: outdoor_temp
     name: "Outdoor Temperature"
+    web_server: {sorting_group_id: grp_sensors, sorting_weight: 30}
     address: 0xFC00000051AD2428
   # AJN15TI water meter fill-in, reed switch dry contact -- passive, no
   # power needed. K = 1 pulse/liter, so pulse_meter's native pulses/minute
@@ -124,6 +170,7 @@ sensor:
         pullup: true
     unit_of_measurement: 'L/min'
     name: "Piscine - Débit remplissage"
+    web_server: {sorting_group_id: grp_sensors, sorting_weight: 60}
     id: piscine_debit
     icon: mdi:water-pump
     accuracy_decimals: 2
@@ -134,6 +181,7 @@ sensor:
 
     total:
       name: "Piscine - Volume total remplissage"
+      web_server: {sorting_group_id: grp_sensors, sorting_weight: 70}
       id: piscine_volume_total
       unit_of_measurement: 'L'
       device_class: water
@@ -148,6 +196,7 @@ sensor:
   # (Block 2 is zero-width in that case).
   - platform: template
     name: "Planned Filtration Hours"
+    web_server: {sorting_group_id: grp_plan, sorting_weight: 10}
     id: planned_filtration_hours
     icon: mdi:timer-sand
     unit_of_measurement: "h"
@@ -167,6 +216,7 @@ sensor:
   # those charts with nothing to plot.
   - platform: template
     name: "Filtration Hours Today"
+    web_server: {sorting_group_id: grp_plan, sorting_weight: 20}
     id: filtration_hours_today
     icon: mdi:timer-check
     unit_of_measurement: "h"
@@ -183,6 +233,7 @@ sensor:
 text_sensor:
   - platform: template
     name: "Pump Commanded Speed"
+    web_server: {sorting_group_id: grp_pump, sorting_weight: 50}
     id: pump_status
     icon: mdi:pump
     update_interval: 10s
@@ -193,12 +244,14 @@ text_sensor:
   # a manual override, or a boost pulse currently being overridden).
   - platform: template
     name: "Pump Planned Speed"
+    web_server: {sorting_group_id: grp_pump, sorting_weight: 60}
     id: pump_planned_speed
     icon: mdi:calendar-clock
     update_interval: 10s
     lambda: 'return id(sched_speed_now);'
   - platform: template
     name: "Schedule Block 1 Start"
+    web_server: {sorting_group_id: grp_plan, sorting_weight: 30}
     id: block1_start_display
     icon: mdi:clock-start
     update_interval: 60s
@@ -207,6 +260,7 @@ text_sensor:
       return ESPTime::from_epoch_local(id(sched_block1_start)).strftime("%H:%M");
   - platform: template
     name: "Schedule Block 1 End"
+    web_server: {sorting_group_id: grp_plan, sorting_weight: 40}
     id: block1_end_display
     icon: mdi:clock-end
     update_interval: 60s
@@ -218,6 +272,7 @@ text_sensor:
   # zero-width, always-off no-op in that case, not a bug.
   - platform: template
     name: "Schedule Block 2 Start"
+    web_server: {sorting_group_id: grp_plan, sorting_weight: 50}
     id: block2_start_display
     icon: mdi:clock-start
     update_interval: 60s
@@ -226,6 +281,7 @@ text_sensor:
       return ESPTime::from_epoch_local(id(sched_block2_start)).strftime("%H:%M");
   - platform: template
     name: "Schedule Block 2 End"
+    web_server: {sorting_group_id: grp_plan, sorting_weight: 60}
     id: block2_end_display
     icon: mdi:clock-end
     update_interval: 60s
@@ -238,6 +294,7 @@ text_sensor:
   # remain in today's plan.
   - platform: template
     name: "Next Boost Start"
+    web_server: {sorting_group_id: grp_plan, sorting_weight: 90}
     id: next_boost_start_display
     icon: mdi:clock-fast
     update_interval: 30s
@@ -246,6 +303,7 @@ text_sensor:
       return ESPTime::from_epoch_local(id(sched_next_boost_start)).strftime("%H:%M");
   - platform: template
     name: "Next Boost End"
+    web_server: {sorting_group_id: grp_plan, sorting_weight: 100}
     id: next_boost_end_display
     icon: mdi:clock-fast
     update_interval: 30s
@@ -257,6 +315,7 @@ text_sensor:
   # evaluate_speed). "--:--" once nothing more is scheduled today.
   - platform: template
     name: "Next Speed Change"
+    web_server: {sorting_group_id: grp_plan, sorting_weight: 70}
     id: next_change_display
     icon: mdi:clock-alert-outline
     update_interval: 30s
@@ -269,6 +328,7 @@ text_sensor:
   # nothing more is scheduled today, same gating as Next Speed Change itself.
   - platform: template
     name: "Next Planned Speed"
+    web_server: {sorting_group_id: grp_plan, sorting_weight: 80}
     id: next_planned_speed_display
     icon: mdi:speedometer
     update_interval: 30s
@@ -281,6 +341,7 @@ text_sensor:
   # be stale from a previous day if the sunrise/sunset lookup keeps failing.
   - platform: template
     name: "Last Recomputed At"
+    web_server: {sorting_group_id: grp_plan, sorting_weight: 110}
     id: last_recompute_display
     icon: mdi:history
     update_interval: 30s
@@ -298,6 +359,7 @@ text_sensor:
   # dashboard shows the new deadline right away, not up to 30s later.
   - platform: template
     name: "Manual Override Ends At"
+    web_server: {sorting_group_id: grp_pump, sorting_weight: 40}
     id: override_ends_display
     icon: mdi:timer-sand-complete
     update_interval: 30s
@@ -325,6 +387,7 @@ text_sensor:
 number:
   - platform: template
     name: "Min Filtration Hours"
+    web_server: {sorting_group_id: grp_config, sorting_weight: 10}
     id: min_filtration_hours
     icon: mdi:timer-sand
     min_value: 0
@@ -335,6 +398,7 @@ number:
     optimistic: true
   - platform: template
     name: "Max Filtration Hours"
+    web_server: {sorting_group_id: grp_config, sorting_weight: 20}
     id: max_filtration_hours
     icon: mdi:timer-sand
     min_value: 0
@@ -345,6 +409,7 @@ number:
     optimistic: true
   - platform: template
     name: "Warmest Part of Day Offset"
+    web_server: {sorting_group_id: grp_config, sorting_weight: 30}
     id: warmest_offset_hours
     icon: mdi:sun-clock
     min_value: 0
@@ -360,6 +425,7 @@ number:
   # than absorbed by it.
   - platform: template
     name: "Filtration Hour Offset"
+    web_server: {sorting_group_id: grp_config, sorting_weight: 40}
     id: filtration_hour_offset
     icon: mdi:timer-plus
     min_value: 0
@@ -376,6 +442,7 @@ number:
   # live tweaks.
   - platform: template
     name: "Boost Pulse Duration"
+    web_server: {sorting_group_id: grp_config, sorting_weight: 70}
     id: boost_duration_minutes
     icon: mdi:flash
     min_value: 0
@@ -388,6 +455,7 @@ number:
       - script.execute: evaluate_speed
   - platform: template
     name: "Boost Pulse Interval"
+    web_server: {sorting_group_id: grp_config, sorting_weight: 80}
     id: boost_interval_minutes
     icon: mdi:flash-outline
     min_value: 5
@@ -405,6 +473,7 @@ number:
   # the old "always High" behavior.
   - platform: template
     name: "High Boost Frequency"
+    web_server: {sorting_group_id: grp_config, sorting_weight: 90}
     id: boost_high_every_n
     icon: mdi:flash-triangle
     min_value: 1
@@ -438,6 +507,7 @@ number:
   # has even settled on its own Auto default.
   - platform: template
     name: "Manual Override Timeout"
+    web_server: {sorting_group_id: grp_pump, sorting_weight: 30}
     id: manual_override_timeout_minutes
     icon: mdi:timer-outline
     unit_of_measurement: min
@@ -457,6 +527,7 @@ number:
 select:
   - platform: template
     name: "Manual Override"
+    web_server: {sorting_group_id: grp_pump, sorting_weight: 20}
     id: manual_override
     options: ["Auto", "Off", "Low", "Medium", "High"]
     initial_option: "Auto"
@@ -494,6 +565,7 @@ button:
   # plan.
   - platform: template
     name: "Apply Filtration Config"
+    web_server: {sorting_group_id: grp_config, sorting_weight: 60}
     icon: mdi:check-bold
     on_press:
       - lambda: |-
@@ -505,6 +577,7 @@ button:
       - script.execute: evaluate_speed
   - platform: template
     name: "Recompute Schedule Now"
+    web_server: {sorting_group_id: grp_plan, sorting_weight: 130}
     icon: mdi:refresh
     # Re-derives today's plan from whatever pool_return_temp reads right now
     # and the currently-*active* schedule tunables -- NOT the staged number
@@ -516,6 +589,7 @@ button:
       - script.execute: evaluate_speed
   - platform: template
     name: "Update Temperature Sensors Now"
+    web_server: {sorting_group_id: grp_sensors, sorting_weight: 40}
     icon: mdi:thermometer-refresh
     # Forces an immediate DS18B20 conversion/read on all three sensors
     # instead of waiting for their own poll interval -- component.update
@@ -727,6 +801,7 @@ binary_sensor:
   # Status" here would risk HA generating a doubled-up entity ID.
   - platform: status
     name: "Status"
+    web_server: {sorting_group_id: grp_sensors, sorting_weight: 50}
     device_class: connectivity
   # True whenever any of the four staged schedule-shaping numbers (see
   # number: above) differs from the active_* global evaluate_speed is
@@ -737,6 +812,7 @@ binary_sensor:
   # alone -- only from a real, unapplied edit.
   - platform: template
     name: "Filtration Config Pending"
+    web_server: {sorting_group_id: grp_config, sorting_weight: 50}
     icon: mdi:progress-alert
     device_class: problem
     lambda: |-
@@ -755,6 +831,7 @@ binary_sensor:
   # it renders as an alert on typical dashboards.
   - platform: template
     name: "Schedule Not Computed"
+    web_server: {sorting_group_id: grp_plan, sorting_weight: 120}
     icon: mdi:calendar-alert
     device_class: problem
     lambda: |-
@@ -783,6 +860,7 @@ binary_sensor:
   # device_class: problem so it renders as an alert on typical dashboards.
   - platform: template
     name: "Manual Override Active"
+    web_server: {sorting_group_id: grp_pump, sorting_weight: 70}
     icon: mdi:hand-back-right
     device_class: problem
     lambda: |-
@@ -799,6 +877,7 @@ binary_sensor:
 fan:
   - platform: template
     name: "Pump"
+    web_server: {sorting_group_id: grp_pump, sorting_weight: 10}
     id: pump_fan
     icon: mdi:pump
     preset_modes:
