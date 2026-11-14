@@ -14,6 +14,7 @@ on:
     paths:
       - home-assistant/piscine-card.js
       - hacs.json
+      - LICENSE
       - .github/workflows/card.yml
   workflow_dispatch:
 
