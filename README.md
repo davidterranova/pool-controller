@@ -19,11 +19,12 @@ repo itself — layout and tooling.
 | `wifi-setup.yaml` | Proposed package: fallback hotspot, joining a network from the page, Wi-Fi statistics, clock from the browser. Not included in the firmware yet (see below). |
 | `secrets.yaml` | Wi-Fi credentials, API encryption key, OTA password. Gitignored — create your own (see below). |
 | `Makefile` | Validate / build / flash / OTA / status tooling. |
-| `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Published to HA through HACS. |
-| `hacs.json` | Tells HACS which file this repo publishes: the card above, from each GitHub release. |
+| `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS). |
+| `hacs.json` | Tells the Marketplace (HACS) which file this repo publishes: the card above, from each GitHub release. |
 | `tools/webui-mock/` | Local mock of the device's web UI, for working on the page without flashing (see below). |
 | `webui/` | Prototype of a custom page for the device, built around the same `piscine-card` (see below). Not on the device yet. |
 | `.gitignore` | Excludes `secrets.yaml`, `.esphome/` (build cache), `.vscode/`. |
+| `LICENSE` | MIT. |
 
 ## Toolchain
 
@@ -85,8 +86,6 @@ repo itself — layout and tooling.
 | `make mock-ui` | Serve a local mock of the device's web UI at http://localhost:8080/ (see below). `MOCK_PORT=` to change the port, `MOCK_INDEX=path.html` to serve your own page. |
 | `make mock-webui` | `make mock-ui` with the custom page in `webui/` and the proposed Wi-Fi package (see below). `MOCK_HOTSPOT=1` starts the simulated device on its hotspot, with no clock. |
 | `make mock-ui-check` | Print the web UI layout (sections and order) and fail on any entity type the mock can't render. Runs in CI. |
-| `make ha-card` | Until HA installs the card from HACS: copy `home-assistant/piscine-card.js` into the local-k3s checkout that deploys it today (see below). `LOCAL_K3S=` to point at another checkout. |
-| `make ha-card-diff` | Show how the card deployed through local-k3s differs from this repo's. |
 | `make clean` | Remove the local build cache (`.esphome/`). |
 
 `PORT` (serial) and `HOST` (network) both auto-detect and can be overridden
@@ -134,7 +133,7 @@ It lives here because it's written against this firmware's entities, and
 because it now has two users that must change together:
 
 - **Home Assistant**, where it was first written, configured with HA
-  entity ids. It gets the card through HACS (see below).
+  entity ids. It installs the card through the Marketplace (see below).
 - **The device's own page** ([webui/](webui/), see below), which runs the
   same file unchanged against the ESP32. `webui/piscine-card.js` is a
   symlink to it.
@@ -150,17 +149,26 @@ What it needs from Home Assistant, besides the entities:
 Those scripts, the dashboard and the push alert are Home Assistant config,
 edited in its UI; they aren't in this repo.
 
-### Releasing it through HACS
+### Installing it in Home Assistant
 
-Home Assistant installs the card with HACS, from this repo's GitHub
-releases ([hacs.json](hacs.json)). Each release carries `piscine-card.js` as
-an asset, and its tag is the card's `VERSION`. HACS checks the repo
-periodically and offers a new release as an update, like the other cards.
-It also registers the dashboard resource and changes its URL on each update,
-so browsers don't keep a cached copy. Releases in this repo are only the
-card's: the firmware is built and flashed from a checkout, not released.
+The card is installed through the Marketplace, built into Home Assistant
+since 2026.11 (Settings → Marketplace; HACS, a custom integration, on older
+releases), as a custom repository:
 
-To ship a change to the card:
+1. Add `davidterranova/pool-controller` as a custom repository, type
+   Dashboard. This needs a GitHub account connected to the Marketplace;
+   without one it also wouldn't check the repo for updates.
+2. Install « Piscine Card ». The Marketplace registers the dashboard
+   resource itself, `/local/community/pool-controller/piscine-card.js`, with
+   the version in its query string. Don't add a resource by hand: it would
+   load the card twice.
+
+Releases in this repo are only the card's
+([hacs.json](hacs.json)): each carries `piscine-card.js` as an asset, and
+its tag is the card's `VERSION`. The firmware is built and flashed from a
+checkout, not released.
+
+### Shipping a change to the card
 
 1. Bump `VERSION` at the top of the card. A pull request that changes the
    card without a new `VERSION` fails CI
@@ -169,33 +177,18 @@ To ship a change to the card:
    mock-webui`). It doesn't exercise the HA-only parts: the tile variant, the
    scripts, the recorder.
 3. Merge. The workflow publishes release `v<VERSION>` with the card, then
-   runs HACS's own checks against the repo.
-4. In Home Assistant, install the update (Settings → Updates, or HACS), then
-   reload the dashboard.
+   runs the Marketplace's (HACS's) own checks against the repo.
+4. Home Assistant offers the update (Settings → Updates) once the
+   Marketplace has seen the release. Install it: that also changes the
+   resource URL, so browsers fetch the new file on their next reload.
 
-### Switching Home Assistant over to HACS (once)
-
-Until the first release is published and installed, HA still loads the
-card from the local-k3s repo, at `/local/piscine/piscine-card.js?v=…`, and
-`make ha-card` / `make ha-card-diff` keep that copy in step (runbook:
-local-k3s `tasks/ha-piscine-widget.md`). To switch, once `v1.2.1` or later
-is released:
-
-1. HACS → ⋮ → Custom repositories: add `davidterranova/pool-controller`,
-   type Dashboard. Install « Piscine Card ». HACS adds the resource
-   `/hacsfiles/pool-controller/piscine-card.js`.
-2. In the same sitting, delete the old `/local/piscine/piscine-card.js`
-   dashboard resource, so only one copy loads.
-3. Remove `bridges/homeassistant/config/www/piscine/` from local-k3s and
-   point its runbook here. Then drop `make ha-card` and `make ha-card-diff`.
-
-The card's history up to 1.2.0 is in local-k3s's git log
-(`bridges/homeassistant/config/www/piscine/`).
+The card's history up to 1.2.0 is in the local-k3s repo's git log, where it
+was first written (`bridges/homeassistant/config/www/piscine/`).
 
 ## Custom page prototype (`webui/`)
 
 `make mock-webui` serves a page of our own instead of ESPHome's stock one,
-with the look of the Home Assistant dashboard. It has two tabs:
+with the look of the Home Assistant dashboard. It has three tabs:
 
 - **Contrôle**, for daily use: Home Assistant's `piscine-card` panel (the
   pump's state, today's plan timeline, Auto/Manuel, forced speed and its
