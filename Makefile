@@ -14,15 +14,15 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build flash status kill-port ota ip logs mock-ui mock-webui mock-ui-check clean
+.PHONY: validate build flash status kill-port ota ip logs webui mock-ui mock-webui mock-ui-check clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
-validate:
+validate: webui
 	$(ESPHOME) config $(CONFIG)
 
 # Validates, then fully compiles the firmware (catches errors inside lambdas
 # too, which `validate` alone can't since those are raw C++).
-build:
+build: webui
 	$(ESPHOME) compile $(CONFIG)
 
 # Flashes over UART via esptool (bundled with the ESP-IDF install), not through
@@ -85,22 +85,36 @@ MOCK_PORT ?= 8080
 MOCK_TZ ?= $(shell readlink /etc/localtime 2>/dev/null | sed -E 's|.*/zoneinfo/||')
 MOCK := docker run --rm -v "$(CURDIR):/config" -e TZ=$(MOCK_TZ) --entrypoint python3 ghcr.io/esphome/esphome /config/tools/webui-mock/mock_server.py
 
-mock-ui:
+mock-ui: webui
 	$(subst docker run --rm,docker run --rm -it -p $(MOCK_PORT):8080,$(MOCK)) $(if $(MOCK_INDEX),--index /config/$(MOCK_INDEX)) $(MOCK_ARGS) /config/$(CONFIG)
 
-# The custom page prototype in webui/ (piscine-card + advanced tab) against
-# the same mock. Its files are served and watched like the YAML. It also
-# loads the proposed Wi-Fi package (wifi-setup.yaml, not in the firmware
-# yet); MOCK_HOTSPOT=1 starts the device on its fallback hotspot, with no
-# clock, as a new install would.
+# The device's page from its sources in webui/ (piscine-card + the Avancé
+# and Wi-Fi tabs) against the same mock, rather than the bundle mock-ui
+# serves: its files are served and watched like the YAML, so saving one
+# reloads the page. MOCK_HOTSPOT=1 starts the device on its fallback
+# hotspot, with no clock, as a new install would.
 mock-webui:
-	$(MAKE) mock-ui MOCK_INDEX=webui/index.html \
-		MOCK_ARGS="--extra /config/wifi-setup.yaml $(if $(MOCK_HOTSPOT),--hotspot)"
+	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot)"
 
 # Prints the page layout (sections, order, which entities the simulation
 # drives) and fails if $(CONFIG) has an entity type the mock can't render.
 mock-ui-check:
 	$(MOCK) --check $(MOCK_ARGS) /config/$(CONFIG)
 
+# The device's own page (webui/), bundled into the two files the firmware
+# embeds: web_server's js_include and css_include in $(CONFIG). Rebuilt only
+# when a source changes; validate, build (so ota and flash) and mock-ui
+# depend on it. esbuild runs in a node container, like ESPHome in its own.
+WEBUI_SRC := $(wildcard webui/*.js webui/*.html webui/*.css) home-assistant/piscine-card.js
+ESBUILD := docker run --rm -v "$(CURDIR):/src" -w /src -e NPM_CONFIG_UPDATE_NOTIFIER=false node:22-alpine npx --yes esbuild@0.24.2
+
+webui: webui/dist/device.js webui/dist/device.css
+
+webui/dist/device.js: $(WEBUI_SRC)
+	$(ESBUILD) webui/device.js --bundle --minify --format=esm --loader:.html=text --log-level=warning --outfile=$@
+
+webui/dist/device.css: webui/app.css
+	$(ESBUILD) webui/app.css --minify --log-level=warning --outfile=$@
+
 clean:
-	rm -rf .esphome
+	rm -rf .esphome webui/dist

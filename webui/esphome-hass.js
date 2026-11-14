@@ -61,7 +61,7 @@ export const E = {
   online: "page/connected", // synthetic: this page's own link to the device (see _setLink)
   flow: "sensor/Piscine - Débit remplissage",
   volume: "sensor/Piscine - Volume total remplissage",
-  // Proposed, from wifi-setup.yaml (not in the firmware yet): the page hides what's missing.
+  // From wifi-setup.yaml: the page hides what a firmware without it doesn't have.
   wifiMode: "text_sensor/WiFi Mode",
   wifiSignal: "sensor/WiFi Signal",
   wifiSsid: "text_sensor/WiFi SSID",

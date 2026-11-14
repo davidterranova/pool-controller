@@ -1,3 +1,4 @@
 secrets.yaml
 .esphome/
 .vscode/
+webui/dist/

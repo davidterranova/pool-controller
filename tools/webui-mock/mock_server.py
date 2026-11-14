@@ -20,17 +20,19 @@ Usage (from the repo root; `make mock-ui` wraps this):
     python3 tools/webui-mock/mock_server.py pool-controller.yaml
     python3 tools/webui-mock/mock_server.py --index my-page.html pool-controller.yaml
     python3 tools/webui-mock/mock_server.py --check pool-controller.yaml
-    python3 tools/webui-mock/mock_server.py --extra wifi-setup.yaml [--hotspot] pool-controller.yaml
+    python3 tools/webui-mock/mock_server.py --extra my-package.yaml [--hotspot] pool-controller.yaml
 
---extra loads a YAML package next to the config (entities and sorting groups
-only), for designing against entities the firmware doesn't have yet.
+The config's own `packages:` (`name: !include file.yaml`) are loaded like ESPHome
+does, for their entities and sorting groups. --extra loads one more package the
+same way, for designing against entities the firmware doesn't have yet.
 --hotspot starts the simulated device on its fallback hotspot, with no clock.
 
-Needs PyYAML, and the `esphome` package for the stock page -- both present in
+Needs PyYAML, and the `esphome` package for the device's index page -- both present in
 the ghcr.io/esphome/esphome image the Makefile runs this in.
 """
 
 import argparse
+import functools
 import gzip
 import json
 import math
@@ -130,12 +132,18 @@ class Layout:
     unsupported: list  # ["domain: name"]
     css_include: str | None
     js_include: str | None
+    packages: list  # the package files merged in, watched like the config
+    web: dict  # the web_server block, for the index page it builds
 
 
 def load_layout(path: str, extras: list[str] | None = None) -> Layout:
     with open(path, encoding="utf-8") as f:
         config = yaml.load(f, Loader=_Loader) or {}
-    for extra in extras or []:
+    # `name: !include file.yaml` loads as the plain file name (see _Loader).
+    included = [os.path.join(os.path.dirname(os.path.abspath(path)), v)
+                for v in (config.get("packages") or {}).values() if isinstance(v, str)]
+    packages = included + [e for e in extras or [] if os.path.abspath(e) not in included]
+    for extra in packages:
         # A package's entities and sorting groups, appended like ESPHome's packages: merge would.
         with open(extra, encoding="utf-8") as f:
             package = yaml.load(f, Loader=_Loader) or {}
@@ -189,6 +197,8 @@ def load_layout(path: str, extras: list[str] | None = None) -> Layout:
         unsupported=unsupported,
         css_include=os.path.join(base, web["css_include"]) if web.get("css_include") else None,
         js_include=os.path.join(base, web["js_include"]) if web.get("js_include") else None,
+        packages=packages,
+        web=web,
     )
 
 
@@ -238,7 +248,7 @@ N = {
     "flow": "Piscine - Débit remplissage",
     "volume": "Piscine - Volume total remplissage",
 }
-# The proposed Wi-Fi entities (wifi-setup.yaml, loaded with --extra).
+# The Wi-Fi entities (wifi-setup.yaml, a package of the config).
 W = {
     "mode": "WiFi Mode",
     "signal": "WiFi Signal",
@@ -719,6 +729,7 @@ def sse(event: str, data: str, event_id: int | None = None, retry: int | None = 
     return ("\n".join(lines) + "\n\n").encode()
 
 
+@functools.cache
 def stock_index() -> str:
     """The v3 page the firmware embeds, decoded from the installed ESPHome package."""
     import esphome  # noqa: PLC0415 -- only needed to locate the page
@@ -731,6 +742,21 @@ def stock_index() -> str:
         sys.exit(f"Couldn't find INDEX_GZ in {header} -- has ESPHome changed how it embeds the page?")
     data = bytes(int(b, 16) for b in re.findall(r"0x[0-9a-fA-F]{2}", match.group(1)))
     return gzip.decompress(data).decode("utf-8")
+
+
+def device_index(web: dict) -> str:
+    """The index.html the firmware serves for this web_server block: ESPHome's stock page with
+    `local: true`, else the small page ESPHome builds around css_include / js_include / the URLs."""
+    if web.get("local"):
+        return stock_index()
+    from esphome.components.web_server import build_index_html  # noqa: PLC0415 -- container only
+
+    return build_index_html({
+        "css_include": web.get("css_include"),
+        "js_include": web.get("js_include"),
+        "css_url": web.get("css_url", ""),
+        "js_url": web.get("js_url", "https://oi.esphome.io/v3/www.js"),
+    })
 
 
 # --------------------------------------------------------------------------- server
@@ -751,7 +777,6 @@ class MockServer:
         self.sim.adopt(self.layout.entities)
         self.sim.tick()
         self.sent = self.sim.snapshot()
-        self.stock = None if index_path else stock_index()
 
     # -- helpers
 
@@ -800,7 +825,7 @@ class MockServer:
             with open(self.index_path, encoding="utf-8") as f:
                 html = f.read()
         else:
-            html = self.stock
+            html = device_index(self.layout.web)
         return html.replace("</body>", RELOAD_SNIPPET + "</body>", 1) if "</body>" in html else html + RELOAD_SNIPPET
 
     def initial_events(self) -> list[bytes]:
@@ -894,7 +919,7 @@ class MockServer:
 
     def watcher(self):
         def mtimes():
-            paths = [self.config_path, *self.extras, self.index_path, self.layout.css_include, self.layout.js_include,
+            paths = [self.config_path, *self.extras, *self.layout.packages, self.index_path, self.layout.css_include, self.layout.js_include,
                      *self.assets()]
             return {p: os.path.getmtime(p) for p in paths if p and os.path.exists(p)}
 
@@ -1026,12 +1051,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("config", help="path to the ESPHome YAML (pool-controller.yaml)")
     parser.add_argument("--port", type=int, default=8080)
-    parser.add_argument("--index", help="serve this HTML file instead of ESPHome's stock v3 page")
+    parser.add_argument("--index", help="serve this HTML file instead of the page the firmware serves")
     parser.add_argument("--check", action="store_true", help="print the layout and exit")
     parser.add_argument("--extra", action="append", default=[],
                         help="also load this YAML package's entities (repeatable), e.g. wifi-setup.yaml")
     parser.add_argument("--hotspot", action="store_true",
-                        help="start on the fallback hotspot, with no clock (needs --extra wifi-setup.yaml)")
+                        help="start on the fallback hotspot, with no clock")
     args = parser.parse_args()
 
     if args.check:
@@ -1046,7 +1071,7 @@ def main() -> int:
     server = ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(mock))
     server.daemon_threads = True
     print(f"[mock] {mock.layout.title}: {len(mock.layout.entities)} entities, serving on port {args.port}"
-          f" ({'custom page ' + args.index if args.index else 'stock ESPHome v3 page'}). Ctrl-C to stop.",
+          f" ({'custom page ' + args.index if args.index else 'the page the firmware serves'}). Ctrl-C to stop.",
           flush=True)
     try:
         server.serve_forever()
