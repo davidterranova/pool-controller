@@ -26,11 +26,12 @@ Usage (from the repo root; `make mock-ui` wraps this):
 only), for designing against entities the firmware doesn't have yet.
 --hotspot starts the simulated device on its fallback hotspot, with no clock.
 
-Needs PyYAML, and the `esphome` package for the stock page -- both present in
+Needs PyYAML, and the `esphome` package for the device's index page -- both present in
 the ghcr.io/esphome/esphome image the Makefile runs this in.
 """
 
 import argparse
+import functools
 import gzip
 import json
 import math
@@ -130,6 +131,7 @@ class Layout:
     unsupported: list  # ["domain: name"]
     css_include: str | None
     js_include: str | None
+    web: dict  # the web_server block, for the index page it builds
 
 
 def load_layout(path: str, extras: list[str] | None = None) -> Layout:
@@ -189,6 +191,7 @@ def load_layout(path: str, extras: list[str] | None = None) -> Layout:
         unsupported=unsupported,
         css_include=os.path.join(base, web["css_include"]) if web.get("css_include") else None,
         js_include=os.path.join(base, web["js_include"]) if web.get("js_include") else None,
+        web=web,
     )
 
 
@@ -719,6 +722,7 @@ def sse(event: str, data: str, event_id: int | None = None, retry: int | None = 
     return ("\n".join(lines) + "\n\n").encode()
 
 
+@functools.cache
 def stock_index() -> str:
     """The v3 page the firmware embeds, decoded from the installed ESPHome package."""
     import esphome  # noqa: PLC0415 -- only needed to locate the page
@@ -731,6 +735,21 @@ def stock_index() -> str:
         sys.exit(f"Couldn't find INDEX_GZ in {header} -- has ESPHome changed how it embeds the page?")
     data = bytes(int(b, 16) for b in re.findall(r"0x[0-9a-fA-F]{2}", match.group(1)))
     return gzip.decompress(data).decode("utf-8")
+
+
+def device_index(web: dict) -> str:
+    """The index.html the firmware serves for this web_server block: ESPHome's stock page with
+    `local: true`, else the small page ESPHome builds around css_include / js_include / the URLs."""
+    if web.get("local"):
+        return stock_index()
+    from esphome.components.web_server import build_index_html  # noqa: PLC0415 -- container only
+
+    return build_index_html({
+        "css_include": web.get("css_include"),
+        "js_include": web.get("js_include"),
+        "css_url": web.get("css_url", ""),
+        "js_url": web.get("js_url", "https://oi.esphome.io/v3/www.js"),
+    })
 
 
 # --------------------------------------------------------------------------- server
@@ -751,7 +770,6 @@ class MockServer:
         self.sim.adopt(self.layout.entities)
         self.sim.tick()
         self.sent = self.sim.snapshot()
-        self.stock = None if index_path else stock_index()
 
     # -- helpers
 
@@ -800,7 +818,7 @@ class MockServer:
             with open(self.index_path, encoding="utf-8") as f:
                 html = f.read()
         else:
-            html = self.stock
+            html = device_index(self.layout.web)
         return html.replace("</body>", RELOAD_SNIPPET + "</body>", 1) if "</body>" in html else html + RELOAD_SNIPPET
 
     def initial_events(self) -> list[bytes]:
@@ -1026,7 +1044,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("config", help="path to the ESPHome YAML (pool-controller.yaml)")
     parser.add_argument("--port", type=int, default=8080)
-    parser.add_argument("--index", help="serve this HTML file instead of ESPHome's stock v3 page")
+    parser.add_argument("--index", help="serve this HTML file instead of the page the firmware serves")
     parser.add_argument("--check", action="store_true", help="print the layout and exit")
     parser.add_argument("--extra", action="append", default=[],
                         help="also load this YAML package's entities (repeatable), e.g. wifi-setup.yaml")
@@ -1046,7 +1064,7 @@ def main() -> int:
     server = ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(mock))
     server.daemon_threads = True
     print(f"[mock] {mock.layout.title}: {len(mock.layout.entities)} entities, serving on port {args.port}"
-          f" ({'custom page ' + args.index if args.index else 'stock ESPHome v3 page'}). Ctrl-C to stop.",
+          f" ({'custom page ' + args.index if args.index else 'the page the firmware serves'}). Ctrl-C to stop.",
           flush=True)
     try:
         server.serve_forever()
