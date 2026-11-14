@@ -87,7 +87,15 @@ ota:
 web_server:
   port: 80
   version: 3
-  local: true
+  # The page is our own (webui/, see the README's "Custom page"), not
+  # ESPHome's: its index.html only loads /0.css and /0.js, which `make webui`
+  # builds and these two lines embed. `local` is off, so the stock page isn't
+  # embedded, and js_url is empty, so it isn't fetched from the internet
+  # either. To get the stock page back: drop these three lines and set
+  # `local: true`.
+  js_url: ""
+  css_include: webui/dist/device.css
+  js_include: webui/dist/device.js
   auth:
     type: digest
     username: admin
