@@ -14,7 +14,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build flash status kill-port ota ip logs mock-ui mock-ui-check clean
+.PHONY: validate build flash status kill-port ota ip logs mock-ui mock-ui-check ha-card ha-card-diff clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate:
@@ -92,6 +92,27 @@ mock-ui:
 # drives) and fails if $(CONFIG) has an entity type the mock can't render.
 mock-ui-check:
 	$(MOCK) --check $(MOCK_ARGS) /config/$(CONFIG)
+
+# Interim, until Home Assistant installs piscine-card from HACS (README,
+# "Switching Home Assistant over to HACS"): today HA still loads the copy in
+# the local-k3s repo, which pi5's ha-config-sync puts live once merged to
+# main there. ha-card copies home-assistant/piscine-card.js over (then
+# commit, PR and merge in local-k3s, and bump the dashboard resource's ?v=);
+# ha-card-diff shows how the deployed copy differs. LOCAL_K3S= points at
+# another checkout. Drop both once HACS serves the card.
+LOCAL_K3S ?= $(HOME)/Documents/development/local-k3s
+HA_CARD_DEST := $(LOCAL_K3S)/bridges/homeassistant/config/www/piscine/piscine-card.js
+HA_CARD_VERSION = $(shell sed -nE 's/^const VERSION = "([^"]+)";/\1/p' home-assistant/piscine-card.js)
+
+ha-card:
+	@test -f "$(HA_CARD_DEST)" || (echo "No $(HA_CARD_DEST) -- pass LOCAL_K3S=<path to the local-k3s checkout>." && exit 1)
+	cp home-assistant/piscine-card.js "$(HA_CARD_DEST)"
+	@echo "Copied piscine-card $(HA_CARD_VERSION). Next, in $(LOCAL_K3S): commit, PR, merge;"
+	@echo "then point the dashboard resource at /local/piscine/piscine-card.js?v=$(HA_CARD_VERSION)."
+
+ha-card-diff:
+	@test -f "$(HA_CARD_DEST)" || (echo "No $(HA_CARD_DEST) -- pass LOCAL_K3S=<path to the local-k3s checkout>." && exit 1)
+	@diff -u "$(HA_CARD_DEST)" home-assistant/piscine-card.js && echo "local-k3s has the same piscine-card ($(HA_CARD_VERSION))."
 
 clean:
 	rm -rf .esphome
