@@ -1,0 +1,93 @@
+name: Home Assistant card
+
+# home-assistant/piscine-card.js reaches Home Assistant through HACS, which
+# installs this repo's GitHub releases (see hacs.json): each release carries
+# the card as its piscine-card.js asset, and its tag is the card's VERSION.
+#   - pull request: a change to the card must come with a new VERSION;
+#   - push to main: a VERSION with no release yet gets one, which HACS then
+#     offers as an update; then HACS's own checks run against it.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - home-assistant/piscine-card.js
+      - hacs.json
+      - .github/workflows/card.yml
+  workflow_dispatch:
+
+jobs:
+  check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Card parses
+        run: node --check home-assistant/piscine-card.js
+
+      - name: A changed card has a new VERSION
+        run: |
+          git fetch --depth=1 origin "${{ github.base_ref }}"
+          if git diff --quiet FETCH_HEAD -- home-assistant/piscine-card.js; then
+            echo "Card unchanged."
+            exit 0
+          fi
+          version=$(sed -nE 's/^const VERSION = "([^"]+)";/\1/p' home-assistant/piscine-card.js)
+          test -n "$version" || { echo "::error file=home-assistant/piscine-card.js::No 'const VERSION = \"x.y.z\";' line found."; exit 1; }
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "::error file=home-assistant/piscine-card.js::The card changed but VERSION is still $version, which is already released. Bump it: HACS only sees a new release."
+            exit 1
+          fi
+          echo "Card changed, will be released as v$version."
+
+  release:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Release the card's VERSION if it isn't yet
+        run: |
+          card=home-assistant/piscine-card.js
+          version=$(sed -nE 's/^const VERSION = "([^"]+)";/\1/p' "$card")
+          test -n "$version" || { echo "::error file=$card::No 'const VERSION = \"x.y.z\";' line found."; exit 1; }
+          tag="v$version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag is already released; nothing to do."
+            exit 0
+          fi
+          node --check "$card"
+          previous=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          {
+            echo "piscine-card $version, for Home Assistant (install or update through HACS)."
+            echo
+            if [ -n "$previous" ]; then
+              echo "Changes to the card since $previous:"
+              git log --format='- %s' "$previous..HEAD" -- "$card"
+            fi
+          } > notes.md
+          gh release create "$tag" "$card" --target "$GITHUB_SHA" --title "piscine-card $version" --notes-file notes.md
+
+  # HACS's own checks, as HACS will see the repo. After the release, not on
+  # pull requests: HACS reads the default branch through GitHub's API, and
+  # finds the card in a release's assets, so a PR (or main before the first
+  # release) can't pass. Not in HACS's default store, so its store-only
+  # checks are skipped: topics, brands (integrations only) and images.
+  hacs:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hacs/action@main
+        with:
+          category: plugin
+          ignore: brands images topics
