@@ -149,6 +149,23 @@ sensor:
     address: 0x52000000518FE928   # current bench-test sensor; was 0x1c3c01d075640128 before the swap
     filters:
       - median: {window_size: 5, send_every: 5}
+    # Today's water min/max (see water_min_today in globals:). The sensor is
+    # on the return pipe, so it only reads the pool while water flows: with
+    # the pump stopped it drifts toward the equipment pad's temperature. Only
+    # readings taken after 10 min of pumping count -- the median above spans
+    # the last 5 min, so every sample in it was taken with the pipe flushed.
+    on_value:
+      - lambda: |-
+          // Close the previous day first if midnight just passed, so a
+          // reading never lands in the day before.
+          id(filtration_accrue).execute();
+          if (std::isnan(x) || id(pump_started_ms) == 0 ||
+              millis() - id(pump_started_ms) < 10 * 60 * 1000UL) return;
+          int16_t v = (int16_t) lroundf(x * 10.0f);
+          if (id(water_min_today) == INT16_MIN || v < id(water_min_today)) id(water_min_today) = v;
+          if (id(water_max_today) == INT16_MIN || v > id(water_max_today)) id(water_max_today) = v;
+          id(water_min_today_sensor).update();
+          id(water_max_today_sensor).update();
   - platform: dallas_temp
     id: pad_ambient_temp
     name: "Equipment Pad Temperature"
@@ -190,6 +207,34 @@ sensor:
       accuracy_decimals: 0
       filters:
         - multiply: 1.0
+  # The pool's lowest and highest temperature so far today, from Pool Return
+  # Temperature's pumping readings only (see its on_value above). Unknown
+  # until the pump has run 10 min today. Closed into Daily History at
+  # midnight.
+  - platform: template
+    name: "Pool Water Min Today"
+    id: water_min_today_sensor
+    web_server: {sorting_group_id: grp_sensors, sorting_weight: 12}
+    unit_of_measurement: "°C"
+    device_class: temperature
+    icon: mdi:thermometer-chevron-down
+    accuracy_decimals: 1
+    update_interval: 5min
+    lambda: |-
+      int16_t v = id(water_min_today);
+      return v == INT16_MIN ? NAN : v / 10.0f;
+  - platform: template
+    name: "Pool Water Max Today"
+    id: water_max_today_sensor
+    web_server: {sorting_group_id: grp_sensors, sorting_weight: 14}
+    unit_of_measurement: "°C"
+    device_class: temperature
+    icon: mdi:thermometer-chevron-up
+    accuracy_decimals: 1
+    update_interval: 5min
+    lambda: |-
+      int16_t v = id(water_max_today);
+      return v == INT16_MIN ? NAN : v / 10.0f;
   # Derived live from the cached block boundaries below, not stored as its
   # own global -- can't drift out of sync with what Block 1/2 actually say,
   # and it collapses to Block 1's length automatically when they're merged
@@ -348,6 +393,41 @@ text_sensor:
     lambda: |-
       if (id(sched_last_recompute) == 0) return std::string("Never");
       return ESPTime::from_epoch_local(id(sched_last_recompute)).strftime("%Y-%m-%d %H:%M:%S");
+  # The last 7 completed days, newest first: how long the pump ran, and the
+  # pool's min/max temperature (see Pool Water Min/Max Today), e.g.
+  # "2026-11-13: 6.42 h 25.9/26.6 °C, 2026-11-12: 6.70 h" -- the range is
+  # left out for a day the pump never ran long enough to measure the water;
+  # "--" until a first day has been closed at midnight. Kept on the device
+  # (see history_dates in globals:) so the device's own web page can answer
+  # "did it filter enough this week?" without Home Assistant. Days the
+  # device was off for (or had no clock) are simply missing, not zero.
+  # Under HA's 255-character limit for a state: 7 days take ~240 at most.
+  # Pushed by filtration_accrue at each rollover; the interval only covers
+  # the first publish after boot.
+  - platform: template
+    name: "Daily History"
+    web_server: {sorting_group_id: grp_plan, sorting_weight: 25}
+    id: daily_history
+    icon: mdi:calendar-check
+    entity_category: diagnostic
+    update_interval: 1h
+    lambda: |-
+      std::string out;
+      for (int i = 0; i < 7; i++) {
+        uint32_t d = id(history_dates)[i];
+        if (d == 0) continue;
+        uint16_t m = id(history_filtration_minutes)[i];
+        char buf[64];
+        int len = snprintf(buf, sizeof(buf), "%s%04u-%02u-%02u: %u.%02u h", out.empty() ? "" : ", ",
+                           (unsigned) (d / 10000), (unsigned) (d / 100 % 100), (unsigned) (d % 100),
+                           (unsigned) (m / 60), (unsigned) ((m % 60) * 100 / 60));
+        int16_t lo = id(history_water_min)[i], hi = id(history_water_max)[i];
+        if (lo != INT16_MIN && hi != INT16_MIN) {
+          snprintf(buf + len, sizeof(buf) - len, " %.1f/%.1f °C", lo / 10.0f, hi / 10.0f);
+        }
+        out += buf;
+      }
+      return out.empty() ? std::string("--") : out;
   # When the current Manual Override will end on its own, per Manual Override
   # Timeout (number: below) -- the device's own deadline, derived from the
   # same millis() stamp the expiry reads, not a copy of anything HA computed.
@@ -677,6 +757,57 @@ globals:
     restore_value: false
     initial_value: '0'
 
+  # --- Daily history (last 7 days) -----------------------------------------
+  # The date (YYYYMMDD) filtration_ms_today and water_min/max_today belong
+  # to: filtration_counted_day above is only a day_of_year, which can't date
+  # a closed day once the device has been off across a day change. 0 until
+  # the first valid clock reading (or right after the firmware that added it
+  # is first flashed).
+  - id: filtration_counted_date
+    type: uint32_t
+    restore_value: true
+    initial_value: '0'
+  # When the Run relay last closed (millis(), 0 = stopped). Unlike
+  # filtration_run_since_ms, never re-stamped while running: Pool Return
+  # Temperature's on_value reads it to count only readings taken after
+  # 10 min of pumping.
+  - id: pump_started_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  # Today's water min/max so far, in tenths of a degree; INT16_MIN until a
+  # first pumping reading. Restored, so a reboot doesn't lose the morning's
+  # extremes; written only when a new extreme comes in.
+  - id: water_min_today
+    type: int16_t
+    restore_value: true
+    initial_value: 'INT16_MIN'
+  - id: water_max_today
+    type: int16_t
+    restore_value: true
+    initial_value: 'INT16_MIN'
+  # The last 7 closed days, newest first: their date (YYYYMMDD, 0 = empty
+  # slot), how long the pump ran in minutes, and the water min/max in tenths
+  # of a degree (INT16_MIN = not measured that day). Shifted once a day by
+  # filtration_accrue's midnight rollover, so these cost one flash write a
+  # day. Read by the Daily History text sensor above.
+  - id: history_dates
+    type: uint32_t[7]
+    restore_value: true
+    initial_value: '{0, 0, 0, 0, 0, 0, 0}'
+  - id: history_filtration_minutes
+    type: uint16_t[7]
+    restore_value: true
+    initial_value: '{0, 0, 0, 0, 0, 0, 0}'
+  - id: history_water_min
+    type: int16_t[7]
+    restore_value: true
+    initial_value: '{INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN}'
+  - id: history_water_max
+    type: int16_t[7]
+    restore_value: true
+    initial_value: '{INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN}'
+
   # --- Applied (confirmed) schedule-shaping tunables ------------------------
   # What evaluate_speed's Part 1 actually reads -- NOT the Min/Max Filtration
   # Hours, Warmest Part of Day Offset, and Filtration Hour Offset number
@@ -951,10 +1082,12 @@ switch:
           // can never silently overwrite an unaccrued segment.
           id(filtration_accrue).execute();
           id(filtration_run_since_ms) = millis();
+          id(pump_started_ms) = millis();
     on_turn_off:
       - lambda: |-
           id(filtration_accrue).execute();
           id(filtration_run_since_ms) = 0;
+          id(pump_started_ms) = 0;
 
 script:
   # Folds however long the Run relay has been closed since the last call into
@@ -986,13 +1119,49 @@ script:
             // and permanently inflate its own total. The closing figure HA
             // records for yesterday is therefore Filtration Hours Today's
             // last sample before midnight -- accurate to within one
-            // update_interval (60s).
+            // update_interval (60s). (Daily History can publish here: each
+            // of its days carries its own date.)
             uint32_t since_midnight_ms =
                 (uint32_t) (t.hour * 3600 + t.minute * 60 + t.second) * 1000UL;
-            id(filtration_ms_today) =
+            uint32_t after_midnight_ms =
                 seg_ms < since_midnight_ms ? seg_ms : since_midnight_ms;
+            // Close the day just ended into the 7-day history: its tally
+            // plus the part of the in-flight run before midnight, and its
+            // water min/max. Skipped when its date is unknown (see
+            // filtration_counted_date).
+            if (id(filtration_counted_date) != 0) {
+              uint32_t closed_ms =
+                  id(filtration_ms_today) + (seg_ms - after_midnight_ms);
+              if (closed_ms > 86400000UL) closed_ms = 86400000UL;
+              for (int i = 6; i > 0; i--) {
+                id(history_dates)[i] = id(history_dates)[i - 1];
+                id(history_filtration_minutes)[i] = id(history_filtration_minutes)[i - 1];
+                id(history_water_min)[i] = id(history_water_min)[i - 1];
+                id(history_water_max)[i] = id(history_water_max)[i - 1];
+              }
+              id(history_dates)[0] = id(filtration_counted_date);
+              id(history_filtration_minutes)[0] = (closed_ms + 30000UL) / 60000UL;
+              id(history_water_min)[0] = id(water_min_today);
+              id(history_water_max)[0] = id(water_max_today);
+              id(daily_history).update();
+            }
+            // The new day starts with no water reading.
+            id(water_min_today) = INT16_MIN;
+            id(water_max_today) = INT16_MIN;
+            id(water_min_today_sensor).update();
+            id(water_max_today_sensor).update();
+            id(filtration_ms_today) = after_midnight_ms;
             id(filtration_counted_day) = t.day_of_year;
+            id(filtration_counted_date) =
+                t.year * 10000UL + t.month * 100UL + t.day_of_month;
           } else {
+            // First run of the firmware that added filtration_counted_date:
+            // today's tally is already being counted, so date it now rather
+            // than losing today from the history at midnight.
+            if (t.is_valid() && id(filtration_counted_date) == 0) {
+              id(filtration_counted_date) =
+                  t.year * 10000UL + t.month * 100UL + t.day_of_month;
+            }
             id(filtration_ms_today) += seg_ms;
           }
           // Leave a stopped pump stopped; only re-stamp a live run, so the
