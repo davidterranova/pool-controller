@@ -20,10 +20,11 @@ Usage (from the repo root; `make mock-ui` wraps this):
     python3 tools/webui-mock/mock_server.py pool-controller.yaml
     python3 tools/webui-mock/mock_server.py --index my-page.html pool-controller.yaml
     python3 tools/webui-mock/mock_server.py --check pool-controller.yaml
-    python3 tools/webui-mock/mock_server.py --extra wifi-setup.yaml [--hotspot] pool-controller.yaml
+    python3 tools/webui-mock/mock_server.py --extra my-package.yaml [--hotspot] pool-controller.yaml
 
---extra loads a YAML package next to the config (entities and sorting groups
-only), for designing against entities the firmware doesn't have yet.
+The config's own `packages:` (`name: !include file.yaml`) are loaded like ESPHome
+does, for their entities and sorting groups. --extra loads one more package the
+same way, for designing against entities the firmware doesn't have yet.
 --hotspot starts the simulated device on its fallback hotspot, with no clock.
 
 Needs PyYAML, and the `esphome` package for the device's index page -- both present in
@@ -131,13 +132,18 @@ class Layout:
     unsupported: list  # ["domain: name"]
     css_include: str | None
     js_include: str | None
+    packages: list  # the package files merged in, watched like the config
     web: dict  # the web_server block, for the index page it builds
 
 
 def load_layout(path: str, extras: list[str] | None = None) -> Layout:
     with open(path, encoding="utf-8") as f:
         config = yaml.load(f, Loader=_Loader) or {}
-    for extra in extras or []:
+    # `name: !include file.yaml` loads as the plain file name (see _Loader).
+    included = [os.path.join(os.path.dirname(os.path.abspath(path)), v)
+                for v in (config.get("packages") or {}).values() if isinstance(v, str)]
+    packages = included + [e for e in extras or [] if os.path.abspath(e) not in included]
+    for extra in packages:
         # A package's entities and sorting groups, appended like ESPHome's packages: merge would.
         with open(extra, encoding="utf-8") as f:
             package = yaml.load(f, Loader=_Loader) or {}
@@ -191,6 +197,7 @@ def load_layout(path: str, extras: list[str] | None = None) -> Layout:
         unsupported=unsupported,
         css_include=os.path.join(base, web["css_include"]) if web.get("css_include") else None,
         js_include=os.path.join(base, web["js_include"]) if web.get("js_include") else None,
+        packages=packages,
         web=web,
     )
 
@@ -241,7 +248,7 @@ N = {
     "flow": "Piscine - Débit remplissage",
     "volume": "Piscine - Volume total remplissage",
 }
-# The proposed Wi-Fi entities (wifi-setup.yaml, loaded with --extra).
+# The Wi-Fi entities (wifi-setup.yaml, a package of the config).
 W = {
     "mode": "WiFi Mode",
     "signal": "WiFi Signal",
@@ -912,7 +919,7 @@ class MockServer:
 
     def watcher(self):
         def mtimes():
-            paths = [self.config_path, *self.extras, self.index_path, self.layout.css_include, self.layout.js_include,
+            paths = [self.config_path, *self.extras, *self.layout.packages, self.index_path, self.layout.css_include, self.layout.js_include,
                      *self.assets()]
             return {p: os.path.getmtime(p) for p in paths if p and os.path.exists(p)}
 
@@ -1049,7 +1056,7 @@ def main() -> int:
     parser.add_argument("--extra", action="append", default=[],
                         help="also load this YAML package's entities (repeatable), e.g. wifi-setup.yaml")
     parser.add_argument("--hotspot", action="store_true",
-                        help="start on the fallback hotspot, with no clock (needs --extra wifi-setup.yaml)")
+                        help="start on the fallback hotspot, with no clock")
     args = parser.parse_args()
 
     if args.check:

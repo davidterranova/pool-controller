@@ -88,14 +88,13 @@ MOCK := docker run --rm -v "$(CURDIR):/config" -e TZ=$(MOCK_TZ) --entrypoint pyt
 mock-ui: webui
 	$(subst docker run --rm,docker run --rm -it -p $(MOCK_PORT):8080,$(MOCK)) $(if $(MOCK_INDEX),--index /config/$(MOCK_INDEX)) $(MOCK_ARGS) /config/$(CONFIG)
 
-# The custom page prototype in webui/ (piscine-card + advanced tab) against
-# the same mock. Its files are served and watched like the YAML. It also
-# loads the proposed Wi-Fi package (wifi-setup.yaml, not in the firmware
-# yet); MOCK_HOTSPOT=1 starts the device on its fallback hotspot, with no
-# clock, as a new install would.
+# The device's page from its sources in webui/ (piscine-card + the Avancé
+# and Wi-Fi tabs) against the same mock, rather than the bundle mock-ui
+# serves: its files are served and watched like the YAML, so saving one
+# reloads the page. MOCK_HOTSPOT=1 starts the device on its fallback
+# hotspot, with no clock, as a new install would.
 mock-webui:
-	$(MAKE) mock-ui MOCK_INDEX=webui/index.html \
-		MOCK_ARGS="--extra /config/wifi-setup.yaml $(if $(MOCK_HOTSPOT),--hotspot)"
+	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot)"
 
 # Prints the page layout (sections, order, which entities the simulation
 # drives) and fails if $(CONFIG) has an entity type the mock can't render.
