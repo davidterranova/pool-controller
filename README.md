@@ -85,8 +85,6 @@ repo itself — layout and tooling.
 | `make mock-ui` | Serve a local mock of the device's web UI at http://localhost:8080/ (see below). `MOCK_PORT=` to change the port, `MOCK_INDEX=path.html` to serve your own page. |
 | `make mock-webui` | `make mock-ui` with the custom page in `webui/` and the proposed Wi-Fi package (see below). `MOCK_HOTSPOT=1` starts the simulated device on its hotspot, with no clock. |
 | `make mock-ui-check` | Print the web UI layout (sections and order) and fail on any entity type the mock can't render. Runs in CI. |
-| `make ha-card` | Until HA installs the card from HACS: copy `home-assistant/piscine-card.js` into the local-k3s checkout that deploys it today (see below). `LOCAL_K3S=` to point at another checkout. |
-| `make ha-card-diff` | Show how the card deployed through local-k3s differs from this repo's. |
 | `make clean` | Remove the local build cache (`.esphome/`). |
 
 `PORT` (serial) and `HOST` (network) both auto-detect and can be overridden
