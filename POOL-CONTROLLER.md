@@ -248,6 +248,24 @@ Re-evaluated every 30 seconds, highest priority wins:
      identical plan (e.g. filtration hours already clamped at the same
      `Max Filtration Hours` ceiling) — that's a correct, expected no-op, not
      the button silently failing to do anything.
+   - **Daily History** (diagnostic) lists, for each of the last 7 completed
+     days, newest first, how long the pump actually ran and the pool's
+     min/max temperature — e.g. `2026-11-13: 6.42 h 25.9/26.6 °C,
+     2026-11-12: 6.70 h` — or `--` before the first midnight. The range is
+     left out for a day the pump never ran long enough to measure the water
+     (see Pool Water Min/Max Today below). The device closes each day into
+     it at midnight, from the same tally as Filtration Hours Today, and
+     keeps it across reboots (one flash write a day). A day the device was
+     off, or had no clock, is missing rather than shown as zero. It exists
+     for the device's own web page, which has no other way to answer "did
+     it filter enough this week?".
+   - **Pool Water Min Today / Pool Water Max Today** are the lowest and
+     highest Pool Return Temperature since midnight, counting only readings
+     taken after 10 minutes of pumping: the sensor sits on the return pipe,
+     so with the pump stopped it reads the pipe cooling or warming toward
+     the equipment pad, not the pool. Unknown until the pump has run 10
+     minutes today; kept across reboots; closed into Daily History at
+     midnight.
 4. **Hot-night keep-alive** — only reached when the autonomous schedule
    above says `Off` (i.e. outside both blocks) and only overnight, before
    today's sunrise or after today's sunset: if `Pool Return Temperature` is
@@ -329,8 +347,8 @@ reason.
    into the firmware, and it has to match for HA's encrypted API connection
    to succeed.
 3. Once paired, these entities show up:
-   - **Sensors**: Pool Return Temperature, Equipment Pad Temperature, Outdoor
-     Temperature, Planned Filtration Hours
+   - **Sensors**: Pool Return Temperature, Pool Water Min/Max Today,
+     Equipment Pad Temperature, Outdoor Temperature, Planned Filtration Hours
    - **Text sensors**: Pump Commanded Speed (what's actually applied), Pump
      Planned Speed (what the autonomous schedule alone says right now),
      Schedule Block 1/2 Start/End (today's computed windows), Next Boost
@@ -536,9 +554,9 @@ It's laid out in the same sections as the HA entities card above:
 | Section | What's in it |
 |---|---|
 | **Pump** | Pump fan, Manual Override, Manual Override Timeout / Ends At, Commanded vs. Planned Speed, Manual Override Active |
-| **Today's Plan** | Planned vs. actual filtration hours, Block 1/2 Start/End, Next Speed Change / Next Planned Speed, Next Boost Start/End, Last Recomputed At, Schedule Not Computed, Recompute Schedule Now |
+| **Today's Plan** | Planned vs. actual filtration hours, Daily History (last 7 days), Block 1/2 Start/End, Next Speed Change / Next Planned Speed, Next Boost Start/End, Last Recomputed At, Schedule Not Computed, Recompute Schedule Now |
 | **Filtration Settings** | The four staged tunables + Filtration Config Pending + Apply Filtration Config, then the three live boost tunables |
-| **Sensors** | The three temperatures, Update Temperature Sensors Now, Status, fill-water flow and total volume |
+| **Sensors** | The three temperatures and today's water min/max, Update Temperature Sensors Now, Status, fill-water flow and total volume |
 
 Each entity's section and position come from its own
 `web_server: {sorting_group_id: ..., sorting_weight: ...}` line in
