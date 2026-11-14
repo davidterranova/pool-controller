@@ -20,6 +20,11 @@ Usage (from the repo root; `make mock-ui` wraps this):
     python3 tools/webui-mock/mock_server.py pool-controller.yaml
     python3 tools/webui-mock/mock_server.py --index my-page.html pool-controller.yaml
     python3 tools/webui-mock/mock_server.py --check pool-controller.yaml
+    python3 tools/webui-mock/mock_server.py --extra wifi-setup.yaml [--hotspot] pool-controller.yaml
+
+--extra loads a YAML package next to the config (entities and sorting groups
+only), for designing against entities the firmware doesn't have yet.
+--hotspot starts the simulated device on its fallback hotspot, with no clock.
 
 Needs PyYAML, and the `esphome` package for the stock page -- both present in
 the ghcr.io/esphome/esphome image the Makefile runs this in.
@@ -38,31 +43,37 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import yaml
 
 # Domains the mock renders, in the order ESPHome's entity iterator sends them.
-SUPPORTED_DOMAINS = ["binary_sensor", "fan", "sensor", "switch", "button", "text_sensor", "number", "select"]
+SUPPORTED_DOMAINS = ["binary_sensor", "fan", "sensor", "switch", "button", "text_sensor", "number", "datetime",
+                     "text", "select"]
 # Entity domains ESPHome has that the mock doesn't simulate; --check fails on them
 # so a new one can't silently go missing from the mock.
 UNSUPPORTED_DOMAINS = [
-    "alarm_control_panel", "climate", "cover", "datetime", "event", "light", "lock",
-    "media_player", "text", "update", "valve", "water_heater",
+    "alarm_control_panel", "climate", "cover", "event", "light", "lock",
+    "media_player", "update", "valve", "water_heater",
 ]
 NUMBER_MODES = {"auto": 0, "box": 1, "slider": 2}
+TEXT_MODES = {"text": 0, "password": 1}
 # Per-platform defaults for what the YAML doesn't spell out.
 SENSOR_DEFAULTS = {
     "dallas_temp": {"unit_of_measurement": "°C", "accuracy_decimals": 1},
     "pulse_meter": {"unit_of_measurement": "pulses/min", "accuracy_decimals": 2},
+    "wifi_signal": {"unit_of_measurement": "dBm", "accuracy_decimals": 0},
 }
 
 # Mock sun times (seconds after local midnight). The real ones come from the
 # sun: component and the pool's coordinates, which stay in secrets.yaml.
 MOCK_SUNRISE = 7 * 3600 + 45 * 60
 MOCK_SUNSET = 17 * 3600 + 15 * 60
+
+# What a custom --index page may load from its own directory.
+STATIC_TYPES = {".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json"}
 
 RELOAD_SNIPPET = (
     "<script>(()=>{const s=new EventSource('/__mock/reload');"
@@ -121,9 +132,21 @@ class Layout:
     js_include: str | None
 
 
-def load_layout(path: str) -> Layout:
+def load_layout(path: str, extras: list[str] | None = None) -> Layout:
     with open(path, encoding="utf-8") as f:
         config = yaml.load(f, Loader=_Loader) or {}
+    for extra in extras or []:
+        # A package's entities and sorting groups, appended like ESPHome's packages: merge would.
+        with open(extra, encoding="utf-8") as f:
+            package = yaml.load(f, Loader=_Loader) or {}
+        for domain in SUPPORTED_DOMAINS + UNSUPPORTED_DOMAINS:
+            if package.get(domain):
+                config[domain] = list(config.get(domain) or []) + list(package[domain])
+        groups = (package.get("web_server") or {}).get("sorting_groups")
+        if groups:
+            web = config.setdefault("web_server", {}) or {}
+            web["sorting_groups"] = list(web.get("sorting_groups") or []) + list(groups)
+            config["web_server"] = web
 
     core = config.get("esphome", {})
     web = config.get("web_server") or {}
@@ -144,11 +167,11 @@ def load_layout(path: str) -> Layout:
             platform = item.get("platform", "")
             if item.get("name") and not item.get("internal"):
                 entities.append(make(domain, platform, item))
-            if domain == "sensor":
-                # Sub-sensors such as pulse_meter's `total:` are full sensors of their own.
+            if domain in ("sensor", "text_sensor"):
+                # Sub-entities such as pulse_meter's `total:` or wifi_info's `ssid:` are full ones of their own.
                 for key, sub in item.items():
                     if isinstance(sub, dict) and sub.get("name") and not sub.get("internal"):
-                        entities.append(make("sensor", f"{platform}.{key}", sub))
+                        entities.append(make(domain, f"{platform}.{key}", sub))
 
     unsupported = [
         f"{domain}: {item.get('name')}"
@@ -184,6 +207,9 @@ N = {
     "planned": "Pump Planned Speed",
     "planned_hours": "Planned Filtration Hours",
     "hours_today": "Filtration Hours Today",
+    "history": "Daily History",
+    "water_min": "Pool Water Min Today",
+    "water_max": "Pool Water Max Today",
     "b1s": "Schedule Block 1 Start",
     "b1e": "Schedule Block 1 End",
     "b2s": "Schedule Block 2 Start",
@@ -212,7 +238,124 @@ N = {
     "flow": "Piscine - Débit remplissage",
     "volume": "Piscine - Volume total remplissage",
 }
-SIMULATED = set(N.values())
+# The proposed Wi-Fi entities (wifi-setup.yaml, loaded with --extra).
+W = {
+    "mode": "WiFi Mode",
+    "signal": "WiFi Signal",
+    "ssid": "WiFi SSID",
+    "bssid": "WiFi BSSID",
+    "ip": "IP Address",
+    "mac": "MAC Address",
+    "disconnects": "WiFi Disconnects",
+    "clients": "Hotspot Clients",
+    "nearby": "WiFi Networks Nearby",
+    "join_ssid": "New WiFi Network",
+    "join_password": "New WiFi Password",
+    "join": "Join WiFi Network",
+    "clock": "Device Clock",
+    "clock_source": "Clock Source",
+}
+SIMULATED = set(N.values()) | set(W.values())
+
+# What the simulated device "sees" around it: (ssid, rssi dBm, bssid). Joining
+# one of the last three fails, as it would with a wrong password.
+NEARBY = [
+    ("Maison", -61, "D4:3F:CB:12:9A:01"),
+    ("Maison-Invités", -64, "D4:3F:CB:12:9A:05"),
+    ("Livebox-7A2C", -79, "A0:1B:29:7A:2C:10"),
+    ("Freebox-4F21E9", -84, "F4:CA:E5:4F:21:E9"),
+    ("DIRECT-HP-Imprimante", -88, "86:2A:FD:31:0C:77"),
+]
+UNJOINABLE = {"Livebox-7A2C", "Freebox-4F21E9", "DIRECT-HP-Imprimante"}
+JOIN_SECONDS = 5
+
+
+class WifiSim:
+    """The proposed Wi-Fi setup: station or fallback hotspot, joining a network, and the clock."""
+
+    def __init__(self, log, hotspot: bool):
+        self.log = log
+        self.mode = "Hotspot" if hotspot else "Connected"
+        self.network = None if hotspot else NEARBY[0]
+        self.rssi = float(NEARBY[0][1])
+        self.disconnects = 0
+        self.join_ssid = ""
+        self.join_password = ""  # held, never published -- like the firmware's global
+        self.joining: tuple[str, float, str] | None = None  # (ssid, done at, mode before)
+        # No internet on the hotspot alone, so no SNTP: the clock starts unset.
+        self.clock_source = "None" if hotspot else "SNTP"
+        self.clock_offset = 0.0
+        self.last_drift = time.time()
+
+    @property
+    def clock_ok(self) -> bool:
+        return self.clock_source != "None"
+
+    def now(self) -> float:
+        return time.time() + self.clock_offset
+
+    def join(self):
+        ssid = self.join_ssid
+        if not ssid:
+            self.log("Wi-Fi: no network to join")
+            return
+        self.log(f"Wi-Fi: joining '{ssid}'")
+        self.joining = (ssid, time.time() + JOIN_SECONDS, self.mode)
+        if self.mode == "Connected":
+            self.disconnects += 1
+        self.mode = "Connecting"
+
+    def set_clock(self, value: str):
+        try:
+            when = datetime.strptime(value, "%Y-%m-%d %H:%M:%S").timestamp()
+        except ValueError:
+            self.log(f"'{W['clock']}': invalid value {value!r}")
+            return
+        self.clock_offset = when - time.time()
+        if abs(self.clock_offset) < 120:
+            self.clock_offset = 0.0  # the mock's own clock is right; don't drift the plan for a rounding
+        self.clock_source = "Browser"
+        self.log(f"Clock set from the page: {value}")
+
+    def tick(self):
+        now = time.time()
+        if self.joining and now >= self.joining[1]:
+            ssid, _done, before = self.joining
+            self.joining = None
+            password, self.join_password = self.join_password, ""
+            match = next((n for n in NEARBY if n[0] == ssid), None)
+            if match and ssid not in UNJOINABLE and len(password) >= 8:
+                self.mode, self.network, self.rssi = "Connected", match, float(match[1])
+                self.log(f"Wi-Fi: joined '{ssid}' and saved it")
+                if self.clock_source != "SNTP":
+                    self.clock_source, self.clock_offset = "SNTP", 0.0
+                    self.log("Clock synchronized over the internet (SNTP)")
+            else:
+                self.mode = before
+                self.log(f"Wi-Fi: couldn't join '{ssid}', keeping the previous network")
+        if self.mode == "Connected" and now - self.last_drift > 10:
+            self.last_drift = now
+            self.rssi = min(-45.0, max(-90.0, self.rssi + random.uniform(-2, 2)))
+
+    def snapshot(self) -> dict:
+        connected = self.mode == "Connected"
+        clock = (datetime.fromtimestamp(self.now()).strftime("%Y-%m-%d %H:%M:00") if self.clock_ok
+                 else "0-00-00 00:00:00")
+        return {
+            W["mode"]: self.mode,
+            W["signal"]: round(self.rssi) if connected else None,
+            W["ssid"]: self.network[0] if connected else "",
+            W["bssid"]: self.network[2] if connected else "",
+            W["ip"]: "192.168.1.47" if connected else "",
+            W["mac"]: "24:6F:28:9C:41:D0",
+            W["disconnects"]: float(self.disconnects),
+            W["clients"]: 1.0 if self.mode == "Hotspot" else 0.0,
+            W["nearby"]: "".join(f"{ssid}: {rssi}dB\n" for ssid, rssi, _b in NEARBY),
+            W["join_ssid"]: self.join_ssid,
+            W["join_password"]: "",
+            W["clock"]: clock,
+            W["clock_source"]: self.clock_source,
+        }
 
 
 def _hhmm(ts: int) -> str:
@@ -226,8 +369,9 @@ def _stamp(ts: float) -> str:
 class PoolSim:
     """A pocket version of evaluate_speed and friends, driven by wall-clock time."""
 
-    def __init__(self, log):
+    def __init__(self, log, hotspot: bool = False):
         self.log = log
+        self.wifi = WifiSim(log, hotspot)
         self.started = time.time()
         self.numbers: dict[str, float] = {}
         self.selects: dict[str, str] = {}
@@ -244,6 +388,22 @@ class PoolSim:
         self.commanded = "Off"
         self.filtration_s = 0.0
         self.counted_day = None
+        # Today's water min/max (pumping readings only, as on the device), and when the pump started.
+        self.water_lo: float | None = None
+        self.water_hi: float | None = None
+        self.run_started: float | None = None
+        # The last 7 closed days, newest first: (date, seconds, water min, water max). Seeded with a
+        # plausible week -- one day missing as if the device had been off, one with no water range as
+        # if the pump hadn't run -- so the page has something to show.
+        today = datetime.now().date()
+        self.history = []
+        for d in range(1, 8):
+            if d == 4:
+                continue
+            lo = round(25.4 + random.uniform(-0.6, 0.6), 1)
+            measured = d != 6
+            self.history.append((today - timedelta(days=d), random.uniform(4.5, 7.5) * 3600 if measured else 0.0,
+                                 lo if measured else None, round(lo + random.uniform(0.3, 0.9), 1) if measured else None))
         self.last_tick = time.time()
         self.last_drift = time.time()
 
@@ -344,8 +504,14 @@ class PoolSim:
     # -- time
 
     def tick(self):
+        self.wifi.tick()
         now = time.time()
         today = datetime.fromtimestamp(now).date()
+        if not self.wifi.clock_ok:
+            # No clock, no plan: the device can't place the blocks, and doesn't count the day.
+            self.last_tick = now
+            self.evaluate()
+            return
         if self.computed_day != today:
             first = self.computed_day is None
             self.recompute(now)
@@ -354,6 +520,10 @@ class PoolSim:
                 midnight = int(datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0).timestamp())
                 self.filtration_s = sum(60 for t in range(midnight, int(now), 60) if self.plan_at(t) != "Off")
                 self.counted_day = today
+                if self.filtration_s > 600:
+                    # As if the pump's earlier runs today had measured the water.
+                    self.water_lo = round(self.temps["pool_temp"] - 0.3, 1)
+                    self.water_hi = round(self.temps["pool_temp"] + 0.1, 1)
         # Override expiry (the 30s interval on the device).
         timeout = self.num("timeout")
         if self.override_since is not None and timeout > 0 and now - self.override_since >= timeout * 60:
@@ -361,8 +531,10 @@ class PoolSim:
             self.set_override("Auto")
         # Filtration runtime.
         if self.counted_day != today:
+            self.history = [(self.counted_day, self.filtration_s, self.water_lo, self.water_hi)] + self.history[:6]
             self.filtration_s = 0.0
             self.counted_day = today
+            self.water_lo = self.water_hi = None
         elif self.commanded != "Off":
             self.filtration_s += now - self.last_tick
         self.last_tick = now
@@ -371,12 +543,19 @@ class PoolSim:
             self.last_drift = now
             self.temps["pool_temp"] = min(29.5, max(24.0, self.temps["pool_temp"] + random.uniform(-0.05, 0.05)))
             self.temps["outdoor_temp"] += random.uniform(-0.1, 0.1)
+            # Today's min/max: only readings after 10 min of pumping (the sensor is on the return pipe).
+            if self.run_started is not None and now - self.run_started >= 600:
+                v = round(self.temps["pool_temp"], 1)
+                self.water_lo = v if self.water_lo is None else min(self.water_lo, v)
+                self.water_hi = v if self.water_hi is None else max(self.water_hi, v)
         self.evaluate()
 
     def evaluate(self):
         desired = self.desired(int(time.time()))
         if desired != self.commanded:
             self.log(f"Pump: applying speed {desired}")
+            if (self.commanded == "Off") != (desired == "Off"):
+                self.run_started = None if desired == "Off" else time.time()
             self.commanded = desired
 
     # -- actions (what the REST endpoints call)
@@ -392,6 +571,8 @@ class PoolSim:
             self.recompute(time.time())
         elif name == N["recompute"]:
             self.recompute(time.time())
+        elif name == W["join"]:
+            self.wifi.join()
         elif name == N["update_temps"]:
             for k in self.temps:
                 self.temps[k] += random.uniform(-0.1, 0.1)
@@ -429,6 +610,9 @@ class PoolSim:
             N["planned"]: self.plan_at(int(now)),
             N["planned_hours"]: (b1e - b1s + b2e - b2s) / 3600.0,
             N["hours_today"]: self.filtration_s / 3600.0,
+            N["history"]: ", ".join(_history_day(*day) for day in self.history) or "--",
+            N["water_min"]: self.water_lo,
+            N["water_max"]: self.water_hi,
             N["b1s"]: _hhmm(b1s), N["b1e"]: _hhmm(b1e), N["b2s"]: _hhmm(b2s), N["b2e"]: _hhmm(b2e),
             N["next_change"]: _hhmm(nxt),
             N["next_speed"]: nxt_speed if nxt else "--",
@@ -440,14 +624,21 @@ class PoolSim:
             N["pool_temp"]: round(self.temps["pool_temp"], 2),
             N["pad_temp"]: round(self.temps["pad_temp"], 2),
             N["outdoor_temp"]: round(self.temps["outdoor_temp"], 2),
-            N["status"]: True,
+            N["status"]: self.wifi.mode == "Connected",  # the API link to HA needs the home network
             N["flow"]: self.flow,
             N["volume"]: self.volume,
         }
+        values.update(self.wifi.snapshot())
         values.update(self.static)
         values.update(self.numbers)
         values.update(self.selects)
         return values
+
+
+def _history_day(day, sec, lo, hi) -> str:
+    """One day of Daily History, as the device's lambda prints it."""
+    out = f"{day.isoformat()}: {int(sec // 3600)}.{int(sec % 3600 // 60 * 100 // 60):02d} h"
+    return out if lo is None or hi is None else f"{out} {lo:.1f}/{hi:.1f} °C"
 
 
 # --------------------------------------------------------------------------- protocol
@@ -466,7 +657,8 @@ def entity_json(e: Entity, value, detail_all: bool) -> dict:
     """The JSON the device sends for an entity -- see web_server.cpp's *_json_ methods."""
     out = {"name_id": f"{e.domain}/{e.name}", "id": f"{e.domain}-{e.object_id}"}
     if detail_all:
-        out.update(domain=e.domain, name=e.name, icon=e.get("icon", ""), entity_category=0)
+        out.update(domain=e.domain, name=e.name, icon=e.get("icon", ""),
+                   entity_category={"config": 1, "diagnostic": 2}.get(e.get("entity_category", ""), 0))
 
     if e.domain == "sensor":
         uom = e.get("unit_of_measurement", "")
@@ -498,6 +690,16 @@ def entity_json(e: Entity, value, detail_all: bool) -> dict:
         out.update(value=value, state=value)
         if detail_all:
             out["option"] = list(e.get("options", []))
+    elif e.domain == "text":
+        mode = TEXT_MODES.get(str(e.get("mode", "text")).lower(), 0)
+        # Password mode masks `state` only; `value` is sent as-is (hence the firmware never publishes one).
+        out.update(value=value, state="********" if mode == 1 else value,
+                   min_length=int(e.get("min_length", 0)), max_length=int(e.get("max_length", 255)),
+                   pattern=e.get("pattern", ""))
+        if detail_all:
+            out["mode"] = mode
+    elif e.domain == "datetime":
+        out.update(value=value, state=value)
 
     if detail_all and e.weight is not None:
         out["sorting_weight"] = e.weight
@@ -535,15 +737,17 @@ def stock_index() -> str:
 
 
 class MockServer:
-    def __init__(self, config_path: str, index_path: str | None):
+    def __init__(self, config_path: str, index_path: str | None, extras: list[str] | None = None,
+                 hotspot: bool = False):
         self.config_path = config_path
         self.index_path = index_path
+        self.extras = extras or []
         self.lock = threading.RLock()
         self.clients: list[queue.Queue] = []
         self.reload_clients: list[queue.Queue] = []
         self.event_id = 0
-        self.sim = PoolSim(self.log)
-        self.layout = load_layout(config_path)
+        self.sim = PoolSim(self.log, hotspot)
+        self.layout = load_layout(config_path, self.extras)
         self.sim.adopt(self.layout.entities)
         self.sim.tick()
         self.sent = self.sim.snapshot()
@@ -575,6 +779,21 @@ class MockServer:
                 if self.sent.get(e.name) != value:
                     self.broadcast(sse("state", json.dumps(entity_json(e, value, False))))
             self.sent = snapshot
+
+    def assets(self) -> list[str]:
+        """Files next to a custom --index page (scripts, styles), served as-is and watched for changes."""
+        if not self.index_path:
+            return []
+        root = os.path.dirname(os.path.abspath(self.index_path))
+        return [os.path.join(d, f) for d, _dirs, files in os.walk(root) for f in files
+                if os.path.splitext(f)[1] in STATIC_TYPES]
+
+    def asset(self, url_path: str) -> str | None:
+        if not self.index_path:
+            return None
+        root = os.path.dirname(os.path.abspath(self.index_path))
+        candidate = os.path.abspath(os.path.join(root, url_path.lstrip("/")))
+        return candidate if candidate in self.assets() else None
 
     def index_html(self) -> str:
         if self.index_path:
@@ -632,6 +851,26 @@ class MockServer:
                     self.sim.fan_action(action)
                 else:
                     self.sim.static[name] = {"turn_on": True, "turn_off": False}.get(action, not self.sim.static.get(name))
+            elif domain == "text" and action == "set":
+                value = arg("value") or ""
+                if len(value) > int(e.get("max_length", 255)):
+                    return 200
+                if name == W["join_password"]:
+                    self.log(f"'{name}' set")  # never echo it
+                    self.sim.wifi.join_password = value
+                elif name == W["join_ssid"]:
+                    self.log(f"'{name}' set to {value!r}")
+                    self.sim.wifi.join_ssid = value
+                else:
+                    self.sim.static[name] = value
+            elif domain == "datetime" and action == "set":
+                value = arg("value")
+                if not value:
+                    return 409
+                if name == W["clock"]:
+                    self.sim.wifi.set_clock(value)
+                else:
+                    self.sim.static[name] = value
             elif domain == "switch" and action in ("turn_on", "turn_off", "toggle"):
                 self.sim.static[name] = {"turn_on": True, "turn_off": False}.get(action, not self.sim.static.get(name))
             else:
@@ -655,7 +894,8 @@ class MockServer:
 
     def watcher(self):
         def mtimes():
-            paths = [self.config_path, self.index_path, self.layout.css_include, self.layout.js_include]
+            paths = [self.config_path, *self.extras, self.index_path, self.layout.css_include, self.layout.js_include,
+                     *self.assets()]
             return {p: os.path.getmtime(p) for p in paths if p and os.path.exists(p)}
 
         seen = mtimes()
@@ -666,7 +906,7 @@ class MockServer:
                 continue
             seen = current
             try:
-                layout = load_layout(self.config_path)
+                layout = load_layout(self.config_path, self.extras)
             except Exception as exc:  # noqa: BLE001 -- keep serving the last good layout
                 print(f"[mock] {self.config_path} didn't load, keeping the previous layout: {exc}", flush=True)
                 continue
@@ -731,6 +971,10 @@ def make_handler(mock: MockServer):
                 if path == route and include and os.path.exists(include):
                     with open(include, "rb") as f:
                         return self.send_body(200, f.read(), ctype)
+            asset = mock.asset(path)
+            if asset:
+                with open(asset, "rb") as f:
+                    return self.send_body(200, f.read(), STATIC_TYPES[os.path.splitext(asset)[1]])
             parts = path.strip("/").split("/")
             if len(parts) == 2:
                 with mock.lock:
@@ -756,9 +1000,9 @@ def make_handler(mock: MockServer):
 # --------------------------------------------------------------------------- entry points
 
 
-def check(config_path: str) -> int:
+def check(config_path: str, extras: list[str] | None = None) -> int:
     """Print the layout the page will show; fail on entities the mock can't render."""
-    layout = load_layout(config_path)
+    layout = load_layout(config_path, extras)
     print(f"{layout.title}: {len(layout.entities)} entities\n")
     order = {name: i for i, (name, _w) in enumerate(sorted(layout.groups, key=lambda g: g[1]))}
     by_group: dict[str, list[Entity]] = {}
@@ -784,15 +1028,19 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--index", help="serve this HTML file instead of ESPHome's stock v3 page")
     parser.add_argument("--check", action="store_true", help="print the layout and exit")
+    parser.add_argument("--extra", action="append", default=[],
+                        help="also load this YAML package's entities (repeatable), e.g. wifi-setup.yaml")
+    parser.add_argument("--hotspot", action="store_true",
+                        help="start on the fallback hotspot, with no clock (needs --extra wifi-setup.yaml)")
     args = parser.parse_args()
 
     if args.check:
-        return check(args.config)
+        return check(args.config, args.extra)
 
     # PID 1 in the container ignores SIGTERM by default, so `docker stop` would
     # otherwise wait out its timeout and SIGKILL.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    mock = MockServer(args.config, args.index)
+    mock = MockServer(args.config, args.index, args.extra, args.hotspot)
     threading.Thread(target=mock.ticker, daemon=True).start()
     threading.Thread(target=mock.watcher, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(mock))

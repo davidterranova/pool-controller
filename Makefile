@@ -86,12 +86,12 @@ MOCK_TZ ?= $(shell readlink /etc/localtime 2>/dev/null | sed -E 's|.*/zoneinfo/|
 MOCK := docker run --rm -v "$(CURDIR):/config" -e TZ=$(MOCK_TZ) --entrypoint python3 ghcr.io/esphome/esphome /config/tools/webui-mock/mock_server.py
 
 mock-ui:
-	$(subst docker run --rm,docker run --rm -it -p $(MOCK_PORT):8080,$(MOCK)) $(if $(MOCK_INDEX),--index /config/$(MOCK_INDEX)) /config/$(CONFIG)
+	$(subst docker run --rm,docker run --rm -it -p $(MOCK_PORT):8080,$(MOCK)) $(if $(MOCK_INDEX),--index /config/$(MOCK_INDEX)) $(MOCK_ARGS) /config/$(CONFIG)
 
 # Prints the page layout (sections, order, which entities the simulation
 # drives) and fails if $(CONFIG) has an entity type the mock can't render.
 mock-ui-check:
-	$(MOCK) --check /config/$(CONFIG)
+	$(MOCK) --check $(MOCK_ARGS) /config/$(CONFIG)
 
 clean:
 	rm -rf .esphome
