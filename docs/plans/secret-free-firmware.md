@@ -28,7 +28,7 @@ Target:
 | 2 | Firmware: settings package, no `!secret` left | 1 | | todo | |
 | 3 | Controller's page: setup wizard, « Contrôleur » sections | contract below (UI on the mock); 2 to finish | | todo | |
 | 4 | Card: Firmware section on the update entity, position/timezone from HA | contract below; 6 to finish | | todo | |
-| 5 | CI: releases carry the firmware, manifest + files on GitHub Pages | 2 (for a real build) | | todo | |
+| 5 | CI: releases carry the firmware, manifest + files on GitHub Pages | 2 (for a real build) | ci/wp5-firmware-releases | review | [#29](https://github.com/davidterranova/pool-controller/pull/29) |
 | 6 | Firmware: updates (http_request OTA + update entity + auto-update) | 1, 5 (manifest URL) | | todo | |
 | 7 | Install page (ESP Web Tools) + docs | 5 | | todo | |
 | 8 | Migration of an existing controller built with secrets.yaml | 2, 3, 6 | | todo | |
@@ -104,10 +104,21 @@ These are agreed up front, so 3, 4 and the mock can proceed before 2 and 6. Name
 - [ ] harness: a fake update entity in each state; VERSION bump
 
 ### WP5: CI releases
-- [ ] one project version: a change to the card **or** firmware sources needs a new VERSION (extend card.yml's check)
-- [ ] on release: compile with pinned ESPHome, no secrets, `-s firmware_version vX.Y.Z`; attach `firmware.ota.bin`, `firmware.factory.bin`, `manifest.json` (ESP-Web-Tools format + `ota` block: path, md5, release_url)
-- [ ] publish them to GitHub Pages under `/firmware/` (stable URL, no redirect); the repo setting is the owner's call
-- [ ] `validate.yml` drops the placeholder-secrets step
+- [x] one project version: a change to the card **or** firmware sources needs a new VERSION (card.yml's check, now `release.yml`: the card, `webui/`, any `*.yaml` at the root)
+- [x] on release: compile with pinned ESPHome, no secrets, `-s firmware_version vX.Y.Z`; attach `firmware.ota.bin`, `firmware.factory.bin`, `manifest.json` (ESP-Web-Tools format + `ota` block: path, md5, release_url) — wired and tested on a development build; the first release that carries them comes after WP2
+- [ ] publish them to GitHub Pages under `/firmware/` (stable URL, no redirect); the repo setting is the owner's call — wired, off until the owner enables Pages and sets `PUBLISH_FIRMWARE_PAGES`
+- [ ] `validate.yml` drops the placeholder-secrets step — with WP2 (it still needs it while `!secret` remains)
+
+How it works (`.github/workflows/`):
+- `release.yml` (was `card.yml`): on main, a VERSION with no release calls `firmware.yml` with the tag, then releases. The card is released exactly as before; the firmware's three files are attached only when `firmware.yml` built a publishable release, after checking the manifest's version and md5.
+- `firmware.yml`: reusable (`workflow_call`), also run by hand or on a PR changing the build. `make build ESPHOME_IMAGE=… FW_VERSION=…` (webui bundle, then compile) with `ESPHOME_IMAGE: ghcr.io/esphome/esphome:2026.7.2`, the one place the version is pinned. `tools/release/manifest.py` writes the manifest (paths relative to it, `chipFamily: ESP32`, md5 + sha256).
+- The guard, `tools/release/secret_guard.py`: any `!secret` in `pool-controller.yaml`, its `!include`s or the `*.yaml` beside it means a release builds nothing (notice: the release carries the card only), and a development build uses validate.yml's placeholders, artifact `firmware-dev-<sha>-placeholder-secrets-not-a-release`. A release build also runs with no secrets.yaml, so a `!secret` the guard missed fails the compile.
+- `pages` job: only with `vars.PUBLISH_FIRMWARE_PAGES == 'true'`; deploys `/firmware/` (this release's three files) plus `docs/install/` as `/install/` when it exists. Each deploy replaces the site.
+
+For the WPs that build on it:
+- WP2: the manifest's `version` is the `firmware_version` string, the tag with its `v` (`v1.4.0`), so `esphome: project: version: ${firmware_version}` matches it exactly. Once no `!secret` is left, the next release carries the firmware with no change here.
+- WP6: `source: https://<owner>.github.io/<repo>/firmware/manifest.json` (relative `ota.path`, so no redirect, unlike release assets).
+- WP7: the install page in `docs/install/` reaches Pages with the next release's deploy (or add a `workflow_dispatch` path to the `pages` job then). Its ESP Web Tools manifest is `../firmware/manifest.json`; it sets `new_install_prompt_erase` and `home_assistant_domain: esphome`.
 
 ### WP6: updates
 - [ ] new package `updates.yaml`: `http_request:` (verify_ssl), `ota: platform: http_request`, `update: platform: http_request` (source = Pages manifest, `update_interval: never`)
@@ -143,4 +154,4 @@ _(findings, with the ESPHome version they were checked on)_
 
 ## Open questions
 - Does HA 2026.11 provision a keyless device's API key by itself? (WP1)
-- Enabling GitHub Pages on the repo (owner's call, WP5).
+- Enabling GitHub Pages on the repo (owner's call, WP5): Settings › Pages › Source: GitHub Actions, and the repository variable `PUBLISH_FIRMWARE_PAGES` = `true` (README › Releases). Worth doing once a release carries a firmware (after WP2), since WP6 and WP7 need the URL.

@@ -1,5 +1,8 @@
 CONFIG := pool-controller.yaml
-ESPHOME := docker run --rm -v "$(CURDIR):/config" ghcr.io/esphome/esphome
+# The latest ESPHome image by default; CI's firmware build pins a version
+# (ESPHOME_IMAGE in .github/workflows/firmware.yml).
+ESPHOME_IMAGE ?= ghcr.io/esphome/esphome
+ESPHOME := docker run --rm -v "$(CURDIR):/config" $(ESPHOME_IMAGE)
 # The commit the firmware is built from, as its Firmware Version entity reports it
 # (the pool card compares it with main on GitHub): v1.3.0, v1.3.0-4-g1a2b3c4, …-dirty.
 FW_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
