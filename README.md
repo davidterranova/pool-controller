@@ -129,15 +129,15 @@ you set `local: true` back).
 
 [home-assistant/piscine-card.js](home-assistant/piscine-card.js) is
 `custom:piscine-card`, the pool card of the Home Assistant dashboard: a tile,
-and a panel shown in a pop-up with three tabs. « Pompe » has the pump's state,
+and a panel shown in a pop-up with four tabs. « Pompe » has the pump's state,
 today's plan timeline, the pool's temperature (24 h, 7, 30 and 90 days, a
 year), Auto/Manuel, the forced speed and its duration, and the outdoor and
 equipment-pad temperatures; « Remplissage » the fill water, by day, week or
-month with the period's total; « Réglages » every control the controller has,
-as on its own page's Avancé tab: the settings, today's plan with
-« Recalculer », the last 7 days, the controller's link, Wi-Fi and probes. A
-third variant, `settings`, draws the settings alone, with a line under each
-saying what it does.
+month with the period's total; « Avancé » today's plan with « Recalculer »,
+the last 7 days, the controller (its link, Wi-Fi and firmware) and its
+probes; « Réglages » every setting the controller has. A third variant,
+`settings`, draws the settings alone, with a line under each saying what it
+does.
 A light on the tile and in the panel's header says when the controller was
 last heard: green while it talks, amber when it goes quiet or has just gone
 offline, red after 15 min; each new message sends a ring out of it.
@@ -263,7 +263,7 @@ How it fits together:
   temperature graph runs with `recorder: false` here: its 7-day view works,
   its 24 h, 30-day, 90-day and year views say they're in Home Assistant,
   and it has no tabs: no « Remplissage » (that history is Home Assistant's
-  statistics), and its « Réglages » are the page's Avancé tab. Nor the card's
+  statistics), and its « Avancé » and « Réglages » are the page's Avancé tab. Nor the card's
   light: the page's own « Connecté au contrôleur » chip is its link to the
   device. The page only keeps the Manual Override's changes in memory from
   the moment it opens (gone on reload), for the card's record of today's

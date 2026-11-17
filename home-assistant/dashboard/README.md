@@ -47,20 +47,21 @@ pop-up; the tile is the card's own:
       entities: { … }
 ```
 
-The panel has three tabs, so the pop-up needs no dashboard behind it:
+The panel has four tabs, so the pop-up needs no dashboard behind it:
 
 - « Pompe »: state, today's plan, the pool's temperature (24 h to a year), Auto/Manuel, and at its foot
   the outdoor and equipment-pad temperatures (a tap opens Home Assistant's more-info, with their history);
 - « Remplissage »: the fill water. It needs the `volume` entity and the recorder; without them the tab
   isn't there;
-- « Réglages »: every setting with its Apply gate, today's plan in detail with « Recalculer », the last
-  7 days of filtration against the plan, and the controller's link, Wi-Fi and probes with « Relire ».
-  The card's « Planning et réglages » link opens it. `settings_tab: false` drops the tab, and the link
-  then opens `more_path`; `temperatures: false` drops the temperatures at the foot of « Pompe ».
+- « Avancé »: today's plan in detail with « Recalculer », the last 7 days of filtration against the
+  plan, the controller's link, Wi-Fi and firmware (from the device registry), and the probes with
+  « Relire ». The card's « Planning et réglages » link opens it;
+- « Réglages »: every setting, with its Apply gate. `settings_tab: false` drops it and « Avancé », and
+  the link then opens `more_path`; `temperatures: false` drops the temperatures at the foot of « Pompe ».
 
 Its header, and the tile, have a light for the controller: green while it talks (the Device Clock, `clock`,
 changes every minute), amber when it goes quiet or has been offline for less than 15 min, red beyond. In the
-header it says when the controller was last heard and opens « Réglages » › Contrôleur. `controller_light:
+header it says when the controller was last heard and opens « Avancé » › Contrôleur. `controller_light:
 false` drops it; `controller_health: { warn: 3, alert: 15, beat: 4 }` sets its minutes before amber and red.
 
 What this dashboard adds to the card: the three probes' curves and their 90-day daily means, the

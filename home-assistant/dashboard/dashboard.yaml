@@ -15,12 +15,13 @@ views:
     max_columns: 3
     sections:
       # ── Component: the pump ────────────────────────────────────────────────────────────────────────
-      # piscine-card's panel, three tabs, and a light in its header for the controller's link. « Pompe »:
+      # piscine-card's panel, four tabs, and a light in its header for the controller's link. « Pompe »:
       # state, today's plan, the pool's temperature (24 h to 1 an), Auto/Manuel, and the outdoor and
-      # equipment-pad temperatures. « Remplissage »: fill water per day, week or month. « Réglages »: every
-      # setting, today's plan in detail with « Recalculer », the last 7 days, the controller's link, Wi-Fi
-      # and probes. Its defaults are one particular install's entity ids, so every entity is given here,
-      # once (&pool, reused by the settings below). It calls the two scripts of scripts.yaml.
+      # equipment-pad temperatures. « Remplissage »: fill water per day, week or month.
+      # « Avancé »: today's plan in detail with « Recalculer », the last 7 days, the controller's link,
+      # Wi-Fi and firmware, the probes. « Réglages »: every setting. Its defaults are one particular
+      # install's entity ids, so every entity is given here, once (&pool, reused by the settings below).
+      # It calls the two scripts of scripts.yaml.
       - type: grid
         cards:
           - type: heading
