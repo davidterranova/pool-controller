@@ -129,12 +129,15 @@ you set `local: true` back).
 
 [home-assistant/piscine-card.js](home-assistant/piscine-card.js) is
 `custom:piscine-card`, the pool card of the Home Assistant dashboard: a tile,
-and a panel shown in a pop-up with two tabs. « Pompe » has the pump's state,
+and a panel shown in a pop-up with three tabs. « Pompe » has the pump's state,
 today's plan timeline, the pool's temperature (24 h, 7 days, 30 days),
 Auto/Manuel, the forced speed and its duration, and the outdoor and
 equipment-pad temperatures; « Remplissage » the fill water, by day, week or
-month with the period's total. A third variant, `settings`,
-draws the controller's settings with a line under each saying what it does.
+month with the period's total; « Réglages » every control the controller has,
+as on its own page's Avancé tab: the settings, today's plan with
+« Recalculer », the last 7 days, the controller's link, Wi-Fi and probes. A
+third variant, `settings`, draws the settings alone, with a line under each
+saying what it does.
 It's a plain custom element, no framework and no build step, in French.
 
 It lives here because it's written against this firmware's entities, and
@@ -159,7 +162,7 @@ What it needs from Home Assistant, besides the entities:
   day the firmware was flashed; before that, only Daily History's 7 days);
 - the long-term statistics of the fill meter (Piscine - Volume total
   remplissage, `total_increasing`), for the « Remplissage » tab. Without the
-  meter or the recorder, the panel has no tabs.
+  meter or the recorder, that tab isn't there.
 
 The temperature graph exists because the probe is on the return pipe: it
 reads the pool only while water flows, and with the pump stopped it drifts
@@ -227,7 +230,7 @@ look of the Home Assistant dashboard. It has three tabs:
   min/max) and the filling meter.
 - **Avancé**: the filtration settings with their Apply gate, the boost
   pulses, the freeze-protection threshold and the override timeout (the
-  card's settings variant, as on the Home Assistant dashboard), today's plan in
+  card's settings variant, the rows of its « Réglages » tab in Home Assistant), today's plan in
   detail, the last 7 days (hours filtered, pool min/max), the device's
   sensors, and its live log.
 - **Wi-Fi** (see below): the connection and its statistics, and a way to
@@ -252,8 +255,9 @@ How it fits together:
   min/max (Pool Water Min/Max Today) and, for each of the last 7 days, the
   hours filtered and the pool's min/max (Daily History). So the card's
   temperature graph runs with `recorder: false` here: its 7-day view works,
-  its 24 h and 30-day views say they're in Home Assistant, and it has no
-  « Remplissage » tab (that history is Home Assistant's statistics). The page only
+  its 24 h and 30-day views say they're in Home Assistant, and it has no tabs:
+  no « Remplissage » (that history is Home Assistant's statistics), and its
+  « Réglages » are the page's Avancé tab. The page only
   keeps the Manual Override's changes in memory from the moment it opens
   (gone on reload), for the card's record of today's overrides.
 - **No framework.** Icons are path data from `@mdi/js` (the set HA uses),

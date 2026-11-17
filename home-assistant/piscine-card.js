@@ -11,6 +11,7 @@
  *
  *   type: custom:piscine-card
  *   variant: panel       # full controls, placed inside the Bubble pop-up
+ *   settings_tab: false  # optional: no « Réglages » tab; « Planning et réglages » then opens more_path
  *   temperatures: false  # optional: no outdoor / equipment-pad block at the foot of « Pompe »
  *
  * The card never writes the controller's Manual Override select itself:
@@ -47,6 +48,13 @@
  * month, the period's total above. The running day/week/month adds what the meter counted since the last
  * compiled hour (the live state against that hour's `state`; after a reboot the meter restarts from 0). A tab
  * rather than one more block: the pop-up stays a pump control, and the water history is one tap away.
+ *
+ * Settings (tab « Réglages »; mock-up 2026-11-17): every control the controller has, as on its own page's Avancé
+ * tab, so the pop-up needs no dashboard behind it. The settings (the same rows as `variant: settings`), today's
+ * plan with « Recalculer », the last 7 days of filtration against the plan (Daily History), and the controller:
+ * its link, Wi-Fi and probes with « Relire ». « Planning et réglages » at the foot of « Pompe » opens it.
+ * `settings_tab: false` drops the tab (the device's page, which has its own Avancé); the link then goes to
+ * `more_path`.
  *
  * At the foot of « Pompe », « Températures »: the outdoor and equipment-pad probes, a tap opening Home
  * Assistant's more-info and its history. `temperatures: false` drops it (the device's page has its own tiles).
@@ -101,6 +109,13 @@ const DEFAULT_ENTITIES = {
   pending: "binary_sensor.piscine_pool_controller_filtration_config_pending",
   apply: "button.piscine_pool_controller_apply_filtration_config",
   pad: "sensor.pool_controller_equipment_pad_temperature",
+  nextBoostStart: "sensor.piscine_pool_controller_next_boost_start",
+  nextBoostEnd: "sensor.piscine_pool_controller_next_boost_end",
+  recompute: "button.piscine_pool_controller_recompute_schedule_now",
+  updateTemps: "button.piscine_pool_controller_update_temperature_sensors_now",
+  wifiSignal: "sensor.piscine_pool_controller_wifi_signal",
+  wifiSsid: "sensor.piscine_pool_controller_wifi_ssid",
+  wifiDisc: "sensor.piscine_pool_controller_wifi_disconnects",
   sForce: "script.piscine_forcer_vitesse",
   sAuto: "script.piscine_retour_auto",
 };
@@ -122,7 +137,7 @@ const W_RANGES = { "30d": "30 j", "90d": "90 j", "12m": "12 mois" };
 const W_PERIOD = { "30d": "day", "90d": "week", "12m": "month" };
 /** variant: settings — the device page's « Réglages », in its order and words. `icon` when the entity has none. */
 const SETTINGS = [
-  { sect: "Durée de filtration · s'applique avec « Appliquer »" },
+  { sect: "Durée de filtration · s'applique avec «\u00a0Appliquer\u00a0»" },
   { key: "min", label: "Filtration minimale", sub: "Plancher, même par eau froide", icon: "timer-sand" },
   { key: "max", label: "Filtration maximale", sub: "Plafond, même en pleine chaleur", icon: "timer-sand" },
   { key: "offset", label: "Ajustement de durée", sub: "Ajouté à la durée calculée", icon: "timer-plus" },
@@ -138,6 +153,42 @@ const SETTINGS = [
   { key: "timeout", label: "Retour automatique en Auto après", sub: "0 = jamais (alerte après 30 min)", icon: "timer-outline" },
 ];
 const APPLIED = "Réglages appliqués : plan du jour recalculé";
+
+/**
+ * Panel, tab « Réglages »: Plan du jour and Contrôleur, the device page's rows (webui/app.js) in its words. A row
+ * whose entity is missing is hidden (Wi-Fi rows need wifi-setup.yaml). `val`/`sub` take the card.
+ */
+const span = (c, a, b) => (hhmm(c._s(a)) !== null && c._s(a) !== c._s(b) ? `${c._s(a)} → ${c._s(b)}` : "—"); // start == end: none
+const degC = (k) => (c) => `${fmt1(c._n(k))} °C`;
+const PLAN_ROWS = [
+  { key: "hoursPlanned", label: "Durée planifiée", icon: "timer-outline", val: (c) => `${fmt1(c._n("hoursPlanned"))} h` },
+  { key: "hoursToday", label: "Filtrée aujourd'hui", icon: "timer-check-outline", val: (c) => `${fmt1(c._n("hoursToday"))} h`,
+    sub: (c) => (c._n("hoursPlanned") > 0 ? `${Math.round((c._n("hoursToday") / c._n("hoursPlanned")) * 100)} % du plan` : "") },
+  { key: "b1s", label: "Bloc 1", icon: "clock-start", val: (c) => span(c, "b1s", "b1e") },
+  { key: "b2s", label: "Bloc 2", icon: "clock-end", val: (c) => span(c, "b2s", "b2e") },
+  { key: "planned", label: "Vitesse du plan maintenant", icon: "pump", val: (c) => SPEEDS[c._planned()] || c._planned() },
+  { key: "commanded", label: "Vitesse commandée", icon: "pump", val: (c) => SPEEDS[c._commanded()] || c._commanded(),
+    sub: (c) => (c._inOvr() ? `Override manuel : ${SPEEDS[c._override()]}` : "Suit le plan") },
+  { key: "nextAt", label: "Prochain changement", icon: "clock-fast",
+    val: (c) => (hhmm(c._s("nextAt")) !== null ? `${c._s("nextAt")} → ${SPEEDS[c._s("nextTo")] || c._s("nextTo")}` : "Plus rien aujourd'hui") },
+  { key: "nextBoostStart", label: "Prochaine impulsion", icon: "flash", val: (c) => span(c, "nextBoostStart", "nextBoostEnd") },
+  { key: "recomputed", label: "Plan calculé à", icon: "calendar-clock", val: (c) => stamp(c._s("recomputed")) },
+  { key: "recompute", label: "Recalculer le plan maintenant", icon: "refresh", button: "Recalculer", ok: "Plan du jour recalculé" },
+];
+const CTL_ROWS = [
+  { key: "online", label: "Liaison avec Home Assistant", icon: "lan-connect", bad: (c) => !c._online(),
+    val: (c) => (c._online() ? "En ligne" : `Hors ligne depuis ${fmtD((Date.now() - Date.parse(c._st("online").last_changed)) / 60000)}`) },
+  { key: "wifiSignal", label: "Signal Wi-Fi", icon: "wifi",
+    val: (c) => `${Math.round(c._n("wifiSignal"))} dBm · ${Math.max(0, Math.min(100, 2 * (c._n("wifiSignal") + 100)))} %`, // HA's dBm -> % rule of thumb
+    sub: (c) => (c._s("wifiSsid") && c._s("wifiSsid") !== "unknown" ? `Réseau « ${c._s("wifiSsid")} »` : "") },
+  { key: "wifiDisc", label: "Déconnexions Wi-Fi", sub: () => "Depuis le démarrage", icon: "wifi-alert", val: (c) => String(Math.round(c._n("wifiDisc"))) },
+  { sect: "Sondes" },
+  { key: "water", label: "Eau (retour filtre)", icon: "thermometer-water", val: degC("water"),
+    sub: (c) => (c._commanded() === "Off" ? "Pompe arrêtée : la sonde lit le tuyau" : "Pompe en marche : l'eau du bassin") },
+  { key: "pad", label: "Local technique", icon: "home-thermometer-outline", val: degC("pad") },
+  { key: "outdoor", label: "Extérieur", icon: "weather-partly-cloudy", val: degC("outdoor") },
+  { key: "updateTemps", label: "Relire les sondes de température", icon: "thermometer", button: "Relire", ok: "Sondes relues" },
+];
 
 const ICONS = {
   outdoor: "M12.74,5.47C15.1,6.5 16.35,9.03 15.92,11.46C17.19,12.56 18,14.19 18,16V16.17C18.31,16.06 18.65,16 19,16A3,3 0 0,1 22,19A3,3 0 0,1 19,22H6A4,4 0 0,1 2,18A4,4 0 0,1 6,14H6.27C5,12.45 4.6,10.24 5.5,8.26C6.72,5.5 9.97,4.24 12.74,5.47M11.93,7.3C10.16,6.5 8.09,7.31 7.31,9.07C6.85,10.09 6.93,11.22 7.41,12.13C8.5,10.83 10.16,10 12,10C12.7,10 13.38,10.12 14,10.34C13.94,9.06 13.18,7.86 11.93,7.3M13.55,3.64C13,3.4 12.45,3.23 11.88,3.12L14.37,1.82L15.27,4.71C14.76,4.29 14.19,3.93 13.55,3.64M6.09,4.44C5.6,4.79 5.17,5.19 4.8,5.63L4.91,2.82L7.87,3.5C7.25,3.71 6.65,4.03 6.09,4.44M18,9.71C17.91,9.12 17.78,8.55 17.59,8L19.97,9.5L17.92,11.73C18.03,11.08 18.05,10.4 18,9.71M3.04,11.3C3.11,11.9 3.24,12.47 3.43,13L1.06,11.5L3.1,9.28C3,9.93 2.97,10.61 3.04,11.3M19,18H16V16A4,4 0 0,0 12,12A4,4 0 0,0 8,16H6A2,2 0 0,0 4,18A2,2 0 0,0 6,20H19A1,1 0 0,0 20,19A1,1 0 0,0 19,18Z",
@@ -174,6 +225,12 @@ const fmtL = (v) => (!Number.isFinite(v) ? "–" : v >= 10000 ? `${(v / 1000).to
   : `${Math.round(v).toLocaleString("fr-FR").replace(/\s/g, "\u00a0")} L`);
 /** Axis label: « 500 L », « 1,5 m³ ». */
 const axL = (v) => (v >= 1000 ? `${String(+(v / 1000).toFixed(2)).replace(".", ",")} m³` : `${Math.round(v)} L`);
+/** The device's "YYYY-MM-DD HH:MM:SS" -> "HH:MM" today, else "DD/MM HH:MM". */
+const stamp = (s) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || ""));
+  if (!m) return s || "—";
+  return dayKey(new Date()) === `${m[1]}-${m[2]}-${m[3]}` ? `${m[4]}:${m[5]}` : `${m[3]}/${m[2]} ${m[4]}:${m[5]}`;
+};
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 /** Daily History "2026-11-13: 6.42 h 25.9/26.6 °C, 2026-11-12: 6.70 h" -> { "2026-11-13": {hours, lo, hi}, … }. */
 const parseDays = (text) => Object.fromEntries([...String(text || "").matchAll(
@@ -401,13 +458,14 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .tl-leg i.k-band { background:var(--acc); opacity:.2; }
 .tl-leg i.k-rng { width:6px; height:11px; background:var(--acc); border-radius:2px; }
 
-/* tabs « Pompe » / « Remplissage »: the pump tab is everything the panel had; the water tab hides it */
+/* tabs « Pompe » / « Remplissage » / « Réglages »: the pump tab is everything the panel had; the others hide it */
 .tabs { order:-2; display:flex; gap:4px; border-bottom:1px solid var(--line); margin:-8px 0 -6px; }
 .tabs button { position:relative; border:0; background:none; padding:10px 12px; font-size:14px; font-weight:500; color:var(--muted); cursor:pointer; }
 .tabs button[aria-selected="true"] { color:var(--acc); }
 .tabs button[aria-selected="true"]::after { content:""; position:absolute; left:8px; right:8px; bottom:-1px; height:2px; border-radius:2px 2px 0 0; background:var(--acc); }
-.panel.on-water > :not(.sh-head):not(.tabs):not(.water):not(.toast) { display:none !important; }
-.panel:not(.on-water) > .water { display:none; }
+.panel[data-tab="water"] > :not(.sh-head):not(.tabs):not(.water):not(.toast) { display:none !important; }
+.panel[data-tab="settings"] > :not(.sh-head):not(.tabs):not(.setpane):not(.toast) { display:none !important; }
+.panel:not([data-tab="water"]) > .water, .panel:not([data-tab="settings"]) > .setpane { display:none; }
 .water { display:flex; flex-direction:column; gap:6px; }
 .water .readings { margin-bottom:12px; }
 .reading.live .v { color:var(--acc); }
@@ -429,6 +487,26 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .ptile .txt { display:flex; flex-direction:column; min-width:0; }
 .ptile .p { font-size:14px; font-weight:500; overflow-wrap:anywhere; }
 .ptile .s { font-size:13px; color:var(--muted); }
+
+/* tab « Réglages »: the settings, today's plan, the last 7 days and the controller (the device page's Avancé).
+   Each column is a container, so its rows wrap at its own width, not the dialog's. */
+.setpane { display:flex; flex-direction:column; gap:22px; }
+.sp-col { display:flex; flex-direction:column; gap:22px; min-width:0; container-type:inline-size; }
+.sp-h { display:flex; align-items:center; gap:10px; margin:0 0 2px; font-size:15px; font-weight:500; }
+.erow .val { margin-left:auto; text-align:right; white-space:nowrap; }
+.erow .val.bad { color:var(--danger); font-weight:500; }
+.days { display:flex; flex-direction:column; gap:4px; }
+.day { display:grid; grid-template-columns:70px minmax(0,1fr) 44px 74px; align-items:center; gap:8px; min-height:28px; font-size:13px; }
+.day.head { min-height:0; font-size:11px; color:var(--muted); }
+.day .w, .day .v { text-align:right; white-space:nowrap; }
+.day .dl { color:var(--muted); white-space:nowrap; }
+.day.today .dl { color:var(--fg); font-weight:500; }
+.day .bar { position:relative; height:10px; border-radius:5px; background:var(--raised); }
+.day .bar i { position:absolute; left:0; top:0; bottom:0; border-radius:5px; background:var(--acc); }
+.day.today .bar i { opacity:.55; }
+.day .bar b { position:absolute; top:-4px; bottom:-4px; width:2px; margin-left:-1px; border-radius:1px; background:var(--fg); }
+.day.missing .v, .day.missing .dl { color:var(--muted); font-style:italic; }
+.days .dfoot { margin:8px 0 0; font-size:12px; color:var(--muted); }
 
 /* variant: settings — the controller's settings, rows as on its own page; names and descriptions wrap */
 :host([variant=settings]) { container-type:inline-size; }
@@ -471,7 +549,8 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
    Pilotage and the manual controls on the right. Phones never reach 680 px. */
 @container (min-width: 680px) {
   .panel { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 28px; align-items:start; padding:6px 6px 4px; }
-  .sh-head, .tabs, .water, .probes, .foot, .plan, .temp { grid-column:1 / -1; }
+  .sh-head, .tabs, .water, .setpane, .probes, .foot, .plan, .temp { grid-column:1 / -1; }
+  .setpane { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 28px; align-items:start; }
   .water .chart { height:170px; }
   .temp { padding-bottom:20px; border-bottom:1px solid var(--line); }
   .temp .chart { height:150px; }
@@ -493,6 +572,7 @@ const PANEL_HTML = `
   <div class="tabs" role="tablist" id="tabs" hidden>
     <button role="tab" data-tab="pump" aria-selected="true">Pompe</button>
     <button role="tab" data-tab="water" aria-selected="false">Remplissage</button>
+    <button role="tab" data-tab="settings" aria-selected="false">Réglages</button>
   </div>
   <div class="water" role="tabpanel">
     <div class="readings">
@@ -508,6 +588,18 @@ const PANEL_HTML = `
     <p class="temp-sum num" id="wSum"></p>
     <div class="chart" id="wChart" tabindex="0" role="img" aria-label="Eau de remplissage"><svg id="wSvg" aria-hidden="true"></svg><div class="ttip" id="wTip" hidden></div><div class="empty" id="wEmpty" hidden></div></div>
     <div class="tl-leg" id="wLeg"></div>
+  </div>
+  <div class="setpane" role="tabpanel">
+    <div class="sp-col">
+      <section><h4 class="sp-h">Réglages<span class="chip" id="pendChip" hidden>En attente</span></h4>
+        <div class="banner" id="pendBanner" hidden>${svg("alert")}<span>Durée de filtration modifiée : elle ne compte qu'une fois appliquée, ce qui recalcule le plan du jour.</span><button class="btn" id="applyNow">Appliquer</button></div>
+        <div id="rows"></div></section>
+    </div>
+    <div class="sp-col">
+      <section><h4 class="sp-h">Plan du jour</h4><div id="planRows"></div></section>
+      <section><h4 class="sp-h">7 derniers jours</h4><div class="days" id="days"></div></section>
+      <section><h4 class="sp-h">Contrôleur</h4><div id="ctlRows"></div></section>
+    </div>
   </div>
   <div class="plan">
     <div class="plan-h"><p class="lbl">Plan du jour</p><span class="num" id="planSum"></span></div>
@@ -617,7 +709,7 @@ class PiscineCard extends HTMLElement {
     if (!["tile", "panel", "settings"].includes(variant)) throw new Error("variant must be tile, panel or settings");
     this._config = { variant, layout: config.layout || "horizontal", popup_hash: config.popup_hash || "#piscine", more_path: config.more_path || MORE_PATH,
       recorder: config.recorder !== false, title: config.title ?? "Réglages", icons: config.icons || null,
-      temperatures: config.temperatures !== false };
+      settings_tab: config.settings_tab !== false, temperatures: config.temperatures !== false };
     this._e = { ...DEFAULT_ENTITIES, ...(config.entities || {}) };
     this.setAttribute("variant", variant);
     this._built = false;
@@ -633,12 +725,14 @@ class PiscineCard extends HTMLElement {
     this._stats = null;        // 30 j: { "YYYY-MM-DD": {lo, hi} } from the statistics
     this._statsAt = 0; this._statsLoading = false; this._statsErr = false;
     this._tVer = 0; this._tDrawn = "";
-    this._tab = "pump";        // panel: « Pompe » or « Remplissage » (water)
+    this._tab = "pump";        // panel: « Pompe », « Remplissage » (water) or « Réglages » (settings)
     this._wRange = "30d"; this._wHover = null;
     this._wStats = {};         // range -> {start (ms), rows [{t, change, state}]}, from the statistics
     this._wAt = {}; this._wDay = {}; this._wLoading = {}; this._wErr = {};
     this._wVer = 0; this._wDrawn = "";
     this._setRows = [];        // settings: [{def, row, input, out, editing (ms)}]
+    this._paneRows = [];       // panel, « Réglages »: Plan du jour and Contrôleur [{def, row, val, sub, btn, icon}]
+    this._daysDrawn = "";
   }
 
   set hass(hass) {
@@ -1163,7 +1257,7 @@ class PiscineCard extends HTMLElement {
     this._hass.callService("button", "press", { entity_id: this._e[key] }).then(() => this._toast(ok), (err) => this._refused(err))
       .finally(() => btn.classList.remove("busy"));
   }
-  /** The settings rows (SETTINGS) into #rows, with the pending banner's « Appliquer ». */
+  /** The settings rows (SETTINGS) into #rows, with the pending banner's « Appliquer »: the variant and the panel's tab. */
   _wireSettingRows() {
     const refused = (err) => this._refused(err);
     const apply = (btn) => this._press(btn, "apply", APPLIED);
@@ -1218,6 +1312,70 @@ class PiscineCard extends HTMLElement {
     for (const sc of this._sects) sc.el.hidden = sc.rows.every((r) => r.row.hidden);
   }
 
+  /* ---------- panel, tab « Réglages »: Plan du jour, 7 derniers jours, Contrôleur ---------- */
+  _wireSetPane() {
+    this._wireSettingRows();
+    for (const [host, defs] of [[this._$("planRows"), PLAN_ROWS], [this._$("ctlRows"), CTL_ROWS]]) {
+      let sect = null;
+      for (const def of defs) {
+        if (def.sect) { sect = document.createElement("div"); sect.className = "esect"; sect.textContent = def.sect; host.appendChild(sect); continue; }
+        const row = document.createElement("div"); row.className = "erow";
+        row.innerHTML = `<span class="ic"></span><span class="name"><span></span><small></small></span>`
+          + (def.button ? `<button class="btn"></button>` : `<span class="val num"></span>`);
+        row.querySelector(".name span").textContent = def.label;
+        const r = { def, row, sect, val: row.querySelector(".val"), sub: row.querySelector("small"), btn: row.querySelector("button"), icon: null };
+        if (r.btn) { r.btn.textContent = def.button; r.btn.addEventListener("click", () => this._press(r.btn, def.key, def.ok)); }
+        host.appendChild(row);
+        this._paneRows.push(r);
+      }
+    }
+  }
+  _renderSetPane() {
+    this._updateSettings();
+    for (const r of this._paneRows) {
+      const e = this._st(r.def.key);
+      r.row.hidden = !e;
+      if (!e) continue;
+      const ic = e.attributes.icon || r.def.icon;
+      if (r.icon !== ic) { r.row.querySelector(".ic").innerHTML = this._icon(ic); r.icon = ic; }
+      const sub = r.def.sub ? r.def.sub(this) : "";
+      r.sub.textContent = sub; r.sub.hidden = !sub;
+      if (r.btn) { r.btn.disabled = !this._online(); continue; }
+      r.val.textContent = r.def.val(this);
+      r.val.classList.toggle("bad", !!(r.def.bad && r.def.bad(this)));
+    }
+    for (const r of this._paneRows) if (r.sect) r.sect.hidden = this._paneRows.every((x) => x.sect !== r.sect || x.row.hidden);
+    this._renderDays();
+  }
+  /** Closed days from the device's Daily History, plus today so far: hours filtered, the plan's mark, the pool's min–max. */
+  _renderDays() {
+    const host = this._$("days");
+    const key = ["history", "hoursToday", "hoursPlanned", "waterMin", "waterMax"].map((k) => this._s(k)).join("|") + new Date().toDateString();
+    if (key === this._daysDrawn) return;
+    this._daysDrawn = key;
+    const closed = parseDays(this._s("history"));
+    const rows = [{ label: "Aujourd'hui", hours: this._n("hoursToday"), planned: this._n("hoursPlanned"), lo: this._n("waterMin"), hi: this._n("waterMax"), today: true }];
+    for (let i = 1; i <= 7; i++) {
+      const d = dayAgo(i);
+      rows.push({ label: i === 1 ? "Hier" : `${WD[d.getDay()]} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`, ...closed[dayKey(d)] });
+    }
+    const scale = Math.max(1, ...rows.flatMap((r) => [r.hours, r.planned]).filter(Number.isFinite));
+    const pct = (v) => `${Math.min(100, (v / scale) * 100).toFixed(1)}%`;
+    const water = (r) => (Number.isFinite(r.lo) && Number.isFinite(r.hi) ? `${fmt1(r.lo)}–${fmt1(r.hi)}°` : "—");
+    const past = rows.filter((r) => !r.today && Number.isFinite(r.hours));
+    host.innerHTML = `<div class="day head"><span></span><span>Filtration</span><span></span><span class="w">Eau</span></div>`
+      + rows.map((r) => {
+        const known = Number.isFinite(r.hours);
+        return `<div class="day${r.today ? " today" : ""}${known ? "" : " missing"}" title="${r.today ? "En cours ; le trait marque la durée planifiée" : known ? "" : "Pas de données : contrôleur éteint ou sans heure ce jour-là"}">`
+          + `<span class="dl">${r.label}</span><span class="bar">${known ? `<i style="width:${pct(r.hours)}"></i>` : ""}`
+          + `${Number.isFinite(r.planned) && r.planned > 0 ? `<b style="left:${pct(r.planned)}"></b>` : ""}</span>`
+          + `<span class="v num">${known ? `${fmt1(r.hours)} h` : "—"}</span><span class="w num">${known ? water(r) : ""}</span></div>`;
+      }).join("")
+      + `<p class="dfoot">${past.length
+        ? `Moyenne ${fmt1(past.reduce((a, r) => a + r.hours, 0) / past.length)} h de filtration par jour sur ${past.length} jour${past.length > 1 ? "s" : ""}.`
+        : "Aucune journée complète pour l'instant."} Eau : minimum et maximum du jour, mesurés pompe en marche. Le contrôleur enregistre chaque journée à minuit.</p>`;
+  }
+
   /* ---------- build ---------- */
   _build() {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
@@ -1241,10 +1399,17 @@ class PiscineCard extends HTMLElement {
 
   _wirePanel() {
     this._$("close").addEventListener("click", () => this._navigate(location.pathname + location.search, true));
-    this._$("more").addEventListener("click", () => this._navigate(this._config.more_path));
+    // « Planning et réglages »: the « Réglages » tab, or more_path without it (the device's page: its Avancé tab)
+    this._$("more").addEventListener("click", () => {
+      if (!this._config.settings_tab) { this._navigate(this._config.more_path); return; }
+      this._tab = "settings"; this._update();
+      const t = this.shadowRoot.querySelector('#tabs [data-tab="settings"]');
+      this._$("tabs").scrollIntoView({ block: "nearest" }); t.focus({ preventScroll: true });
+    });
     this.shadowRoot.querySelectorAll(".ptile").forEach((b) => b.addEventListener("click", () => {
       this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: this._e[b.dataset.key] } }));
     }));
+    this._wireSetPane();
 
     const backToAuto = () => {
       if (this._pending() || !this._inOvr()) return;
@@ -1328,12 +1493,12 @@ class PiscineCard extends HTMLElement {
       this._renderTemp();
     });
 
-    // tabs « Pompe » / « Remplissage » (arrows move between them, as in a tablist)
-    const tabs = [...this.shadowRoot.querySelectorAll("#tabs button")];
-    tabs.forEach((b, i) => {
+    // tabs « Pompe » / « Remplissage » / « Réglages » (arrows move between the shown ones, as in a tablist)
+    this.shadowRoot.querySelectorAll("#tabs button").forEach((b) => {
       b.addEventListener("click", () => { this._tab = b.dataset.tab; this._wHover = null; this._update(); });
       b.addEventListener("keydown", (e) => {
         if (!["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+        const tabs = [...this.shadowRoot.querySelectorAll("#tabs button:not([hidden])")], i = tabs.indexOf(b);
         const t = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
         t.focus(); t.click();
       });
@@ -1450,15 +1615,17 @@ class PiscineCard extends HTMLElement {
     const inOvr = this._inOvr(), online = this._online(), freeze = this._freeze(), stuck = this._stuck();
     const until = this._ovrUntil();
 
-    // the « Remplissage » tab needs the recorder's statistics and a water meter
-    const water = this._config.recorder && !!this._st("volume");
-    if (!water) this._tab = "pump";
-    this._$("tabs").hidden = !water;
-    this.shadowRoot.querySelector(".panel").classList.toggle("on-water", this._tab === "water");
+    // « Remplissage » needs the recorder's statistics and a water meter; « Réglages » can be turned off
+    const shown = { pump: true, water: this._config.recorder && !!this._st("volume"), settings: this._config.settings_tab };
+    if (!shown[this._tab]) this._tab = "pump";
+    this._$("tabs").hidden = !shown.water && !shown.settings;
+    this.shadowRoot.querySelector(".panel").dataset.tab = this._tab;
     this.shadowRoot.querySelectorAll("#tabs button").forEach((b) => {
       const on = b.dataset.tab === this._tab;
+      b.hidden = !shown[b.dataset.tab];
       b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1;
     });
+    if (this._tab === "settings") this._renderSetPane();
 
     // « Températures » at the foot of « Pompe »
     const probes = { outdoor: this._st("outdoor"), pad: this._st("pad") };

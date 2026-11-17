@@ -15,10 +15,12 @@ views:
     max_columns: 3
     sections:
       # ── Component: the pump ────────────────────────────────────────────────────────────────────────
-      # piscine-card's panel: state, today's plan, the pool's temperature (24 h / 7 j / 30 j), Auto/Manuel,
-      # the outdoor and equipment-pad temperatures, and its « Remplissage » tab (fill water per day, week or
-      # month). Its defaults are one particular install's entity ids, so every entity is given here, once
-      # (&pool, reused by the settings below). It calls the two scripts of scripts.yaml.
+      # piscine-card's panel, three tabs. « Pompe »: state, today's plan, the pool's temperature (24 h / 7 j
+      # / 30 j), Auto/Manuel, and the outdoor and equipment-pad temperatures. « Remplissage »: fill water per
+      # day, week or month. « Réglages »: every setting, today's plan in detail with « Recalculer », the last
+      # 7 days, the controller's link, Wi-Fi and probes. Its defaults are one particular install's entity
+      # ids, so every entity is given here, once (&pool, reused by the settings below). It calls the two
+      # scripts of scripts.yaml.
       - type: grid
         cards:
           - type: heading
@@ -26,7 +28,6 @@ views:
             icon: mdi:pump
           - type: custom:piscine-card
             variant: panel
-            more_path: /dashboard-piscine/reglages   # « Planning et réglages » opens the Réglages view below
             grid_options: {columns: full}
             entities: &pool
               override: select.pool_controller_manual_override
@@ -65,6 +66,13 @@ views:
               pending: binary_sensor.pool_controller_filtration_config_pending
               apply: button.pool_controller_apply_filtration_config
               pad: sensor.pool_controller_equipment_pad_temperature
+              nextBoostStart: sensor.pool_controller_next_boost_start
+              nextBoostEnd: sensor.pool_controller_next_boost_end
+              recompute: button.pool_controller_recompute_schedule_now
+              updateTemps: button.pool_controller_update_temperature_sensors_now
+              wifiSignal: sensor.pool_controller_wifi_signal       # these three: wifi-setup.yaml; rows hide without them
+              wifiSsid: sensor.pool_controller_wifi_ssid
+              wifiDisc: sensor.pool_controller_wifi_disconnects
               sForce: script.piscine_forcer_vitesse
               sAuto: script.piscine_retour_auto
 
@@ -199,8 +207,9 @@ views:
               rester arrêtée. Vérifier les sondes, puis **Recalculer le plan**.
 
       # ── Component: settings ────────────────────────────────────────────────────────────────────────
-      # Everything the controller lets you tune: piscine-card's settings variant, the very rows of the
-      # controller's own page (Avancé › Réglages), with a line under each name saying what it does. Home
+      # Everything the controller lets you tune: piscine-card's settings variant, the rows of the panel's
+      # « Réglages » tab and of the controller's own page (Avancé › Réglages), for a dashboard that wants
+      # them outside the pop-up, with a line under each name saying what it does. Home
       # Assistant's entities card would cut the long names short on a phone and has no such line. The four
       # filtration-length settings wait for « Appliquer » (they reshape today's plan); the others apply at once.
       - type: grid

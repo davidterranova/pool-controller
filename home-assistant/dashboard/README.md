@@ -4,7 +4,7 @@ Building blocks for a dashboard around this firmware, not anyone's dashboard in 
 
 | File | What it is |
 |---|---|
-| [dashboard.yaml](dashboard.yaml) | A two-view dashboard whose sections are the components: the pump (piscine-card, the outdoor and equipment-pad temperatures included), temperatures, plan against reality, fill water; then alerts, settings (piscine-card's settings variant), today's plan and the controller. |
+| [dashboard.yaml](dashboard.yaml) | A two-view dashboard whose sections are the components: the pump (piscine-card, which has the controls and settings itself), temperatures, plan against reality, fill water; then alerts, settings (piscine-card's settings variant), today's plan and the controller. |
 | [scripts.yaml](scripts.yaml) | The two scripts piscine-card calls to force a speed and to go back to Auto. |
 
 They use Home Assistant's own cards only, plus [piscine-card](../piscine-card.js) from this repo (its
@@ -19,10 +19,8 @@ panel and its settings variant). No helper, no other custom card.
    create each script in Settings → Automations & scenes → Scripts → ⋮ → Edit in YAML, with the key
    as its id (`piscine_forcer_vitesse`, `piscine_retour_auto`). The card writes the Manual Override
    select only through them.
-3. **Create the dashboard.** Settings → Dashboards → Add dashboard → New dashboard from scratch, with
-   the URL `dashboard-piscine` (the card's « Planning et réglages » link opens
-   `/dashboard-piscine/reglages`; change `more_path` in the card if you pick another URL). Open it →
-   ✏️ → ⋮ → Raw configuration editor, paste [dashboard.yaml](dashboard.yaml), save.
+3. **Create the dashboard.** Settings → Dashboards → Add dashboard → New dashboard from scratch (any
+   URL). Open it → ✏️ → ⋮ → Raw configuration editor, paste [dashboard.yaml](dashboard.yaml), save.
 4. **Or take only some components.** Each section of `dashboard.yaml` stands on its own: copy one into
    a sections view of your own dashboard the same way (its cards, or the whole `- type: grid` block).
 
@@ -49,10 +47,19 @@ pop-up; the tile is the card's own:
       entities: { … }
 ```
 
-The panel has two tabs: « Pompe » (state, today's plan, the pool's temperature, Auto/Manuel, and at
-its foot the outdoor and equipment-pad temperatures, a tap opening Home Assistant's more-info with
-their history; `temperatures: false` drops them) and « Remplissage » (the fill water). The second one
-needs the `volume` entity and the recorder; without them, the panel has no tabs.
+The panel has three tabs, so the pop-up needs no dashboard behind it:
+
+- « Pompe »: state, today's plan, the pool's temperature, Auto/Manuel, and at its foot the outdoor and
+  equipment-pad temperatures (a tap opens Home Assistant's more-info, with their history);
+- « Remplissage »: the fill water. It needs the `volume` entity and the recorder; without them the tab
+  isn't there;
+- « Réglages »: every setting with its Apply gate, today's plan in detail with « Recalculer », the last
+  7 days of filtration against the plan, and the controller's link, Wi-Fi and probes with « Relire ».
+  The card's « Planning et réglages » link opens it. `settings_tab: false` drops the tab, and the link
+  then opens `more_path`; `temperatures: false` drops the temperatures at the foot of « Pompe ».
+
+What this dashboard adds to the card: the three probes' curves and their 90-day daily means, the
+pump's plan against reality over the last days, and the fill water with Home Assistant's own cards.
 
 ## Entity ids
 
@@ -94,5 +101,5 @@ entity the dashboard relies on therefore can't land without the dashboard follow
   filtration-length settings wait for « Appliquer » because they reshape today's plan; freeze
   protection, the boost pulses and the override timeout apply at once. It is piscine-card's settings
   variant, not Home Assistant's entities card: the latter cuts a long name short on a phone
-  (« Min filtration h… ») and has no line for what a setting does. The device's own page (Avancé ›
-  Réglages) runs the same variant, so both read alike.
+  (« Min filtration h… ») and has no line for what a setting does. The panel's « Réglages » tab and
+  the device's own page (Avancé › Réglages) draw the same rows, so all three read alike.

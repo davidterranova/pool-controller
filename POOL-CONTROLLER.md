@@ -621,8 +621,9 @@ From [wifi-setup.yaml](wifi-setup.yaml), a package of the firmware:
 ## Changing the freeze-protection threshold
 
 **Freeze Protection Temperature** (number, default 3 °C, kept across
-reboots) is the cutoff: set it from Home Assistant (the settings component
-of [home-assistant/dashboard](home-assistant/dashboard/README.md)), from the
+reboots) is the cutoff: set it from Home Assistant (the pool card's
+« Réglages » tab, or the settings component of
+[home-assistant/dashboard](home-assistant/dashboard/README.md)), from the
 device's own page (Avancé › Réglages › Hors gel), or as any HA number. It
 applies on the spot, no Apply needed: it only moves a comparison the
 controller makes on every tick. The pool card draws it on its temperature
