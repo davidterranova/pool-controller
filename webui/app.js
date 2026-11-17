@@ -246,7 +246,7 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
     icons: ICONS, // no <ha-icon> here
     entities: {
       min: E.min, max: E.max, offset: E.offset, warm: E.warm, pending: E.pending, apply: E.apply,
-      boostDuration: E.boostDuration, boostInterval: E.boostInterval, highEvery: E.highEvery, freezeAt: E.freezeAt, timeout: E.timeout,
+      boostDuration: E.boostDuration, boostInterval: E.boostInterval, highEvery: E.highEvery, freezeAt: E.freezeAt,
     },
   });
   settings.classList.add("o1");

@@ -107,7 +107,8 @@ entity the dashboard relies on therefore can't land without the dashboard follow
   the Piscine view draws the same with Home Assistant's own cards.
 - **Settings.** Everything the controller lets you tune, grouped by when it applies: the four
   filtration-length settings wait for « Appliquer » because they reshape today's plan; freeze
-  protection, the boost pulses and the override timeout apply at once. It is piscine-card's settings
+  protection and the boost pulses apply at once. The override's duration isn't one of them: it is
+  chosen with the override, in the panel's « Pompe » › Manuel. It is piscine-card's settings
   variant, not Home Assistant's entities card: the latter cuts a long name short on a phone
   (« Min filtration h… ») and has no line for what a setting does. The panel's « Réglages » tab and
   the device's own page (Avancé › Réglages) draw the same rows, so all three read alike.

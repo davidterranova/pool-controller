@@ -171,7 +171,10 @@ const MO = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", 
 const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 const W_RANGES = { "30d": "30 j", "90d": "90 j", "12m": "12 mois" };
 const W_PERIOD = { "30d": "day", "90d": "week", "12m": "month" };
-/** variant: settings — the device page's « Réglages », in its order and words. `icon` when the entity has none. */
+/**
+ * variant: settings — the device page's « Réglages », in its order and words. `icon` when the entity has none. Not
+ * Manual Override Timeout: « Pompe » › Manuel › « Retour en Auto » sets it, with the override it applies to.
+ */
 const SETTINGS = [
   { sect: "Durée de filtration · s'applique avec «\u00a0Appliquer\u00a0»" },
   { key: "min", label: "Filtration minimale", sub: "Plancher, même par eau froide", icon: "timer-sand" },
@@ -185,8 +188,6 @@ const SETTINGS = [
   { key: "highEvery", label: "Une impulsion High toutes les", sub: "Les autres sont en Medium", icon: "flash-triangle" },
   { sect: "Hors gel · immédiat" },
   { key: "freezeAt", label: "Low forcé sous", sub: "Quand l'eau descend sous ce seuil, quoi qu'on demande", icon: "snowflake-thermometer" },
-  { sect: "Override manuel · immédiat" },
-  { key: "timeout", label: "Retour automatique en Auto après", sub: "0 = jamais (alerte après 30 min)", icon: "timer-outline" },
 ];
 const APPLIED = "Réglages appliqués : plan du jour recalculé";
 

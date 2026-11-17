@@ -243,7 +243,7 @@ look of the Home Assistant dashboard. It has four tabs:
   (Fill Water Today, Days and Months): today, this month, the flow, and the
   litres by day over 30 days or by month over 12.
 - **Avancé**: the filtration settings with their Apply gate, the boost
-  pulses, the freeze-protection threshold and the override timeout (the
+  pulses and the freeze-protection threshold (the
   card's settings variant, the rows of its « Réglages » tab in Home Assistant), today's plan in
   detail, the last 7 days (hours filtered, pool min/max), the device's
   sensors, and its live log.
