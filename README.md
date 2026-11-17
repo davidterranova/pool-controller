@@ -131,8 +131,9 @@ you set `local: true` back).
 `custom:piscine-card`, the pool card of the Home Assistant dashboard: a tile,
 and a panel shown in a pop-up with two tabs. « Pompe » has the pump's state,
 today's plan timeline, the pool's temperature (24 h, 7 days, 30 days),
-Auto/Manuel, the forced speed and its duration; « Remplissage » the fill water,
-by day, week or month with the period's total. A third variant, `settings`,
+Auto/Manuel, the forced speed and its duration, and the outdoor and
+equipment-pad temperatures; « Remplissage » the fill water, by day, week or
+month with the period's total. A third variant, `settings`,
 draws the controller's settings with a line under each saying what it does.
 It's a plain custom element, no framework and no build step, in French.
 

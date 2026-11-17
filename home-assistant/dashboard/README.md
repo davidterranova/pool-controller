@@ -4,7 +4,7 @@ Building blocks for a dashboard around this firmware, not anyone's dashboard in 
 
 | File | What it is |
 |---|---|
-| [dashboard.yaml](dashboard.yaml) | A two-view dashboard whose sections are the components: the pump (piscine-card, with the outdoor and equipment-pad temperatures under it), temperatures, plan against reality, fill water; then alerts, settings (piscine-card's settings variant), today's plan and the controller. |
+| [dashboard.yaml](dashboard.yaml) | A two-view dashboard whose sections are the components: the pump (piscine-card, the outdoor and equipment-pad temperatures included), temperatures, plan against reality, fill water; then alerts, settings (piscine-card's settings variant), today's plan and the controller. |
 | [scripts.yaml](scripts.yaml) | The two scripts piscine-card calls to force a speed and to go back to Auto. |
 
 They use Home Assistant's own cards only, plus [piscine-card](../piscine-card.js) from this repo (its
@@ -47,22 +47,12 @@ pop-up; the tile is the card's own:
     - type: custom:piscine-card
       variant: panel
       entities: { … }
-    - type: heading                 # the two other probes, as the controller's page shows them under the card
-      heading: Températures
-      heading_style: subtitle
-    - type: tile                    # one per row: side by side, a phone cuts « Local technique » short
-      entity: sensor.pool_controller_outdoor_temperature
-      name: Extérieur
-      icon: mdi:weather-partly-cloudy
-    - type: tile
-      entity: sensor.pool_controller_equipment_pad_temperature
-      name: Local technique
-      icon: mdi:home-thermometer-outline
 ```
 
-The panel has two tabs: « Pompe » (state, today's plan, the pool's temperature, Auto/Manuel) and
-« Remplissage » (the fill water). The second one needs the `volume` entity and the recorder; without
-them, the panel has no tabs.
+The panel has two tabs: « Pompe » (state, today's plan, the pool's temperature, Auto/Manuel, and at
+its foot the outdoor and equipment-pad temperatures, a tap opening Home Assistant's more-info with
+their history; `temperatures: false` drops them) and « Remplissage » (the fill water). The second one
+needs the `volume` entity and the recorder; without them, the panel has no tabs.
 
 ## Entity ids
 

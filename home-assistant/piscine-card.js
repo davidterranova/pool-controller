@@ -11,6 +11,7 @@
  *
  *   type: custom:piscine-card
  *   variant: panel       # full controls, placed inside the Bubble pop-up
+ *   temperatures: false  # optional: no outdoor / equipment-pad block at the foot of « Pompe »
  *
  * The card never writes the controller's Manual Override select itself:
  *   force a speed   script.piscine_forcer_vitesse (vitesse: Off|Low|Medium|High)
@@ -46,6 +47,9 @@
  * month, the period's total above. The running day/week/month adds what the meter counted since the last
  * compiled hour (the live state against that hour's `state`; after a reboot the meter restarts from 0). A tab
  * rather than one more block: the pop-up stays a pump control, and the water history is one tap away.
+ *
+ * At the foot of « Pompe », « Températures »: the outdoor and equipment-pad probes, a tap opening Home
+ * Assistant's more-info and its history. `temperatures: false` drops it (the device's page has its own tiles).
  *
  *   type: custom:piscine-card
  *   variant: settings    # the controller's settings: the rows of its own page (Avancé › Réglages)
@@ -96,6 +100,7 @@ const DEFAULT_ENTITIES = {
   warm: "number.piscine_pool_controller_warmest_part_of_day_offset",
   pending: "binary_sensor.piscine_pool_controller_filtration_config_pending",
   apply: "button.piscine_pool_controller_apply_filtration_config",
+  pad: "sensor.pool_controller_equipment_pad_temperature",
   sForce: "script.piscine_forcer_vitesse",
   sAuto: "script.piscine_retour_auto",
 };
@@ -135,6 +140,8 @@ const SETTINGS = [
 const APPLIED = "Réglages appliqués : plan du jour recalculé";
 
 const ICONS = {
+  outdoor: "M12.74,5.47C15.1,6.5 16.35,9.03 15.92,11.46C17.19,12.56 18,14.19 18,16V16.17C18.31,16.06 18.65,16 19,16A3,3 0 0,1 22,19A3,3 0 0,1 19,22H6A4,4 0 0,1 2,18A4,4 0 0,1 6,14H6.27C5,12.45 4.6,10.24 5.5,8.26C6.72,5.5 9.97,4.24 12.74,5.47M11.93,7.3C10.16,6.5 8.09,7.31 7.31,9.07C6.85,10.09 6.93,11.22 7.41,12.13C8.5,10.83 10.16,10 12,10C12.7,10 13.38,10.12 14,10.34C13.94,9.06 13.18,7.86 11.93,7.3M13.55,3.64C13,3.4 12.45,3.23 11.88,3.12L14.37,1.82L15.27,4.71C14.76,4.29 14.19,3.93 13.55,3.64M6.09,4.44C5.6,4.79 5.17,5.19 4.8,5.63L4.91,2.82L7.87,3.5C7.25,3.71 6.65,4.03 6.09,4.44M18,9.71C17.91,9.12 17.78,8.55 17.59,8L19.97,9.5L17.92,11.73C18.03,11.08 18.05,10.4 18,9.71M3.04,11.3C3.11,11.9 3.24,12.47 3.43,13L1.06,11.5L3.1,9.28C3,9.93 2.97,10.61 3.04,11.3M19,18H16V16A4,4 0 0,0 12,12A4,4 0 0,0 8,16H6A2,2 0 0,0 4,18A2,2 0 0,0 6,20H19A1,1 0 0,0 20,19A1,1 0 0,0 19,18Z",
+  pad: "M19 8C20.11 8 21 8.9 21 10V16.76C21.61 17.31 22 18.11 22 19C22 20.66 20.66 22 19 22C17.34 22 16 20.66 16 19C16 18.11 16.39 17.31 17 16.76V10C17 8.9 17.9 8 19 8M19 9C18.45 9 18 9.45 18 10V11H20V10C20 9.45 19.55 9 19 9M12 5.69L7 10.19V18H14.1L14 19L14.1 20H5V12H2L12 3L16.4 6.96C15.89 7.4 15.5 7.97 15.25 8.61L12 5.69Z",
   pump: "M12 2L9.5 6H14.5L12 2M12 22L14.5 18H9.5L12 22M2 12L6 14.5V9.5L2 12M22 12L18 9.5V14.5L22 12M12 8A4 4 0 0 0 8 12A4 4 0 0 0 12 16A4 4 0 0 0 16 12A4 4 0 0 0 12 8M12 10A2 2 0 0 1 14 12A2 2 0 0 1 12 14A2 2 0 0 1 10 12A2 2 0 0 1 12 10Z",
   auto: "M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13.57 17.4,15 16.4,16.1L17.84,17.54C19.18,16.09 20,14.15 20,12A8,8 0 0,0 12,4M12,18A6,6 0 0,1 6,12C6,10.43 6.6,9 7.6,7.9L6.16,6.46C4.82,7.91 4,9.85 4,12A8,8 0 0,0 12,20V23L16,19L12,15V18Z",
   close: "M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z",
@@ -410,6 +417,19 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .tl-leg i.k-bar { width:8px; height:11px; background:var(--acc); border-radius:2px 2px 0 0; }
 .tl-leg i.k-cur { width:8px; height:11px; background:var(--acc); opacity:.55; border-radius:2px 2px 0 0; }
 
+/* « Températures », at the foot of « Pompe »: outdoor and equipment pad, a tap opens HA's more-info (its history).
+   One per row on a phone, side by side once 200 px each fit. */
+.probes { display:flex; flex-direction:column; gap:8px; }
+.probes .lbl { margin:0; }
+.probes .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:8px; }
+.ptile { display:flex; align-items:center; gap:10px; min-width:0; padding:10px; border:0; border-radius:12px; background:var(--raised);
+  text-align:left; cursor:pointer; color:var(--fg); }
+.ptile .ico { width:36px; height:36px; background:var(--acc-soft); color:var(--acc); }
+.ptile .ico svg { width:20px; height:20px; }
+.ptile .txt { display:flex; flex-direction:column; min-width:0; }
+.ptile .p { font-size:14px; font-weight:500; overflow-wrap:anywhere; }
+.ptile .s { font-size:13px; color:var(--muted); }
+
 /* variant: settings — the controller's settings, rows as on its own page; names and descriptions wrap */
 :host([variant=settings]) { container-type:inline-size; }
 ha-card.set-card { display:block; color:var(--fg); }
@@ -451,7 +471,7 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
    Pilotage and the manual controls on the right. Phones never reach 680 px. */
 @container (min-width: 680px) {
   .panel { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 28px; align-items:start; padding:6px 6px 4px; }
-  .sh-head, .tabs, .water, .foot, .plan, .temp { grid-column:1 / -1; }
+  .sh-head, .tabs, .water, .probes, .foot, .plan, .temp { grid-column:1 / -1; }
   .water .chart { height:170px; }
   .temp { padding-bottom:20px; border-bottom:1px solid var(--line); }
   .temp .chart { height:150px; }
@@ -562,6 +582,13 @@ const PANEL_HTML = `
   </div>
   <button class="link" id="more"><span>Planning et réglages</span>${svg("chevron")}</button>
   </div>
+  <div class="probes" id="probes">
+    <p class="lbl">Températures</p>
+    <div class="grid">
+      <button class="ptile" data-key="outdoor"><span class="ico">${svg("outdoor")}</span><span class="txt"><span class="p">Extérieur</span><span class="s num" id="prOut"></span></span></button>
+      <button class="ptile" data-key="pad"><span class="ico">${svg("pad")}</span><span class="txt"><span class="p">Local technique</span><span class="s num" id="prPad"></span></span></button>
+    </div>
+  </div>
   <div class="foot"><span class="num" id="sync"></span><span class="num" id="plannedTxt"></span></div>
   <div class="toast" id="toast" role="status"></div>
 </div>`;
@@ -589,7 +616,8 @@ class PiscineCard extends HTMLElement {
     const variant = config.variant || "tile";
     if (!["tile", "panel", "settings"].includes(variant)) throw new Error("variant must be tile, panel or settings");
     this._config = { variant, layout: config.layout || "horizontal", popup_hash: config.popup_hash || "#piscine", more_path: config.more_path || MORE_PATH,
-      recorder: config.recorder !== false, title: config.title ?? "Réglages", icons: config.icons || null };
+      recorder: config.recorder !== false, title: config.title ?? "Réglages", icons: config.icons || null,
+      temperatures: config.temperatures !== false };
     this._e = { ...DEFAULT_ENTITIES, ...(config.entities || {}) };
     this.setAttribute("variant", variant);
     this._built = false;
@@ -1214,6 +1242,9 @@ class PiscineCard extends HTMLElement {
   _wirePanel() {
     this._$("close").addEventListener("click", () => this._navigate(location.pathname + location.search, true));
     this._$("more").addEventListener("click", () => this._navigate(this._config.more_path));
+    this.shadowRoot.querySelectorAll(".ptile").forEach((b) => b.addEventListener("click", () => {
+      this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: this._e[b.dataset.key] } }));
+    }));
 
     const backToAuto = () => {
       if (this._pending() || !this._inOvr()) return;
@@ -1428,6 +1459,13 @@ class PiscineCard extends HTMLElement {
       const on = b.dataset.tab === this._tab;
       b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1;
     });
+
+    // « Températures » at the foot of « Pompe »
+    const probes = { outdoor: this._st("outdoor"), pad: this._st("pad") };
+    this._$("probes").hidden = !this._config.temperatures || (!probes.outdoor && !probes.pad);
+    this.shadowRoot.querySelectorAll(".ptile").forEach((b) => { b.hidden = !probes[b.dataset.key]; });
+    this._$("prOut").textContent = `${fmt1(this._n("outdoor"))} °C`;
+    this._$("prPad").textContent = `${fmt1(this._n("pad"))} °C`;
 
     this._$("ico").className = this._icoClass("ico big");
     this._$("ico").style.setProperty("--spd", this._spinSpeed());

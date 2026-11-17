@@ -16,10 +16,9 @@ views:
     sections:
       # ── Component: the pump ────────────────────────────────────────────────────────────────────────
       # piscine-card's panel: state, today's plan, the pool's temperature (24 h / 7 j / 30 j), Auto/Manuel,
-      # and its « Remplissage » tab (fill water per day, week or month). Its defaults are one particular
-      # install's entity ids, so every entity is given here, once (&pool, reused by the settings below). It
-      # calls the two scripts of scripts.yaml. Under it, the two probes besides the pool's, as tiles: what
-      # the controller's own page shows under the same card.
+      # the outdoor and equipment-pad temperatures, and its « Remplissage » tab (fill water per day, week or
+      # month). Its defaults are one particular install's entity ids, so every entity is given here, once
+      # (&pool, reused by the settings below). It calls the two scripts of scripts.yaml.
       - type: grid
         cards:
           - type: heading
@@ -65,22 +64,9 @@ views:
               warm: number.pool_controller_warmest_part_of_day_offset
               pending: binary_sensor.pool_controller_filtration_config_pending
               apply: button.pool_controller_apply_filtration_config
+              pad: sensor.pool_controller_equipment_pad_temperature
               sForce: script.piscine_forcer_vitesse
               sAuto: script.piscine_retour_auto
-          # One tile per row: at half width a tile cuts « Local technique » short on a phone.
-          - type: heading
-            heading: Températures
-            heading_style: subtitle
-          - type: tile
-            entity: sensor.pool_controller_outdoor_temperature
-            name: Extérieur
-            icon: mdi:weather-partly-cloudy
-            grid_options: {columns: full}
-          - type: tile
-            entity: sensor.pool_controller_equipment_pad_temperature
-            name: Local technique
-            icon: mdi:home-thermometer-outline
-            grid_options: {columns: full}
 
       # ── Component: temperatures ────────────────────────────────────────────────────────────────────
       # The three probes as measured. The pool probe sits on the return pipe: pump stopped, it reads the
