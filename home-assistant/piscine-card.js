@@ -35,6 +35,9 @@
  *   30 j   the same two sensors' long-term statistics (state_class since firmware 2026-11-17), each day read
  *          from its 23:00 hourly row: Min Today only falls and Max Today only rises within a day, so that row
  *          holds the day's final values, while HA's 00:00 hour still carries yesterday's until the reset.
+ * All three draw the freeze-protection threshold (number Freeze Protection Temperature, 3 °C by default): a
+ * dotted line over the zone where Low is forced once the water comes within FREEZE_NEAR_C of it, else a tag at
+ * the foot of the axis, so a 13 °C curve isn't squashed to show 3 °C.
  * `recorder: false` (the device's own page) leaves only 7 j, which the device keeps itself.
  *
  * Layout: one column on a phone (Bubble bottom sheet). From 680 px of container width (the Bubble
@@ -70,13 +73,15 @@ const DEFAULT_ENTITIES = {
   highEvery: "number.piscine_pool_controller_high_boost_frequency",
   sun: "sun.sun",
   timeout: "number.piscine_pool_controller_manual_override_timeout",
+  freezeAt: "number.piscine_pool_controller_freeze_protection_temperature",
   endsAt: "sensor.piscine_pool_controller_manual_override_ends_at",
   sForce: "script.piscine_forcer_vitesse",
   sAuto: "script.piscine_retour_auto",
 };
 const SPEEDS = { Off: "Arrêt", Low: "Low", Medium: "Medium", High: "High" };
 const DURATIONS = [["30 min", 30], ["1 h", 60], ["2 h", 120], ["Jamais", 0]];
-const FREEZE_C = 3;       // firmware: below this the pump is forced to Low, whatever the override
+const FREEZE_DEFAULT_C = 3; // firmware: Freeze Protection Temperature's initial value, until the number is known
+const FREEZE_NEAR_C = 4;    // temperature graph: the threshold joins the scale when the water comes this close
 const STUCK_MIN = 30;     // firmware: Manual Override Active after this long off Auto
 const CMD_TIMEOUT = 15000;
 const MORE_PATH = "/dashboard-piscine/0";
@@ -325,6 +330,11 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .chart .pt.ok { fill:var(--acc); } .chart .pt.no { fill:var(--muted); }
 .chart .rng { fill:var(--acc); opacity:.5; }
 .chart .rng.today { opacity:1; } .chart .rng.hov { opacity:.8; }
+/* freeze-protection threshold: dotted line and the zone where Low is forced, or a tag at the foot of the axis */
+.chart .fz { stroke:var(--cool); stroke-width:1.5; stroke-dasharray:1 3; stroke-linecap:round; }
+.chart .fz-zone { fill:var(--cool); opacity:.08; }
+.chart text.fz-t { fill:var(--cool); font-weight:500; }
+.tl-leg i.k-fz { width:14px; height:0; border-radius:0; border-top:2px dotted var(--cool); vertical-align:3px; }
 .chart .empty { position:absolute; inset:0; display:grid; place-items:center; text-align:center; padding:0 20px; font-size:12px; color:var(--muted); cursor:default; }
 .ttip { position:absolute; top:6px; pointer-events:none; background:var(--card); color:var(--muted); box-shadow:0 2px 10px rgba(0,0,0,.18);
   border-radius:8px; padding:5px 9px; font-size:11px; line-height:1.35; white-space:nowrap; z-index:2; }
@@ -580,7 +590,9 @@ class PiscineCard extends HTMLElement {
   /* ---------- derived state ---------- */
   _override() { const s = this._s("override"); return ["Auto", "Off", "Low", "Medium", "High"].includes(s) ? s : "Auto"; }
   _online() { return this._s("online") === "on"; }
-  _freeze() { const w = this._n("water"); return Number.isFinite(w) && w < FREEZE_C; }
+  /** Below this the firmware forces Low, whatever the override (Freeze Protection Temperature). */
+  _freezeC() { return this._n("freezeAt", FREEZE_DEFAULT_C); }
+  _freeze() { const w = this._n("water"); return Number.isFinite(w) && w < this._freezeC(); }
   _inOvr() { return this._override() !== "Auto"; }
   _ovrSince() { const o = this._st("override"); return o && this._inOvr() ? new Date(o.last_changed) : null; }
   _ovrAgeMin() { const s = this._ovrSince(); return s ? (Date.now() - s.getTime()) / 60000 : 0; }
@@ -683,7 +695,7 @@ class PiscineCard extends HTMLElement {
     if (!W) return; // not laid out: the pop-up is closed
     const now = Date.now();
     const key = [range, this._tHover, W, H, this._tVer, Math.floor(now / M_MS),
-      ...["water", "waterMin", "waterMax", "history", "hoursToday"].map((k) => this._s(k))].join("|");
+      ...["water", "waterMin", "waterMax", "history", "hoursToday", "freezeAt"].map((k) => this._s(k))].join("|");
     if (key === this._tDrawn) return;
     this._tDrawn = key;
 
@@ -701,15 +713,31 @@ class PiscineCard extends HTMLElement {
     empty.hidden = true;
 
     const L = 8, R = W - 34, TOP = 10, BOT = H - 20;
+    const fz = this._freezeC();
+    /**
+     * y scale over `vals`, padded to the half degree. The freeze-protection threshold joins it when the water comes
+     * within FREEZE_NEAR_C of it (a dotted line over the zone where Low is forced); further away a tag at the foot
+     * of the axis gives it, rather than squashing a 13 °C curve to show 3 °C.
+     */
     const yScale = (vals, top, bot) => {
-      let lo = Math.floor((Math.min(...vals) - 0.1) * 2) / 2, hi = Math.ceil((Math.max(...vals) + 0.1) * 2) / 2;
+      const near = Number.isFinite(fz) && Math.min(...vals) - fz <= FREEZE_NEAR_C, all = near ? [...vals, fz] : vals;
+      let lo = Math.floor((Math.min(...all) - 0.1) * 2) / 2, hi = Math.ceil((Math.max(...all) + 0.1) * 2) / 2;
       if (hi - lo < 1) { const m = (hi + lo) / 2; lo = Math.floor((m - 0.5) * 2) / 2; hi = lo + 1; } // a flat day isn't a storm
       const step = hi - lo > 2.5 ? 1 : 0.5, y = (v) => bot - ((v - lo) / (hi - lo)) * (bot - top);
       let g = "";
       for (let v = lo; v <= hi + 1e-9; v += step)
         g += `<line class="gl" x1="${L}" x2="${R}" y1="${y(v)}" y2="${y(v)}"/><text x="${R + 5}" y="${y(v) + 3.5}">${fmt1(v)}°</text>`;
-      return { y, grid: g };
+      if (near) {
+        // label inside the zone, under the line: the curve only goes there when freeze protection is on
+        const yf = y(fz), ly = bot - yf >= 14 ? yf + 11 : yf - 4;
+        g += `<rect class="fz-zone" x="${L}" y="${yf}" width="${R - L}" height="${Math.max(0, bot - yf)}"/>`
+          + `<line class="fz" x1="${L}" x2="${R}" y1="${yf}" y2="${yf}"/><text class="fz-t" x="${L + 4}" y="${ly}">Hors gel ${fmt1(fz)} °C</text>`;
+      } else if (Number.isFinite(fz)) g += `<text class="fz-t" x="${R + 5}" y="${H - 6}">↓${fmt1(fz)}°</text>`;
+      const legend = Number.isFinite(fz)
+        ? `<span><i class="k-fz"></i>Hors gel : Low forcé sous ${fmt1(fz)} °C${near ? "" : " (sous l'échelle)"}</span>` : "";
+      return { y, grid: g, legend };
     };
+    const belowFz = (v) => (Number.isFinite(fz) && v < fz ? " · sous le seuil hors gel" : "");
     let g = "", hovX = null;
 
     if (range === "24h") {
@@ -752,7 +780,7 @@ class PiscineCard extends HTMLElement {
         tip.querySelector("b").textContent = `${fmt1(hov.v)} °C`;
         tip.querySelector("i").className = hov.ok ? "" : "no";
         tip.querySelector("span span").textContent = `${hov.t < mid ? "hier " : ""}${fmtT(new Date(hov.t))} · ${
-          hov.ok ? "bassin, pompe en marche" : hov.on ? `pompe en marche depuis moins de ${POOL_AFTER_MIN} min` : "tuyau, pompe arrêtée"}`;
+          hov.ok ? "bassin, pompe en marche" : hov.on ? `pompe en marche depuis moins de ${POOL_AFTER_MIN} min` : "tuyau, pompe arrêtée"}${belowFz(hov.v)}`;
         hovX = x(hov.t);
       }
       const dot = hov || last;
@@ -767,7 +795,7 @@ class PiscineCard extends HTMLElement {
           lastOk ? ` Bassin : ${fmt1(lastOk.v)} °C à ${fmtT(new Date(lastOk.t))}${lastOk.t < mid ? " hier" : ""}.` : ""}</span>`;
       }
       sum.innerHTML = s;
-      leg.innerHTML = `<span><i class="k-pool"></i>Bassin (pompe en marche depuis ${POOL_AFTER_MIN} min)</span><span><i class="k-pipe"></i>Tuyau, pompe arrêtée</span><span><i class="k-band"></i>Filtration</span>`;
+      leg.innerHTML = `<span><i class="k-pool"></i>Bassin (pompe en marche depuis ${POOL_AFTER_MIN} min)</span><span><i class="k-pipe"></i>Tuyau, pompe arrêtée</span><span><i class="k-band"></i>Filtration</span>${sc.legend}`;
       box.setAttribute("aria-label", `Température du bassin sur 24 h, de ${fmt1(Math.min(...vals))} à ${fmt1(Math.max(...vals))} °C`);
     } else {
       const n = range === "30d" ? 30 : 7, days = this._tempDays(n), cw = (R - L) / n, cx = (i) => L + cw * (i + 0.5);
@@ -791,7 +819,7 @@ class PiscineCard extends HTMLElement {
       if (hd) {
         tip.innerHTML = "<b></b><span></span>";
         tip.querySelector("b").textContent = hd.known ? `${fmt1(hd.lo)} – ${fmt1(hd.hi)} °C` : "Pas de mesure";
-        tip.querySelector("span").textContent = long(hd) + (Number.isFinite(hd.hours) ? ` · ${fmt1(hd.hours)} h de filtration` : "");
+        tip.querySelector("span").textContent = long(hd) + (Number.isFinite(hd.hours) ? ` · ${fmt1(hd.hours)} h de filtration` : "") + (hd.known ? belowFz(hd.lo) : "");
         hovX = cx(this._tHover);
       }
       let s = known.length ? `<b>${fmt1(Math.min(...known.map((d) => d.lo)))} – ${fmt1(Math.max(...known.map((d) => d.hi)))} °C</b> sur ${n} jours, pompe en marche`
@@ -799,7 +827,7 @@ class PiscineCard extends HTMLElement {
       if (range === "30d" && this._statsErr) s += "<span>Statistiques de Home Assistant indisponibles : seuls les 7 derniers jours sont connus.</span>";
       else if (range === "30d" && known.length < n) s += `<span>${known.length} jour${known.length > 1 ? "s" : ""} mesuré${known.length > 1 ? "s" : ""} sur ${n}.</span>`;
       sum.innerHTML = s;
-      leg.innerHTML = `<span><i class="k-rng"></i>Min – max du jour, pompe en marche depuis ${POOL_AFTER_MIN} min</span>`;
+      leg.innerHTML = `<span><i class="k-rng"></i>Min – max du jour, pompe en marche depuis ${POOL_AFTER_MIN} min</span>${sc.legend}`;
       box.setAttribute("aria-label", `Température du bassin, min et max des ${n} derniers jours : ${days.map((d) => `${long(d)} ${d.known ? `${fmt1(d.lo)} à ${fmt1(d.hi)} °C` : "pas de mesure"}`).join(", ")}`);
     }
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
@@ -1055,7 +1083,7 @@ class PiscineCard extends HTMLElement {
     const planned = this._planned(), cmd = this._commanded();
     const nextTxt = hhmm(nextAt) !== null ? `<b>${SPEEDS[nextTo] || nextTo}</b> à ${nextAt}` : "arrêt en fin de bloc";
     let hint;
-    if (freeze) hint = `Hors gel : le contrôleur impose Low tant que le bassin est sous ${FREEZE_C} °C. Le pilotage reprendra ensuite.`;
+    if (freeze) hint = `Hors gel : le contrôleur impose Low tant que le bassin est sous ${fmt1(this._freezeC())} °C. Le pilotage reprendra ensuite.`;
     else if (effMode === "auto") hint = planned === "Off"
       ? `Le contrôleur suit son plan : pompe arrêtée, reprise ${hhmm(nextAt) !== null ? "à " + nextAt : "demain au lever du soleil"}.`
       : `Le contrôleur suit son plan : <b>${SPEEDS[planned]}</b> maintenant, ${nextTxt}.`;
