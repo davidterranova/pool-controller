@@ -85,7 +85,6 @@ const card = document.createElement("piscine-card");
 card.setConfig({
   variant: "panel",
   recorder: false, // no recorder nor statistics here: the temperature graph keeps its 7 days, from Daily History
-  more_path: "#avance", // its « Planning et réglages » link opens the Avancé tab
   settings_tab: false, // the Avancé tab is this page's « Réglages »
   temperatures: false, // the Températures tiles next to the card show them
   controller_light: false, // its header's « Connecté au contrôleur » chip is this page's link to the controller

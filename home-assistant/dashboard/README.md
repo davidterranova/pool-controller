@@ -56,9 +56,10 @@ The panel has four tabs, so the pop-up needs no dashboard behind it:
 - « Avancé »: today's plan in detail with « Recalculer », the last 7 days of filtration against the
   plan, the controller's link and Wi-Fi, the probes with « Relire », and the firmware (the commit it was
   built from, ESPHome's version) with « Vérifier », which asks GitHub whether main has changed it since
-  (`firmware_repo`, this repo by default). The card's « Planning et réglages » link opens it;
-- « Réglages »: every setting, with its Apply gate. `settings_tab: false` drops it and « Avancé », and
-  the link then opens `more_path`; `temperatures: false` drops the temperatures at the foot of « Pompe ».
+  (`firmware_repo`, this repo by default). The controller's light opens it at « Contrôleur »;
+- « Réglages »: every setting, with its Apply gate. `settings_tab: false` drops it and « Avancé » (the
+  light then opens `more_path`, if given); `temperatures: false` drops the temperatures at the foot of
+  « Pompe ».
 
 Its header, and the tile, have a light for the controller: green while it talks (the Device Clock, `clock`,
 changes every minute), amber when it goes quiet or has been offline for less than 15 min, red beyond. In the

@@ -11,7 +11,7 @@
  *
  *   type: custom:piscine-card
  *   variant: panel       # full controls, placed inside the Bubble pop-up
- *   settings_tab: false  # optional: no « Avancé » nor « Réglages » tab; « Planning et réglages » then opens more_path
+ *   settings_tab: false  # optional: no « Avancé » nor « Réglages » tab; the light's button then opens more_path, if given
  *   temperatures: false  # optional: no outdoor / equipment-pad block at the foot of « Pompe »
  *   controller_light: false                            # optional: no light for the controller (tile, header)
  *   controller_health: { warn: 3, alert: 15, beat: 4 }  # optional: its minutes before amber, before red; seconds between beats
@@ -76,9 +76,9 @@
  * dBm, % and words), the probes with « Relire », and the firmware: Firmware Version (the commit `make` compiled,
  * git describe), ESPHome's version and build time (its entity, else Home Assistant's device registry), and
  * « Vérifier », which asks GitHub (`firmware_repo`) whether main has changed a file the firmware is built from since
- * that commit. It can't install: the firmware carries its owner's secrets, so `make ota` stays the way. « Réglages »: the settings, the same rows as `variant: settings`. « Planning et réglages » at the
- * foot of « Pompe » opens « Avancé ». `settings_tab: false` drops both (the device's page has its own Avancé);
- * the link then goes to `more_path`.
+ * that commit. It can't install: the firmware carries its owner's secrets, so `make ota` stays the way.
+ * « Réglages »: the settings, the same rows as `variant: settings`. The tabs are the way in: « Pompe » has no link
+ * to them. `settings_tab: false` drops both (the device's page has its own Avancé).
  *
  * At the foot of « Pompe », « Températures »: the outdoor and equipment-pad probes, a tap opening Home
  * Assistant's more-info and its history. `temperatures: false` drops it (the device's page has its own tiles).
@@ -152,7 +152,6 @@ const FREEZE_DEFAULT_C = 3; // firmware: Freeze Protection Temperature's initial
 const FREEZE_NEAR_C = 4;    // temperature graph: the threshold joins the scale when the water comes this close
 const STUCK_MIN = 30;     // firmware: Manual Override Active after this long off Auto
 const CMD_TIMEOUT = 15000;
-const MORE_PATH = "/dashboard-piscine/0";
 const H_MS = 3600000, M_MS = 60000;
 const POOL_AFTER_MIN = 10; // firmware: a reading counts as the pool after this long pumping (Pool Water Min/Max Today)
 const T_STEP_MIN = 5;      // 24 h curve: one point per 5 min, the sensor's own pace
@@ -479,10 +478,6 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .manual { display:flex; flex-direction:column; gap:14px; background:var(--amber-soft); border-radius:16px; padding:12px; }
 .manual .lbl { margin-bottom:6px; }
 
-.link { display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--raised); border-radius:12px; padding:11px 14px;
-  font-size:13px; font-weight:500; border:0; width:100%; cursor:pointer; text-align:left; color:var(--fg); }
-.link svg { width:18px; height:18px; fill:var(--muted); flex:none; }
-
 .foot { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--muted); border-top:1px solid var(--line); padding-top:12px; }
 .foot .stale { color:var(--danger); font-weight:500; }
 
@@ -763,7 +758,6 @@ const PANEL_HTML = `
       <p class="hint" id="durHint"></p>
     </div>
   </div>
-  <button class="link" id="more"><span>Planning et réglages</span>${svg("chevron")}</button>
   </div>
   <div class="probes" id="probes">
     <p class="lbl">Températures</p>
@@ -802,7 +796,7 @@ class PiscineCard extends HTMLElement {
   setConfig(config) {
     const variant = config.variant || "tile";
     if (!["tile", "panel", "settings", "water"].includes(variant)) throw new Error("variant must be tile, panel, settings or water");
-    this._config = { variant, layout: config.layout || "horizontal", popup_hash: config.popup_hash || "#piscine", more_path: config.more_path || MORE_PATH,
+    this._config = { variant, layout: config.layout || "horizontal", popup_hash: config.popup_hash || "#piscine", more_path: config.more_path || null,
       recorder: config.recorder !== false, title: config.title ?? "Réglages", icons: config.icons || null,
       settings_tab: config.settings_tab !== false, temperatures: config.temperatures !== false,
       controller_light: config.controller_light !== false, health: { ...HEALTH, ...(config.controller_health || {}) },
@@ -1711,15 +1705,13 @@ class PiscineCard extends HTMLElement {
 
   _wirePanel() {
     this._$("close").addEventListener("click", () => this._navigate(location.pathname + location.search, true));
-    // « Planning et réglages » and the light: the « Avancé » tab (the light: at « Contrôleur »), or more_path
-    // without it (the device's page: its own Avancé tab)
+    // The light: the « Avancé » tab at « Contrôleur »; without that tab, more_path if given
     const openAdv = (at) => {
-      if (!this._config.settings_tab) { this._navigate(this._config.more_path); return; }
+      if (!this._config.settings_tab) { if (this._config.more_path) this._navigate(this._config.more_path); return; }
       this._tab = "adv"; this._update();
       const t = this.shadowRoot.querySelector('#tabs [data-tab="adv"]');
       (at ? this._$(at).closest("section") : this._$("tabs")).scrollIntoView({ block: "nearest" }); t.focus({ preventScroll: true });
     };
-    this._$("more").addEventListener("click", () => openAdv());
     this._$("ctlLink").addEventListener("click", () => openAdv("ctlRows"));
     // without the recorder only Daily History's 7 days exist: no range to choose
     this._$("tRange").hidden = !this._config.recorder;
