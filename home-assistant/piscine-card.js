@@ -1126,12 +1126,19 @@ class PiscineCard extends HTMLElement {
     head.hidden = !this._config.title;
     this._$("setTitle").textContent = this._config.title;
     this._$("setIcon").innerHTML = this._icon("tune-vertical");
-    const refused = (err) => { console.error("piscine-card:", err); this._toast(`Refusé : ${(err && err.message) || err}`, true); };
-    const apply = (btn) => {
-      btn.classList.add("busy");
-      this._hass.callService("button", "press", { entity_id: this._e.apply }).then(() => this._toast(APPLIED), refused)
-        .finally(() => btn.classList.remove("busy"));
-    };
+    this._wireSettingRows();
+  }
+  _refused(err) { console.error("piscine-card:", err); this._toast(`Refusé : ${(err && err.message) || err}`, true); }
+  /** Presses a button entity, the button busy meanwhile, then says `ok`. */
+  _press(btn, key, ok) {
+    btn.classList.add("busy");
+    this._hass.callService("button", "press", { entity_id: this._e[key] }).then(() => this._toast(ok), (err) => this._refused(err))
+      .finally(() => btn.classList.remove("busy"));
+  }
+  /** The settings rows (SETTINGS) into #rows, with the pending banner's « Appliquer ». */
+  _wireSettingRows() {
+    const refused = (err) => this._refused(err);
+    const apply = (btn) => this._press(btn, "apply", APPLIED);
     this._$("applyNow").addEventListener("click", (ev) => apply(ev.currentTarget));
     const host = this._$("rows");
     let sect = null;
