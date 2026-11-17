@@ -1,9 +1,13 @@
-name: Home Assistant card
+name: Release
 
+# One project version for the card and the firmware: the card's
+# `const VERSION = "x.y.z"` in home-assistant/piscine-card.js.
+#
 # home-assistant/piscine-card.js reaches Home Assistant through HACS, which
 # installs this repo's GitHub releases (see hacs.json): each release carries
-# the card as its piscine-card.js asset, and its tag is the card's VERSION.
-#   - pull request: a change to the card must come with a new VERSION;
+# the card as its piscine-card.js asset, and its tag is VERSION.
+#   - pull request: a change to the card or to the firmware's sources must
+#     come with a new VERSION;
 #   - push to main: a VERSION with no release yet gets one, which HACS then
 #     offers as an update; then HACS's own checks run against it.
 
@@ -15,8 +19,13 @@ on:
       - home-assistant/piscine-card.js
       - hacs.json
       - LICENSE
-      - .github/workflows/card.yml
+      - "*.yaml"
+      - webui/**
+      - .github/workflows/release.yml
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   check:
@@ -30,20 +39,25 @@ jobs:
       - name: Card parses
         run: node --check home-assistant/piscine-card.js
 
-      - name: A changed card has a new VERSION
+      # What ships in a release: the card, and the firmware built from
+      # pool-controller.yaml, the packages beside it (any *.yaml at the root)
+      # and the device's page (webui/, which also bundles the card).
+      - name: A changed card or firmware has a new VERSION
         run: |
           git fetch --depth=1 origin "${{ github.base_ref }}"
-          if git diff --quiet FETCH_HEAD -- home-assistant/piscine-card.js; then
-            echo "Card unchanged."
+          changed=$(git diff --name-only FETCH_HEAD -- home-assistant/piscine-card.js webui ':(glob)*.yaml')
+          if [ -z "$changed" ]; then
+            echo "Neither the card nor the firmware changed."
             exit 0
           fi
+          echo "Changed:"; echo "$changed"
           version=$(sed -nE 's/^const VERSION = "([^"]+)";/\1/p' home-assistant/piscine-card.js)
           test -n "$version" || { echo "::error file=home-assistant/piscine-card.js::No 'const VERSION = \"x.y.z\";' line found."; exit 1; }
           if gh release view "v$version" >/dev/null 2>&1; then
-            echo "::error file=home-assistant/piscine-card.js::The card changed but VERSION is still $version, which is already released. Bump it: HACS only sees a new release."
+            echo "::error file=home-assistant/piscine-card.js::$(echo "$changed" | paste -sd, -) changed but VERSION is still $version, which is already released. Bump it: HACS and the controllers only see a new release."
             exit 1
           fi
-          echo "Card changed, will be released as v$version."
+          echo "Will be released as v$version."
 
   release:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
