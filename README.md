@@ -19,7 +19,7 @@ repo itself — layout and tooling.
 | `wifi-setup.yaml` | Package included by `pool-controller.yaml`: fallback hotspot, joining a network from the page, Wi-Fi statistics, clock from the browser (see below). |
 | `secrets.yaml` | Wi-Fi credentials, API encryption key, OTA password. Gitignored — create your own (see below). |
 | `Makefile` | Validate / build / flash / OTA / status tooling. |
-| `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS). |
+| `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS). `dashboard/`: dashboard components for these entities and the scripts the card calls, with a guide ([home-assistant/dashboard/README.md](home-assistant/dashboard/README.md)). |
 | `hacs.json` | Tells the Marketplace (HACS) which file this repo publishes: the card above, from each GitHub release. |
 | `tools/webui-mock/` | Local mock of the device's web UI, for working on the page without flashing (see below). |
 | `webui/` | The device's own web page, built around the same `piscine-card` (see below). `make webui` bundles it into `webui/dist/` (gitignored), which the firmware embeds. |
@@ -87,6 +87,7 @@ repo itself — layout and tooling.
 | `make mock-ui` | Serve a local mock of the device's web UI at http://localhost:8080/ (see below). `MOCK_PORT=` to change the port, `MOCK_INDEX=path.html` to serve your own page. |
 | `make mock-webui` | `make mock-ui` serving the page from its sources in `webui/`, reloading on save (see below). `MOCK_HOTSPOT=1` starts the simulated device on its hotspot, with no clock. |
 | `make mock-ui-check` | Print the web UI layout (sections and order) and fail on any entity type the mock can't render. Runs in CI. |
+| `make ha-dashboard-check` | Fail when the Home Assistant dashboard components in `home-assistant/dashboard/` name an entity the firmware doesn't have, or leave one out of the pool card. Runs in CI. |
 | `make clean` | Remove the local build cache (`.esphome/`). |
 
 `PORT` (serial) and `HOST` (network) both auto-detect and can be overridden
@@ -128,9 +129,20 @@ you set `local: true` back).
 
 [home-assistant/piscine-card.js](home-assistant/piscine-card.js) is
 `custom:piscine-card`, the pool card of the Home Assistant dashboard: a tile,
-and a panel shown in a pop-up with the pump's state, today's plan timeline,
-Auto/Manuel, the forced speed and its duration. It's a plain custom element,
-no framework and no build step, in French.
+and a panel shown in a pop-up with four tabs. « Pompe » has the pump's state,
+today's plan timeline, the pool's temperature (24 h, 7, 30 and 90 days, a
+year), Auto/Manuel, the forced speed and its duration, and the outdoor and
+equipment-pad temperatures; « Remplissage » the fill water today, this month
+and by day, week or month with the period's total; « Avancé » today's plan
+with « Recalculer », the last 7 days, the controller (its link and Wi-Fi),
+its probes and its firmware, with « Vérifier » to ask GitHub whether main has
+changed it since; « Réglages » every setting the controller has. Two
+more variants draw a part alone: `settings` the settings, with a line under
+each saying what it does, and `water` the fill water.
+A light on the tile and in the panel's header says when the controller was
+last heard: green while it talks, amber when it goes quiet or has just gone
+offline, red after 15 min; each new message sends a ring out of it.
+It's a plain custom element, no framework and no build step, in French.
 
 It lives here because it's written against this firmware's entities, and
 because it now has two users that must change together:
@@ -146,11 +158,41 @@ What it needs from Home Assistant, besides the entities:
 - two scripts, which only set the Manual Override select and its timeout:
   `script.piscine_forcer_vitesse` (`vitesse`, optional `duree` in minutes)
   and `script.piscine_retour_auto`;
-- the recorder's history of the Manual Override select since midnight, for
-  the overrides already ended today on the timeline.
+- the recorder's history of the last 24 h: the Manual Override select, for
+  the overrides already ended today on the timeline, and Pool Return
+  Temperature with Pump Commanded Speed, for the temperature curve;
+- the long-term statistics of Pool Water Min/Max Today, for the 30-day,
+  90-day and year views (they have a `state_class` since 2026-11-17, so they
+  fill up from the day the firmware was flashed), and of Pool Return
+  Temperature, whose daily mean (pipe included) stands in for the days before;
+- the long-term statistics of the fill meter (Piscine - Volume total
+  remplissage, `total_increasing`), for the « Remplissage » tab. Without the
+  meter or the recorder, that tab isn't there;
+- the Device Clock ([wifi-setup.yaml](wifi-setup.yaml)), which changes every
+  minute: the light's heartbeat. Without it, the light only follows the link;
+- Firmware Version and ESPHome Version, for « Avancé » › Firmware (before a
+  firmware that has them, ESPHome's version comes from the device registry),
+  and, for « Vérifier », a browser that reaches api.github.com. It only tells:
+  installing stays `make ota`, since the firmware carries your secrets.
 
-Those scripts, the dashboard and the push alert are Home Assistant config,
-edited in its UI; they aren't in this repo.
+The temperature graph exists because the probe is on the return pipe: it
+reads the pool only while water flows, and with the pump stopped it drifts
+toward the equipment pad's air, warmer than the water in winter (14.5 °C in
+the pipe for a 13.1 °C pool on a November night). So, like the firmware's
+min/max, the graph only trusts readings taken after 10 minutes of pumping:
+solid line for those, dashed for the pipe. The 7- and 30-day views show each
+day's min–max from those readings: Daily History for the last 7 days, the
+statistics' 23:00 hourly row before that (Min Today only falls and Max Today
+only rises within a day, so that row holds its final values; HA's own daily
+min/max would also count the 00:00 hour, which still has the day before's
+value until the device resets it).
+
+The two scripts, and a dashboard built from this firmware's entities, are in
+[home-assistant/dashboard/](home-assistant/dashboard/README.md) as generic
+building blocks (a fresh install's entity ids, Home Assistant's own cards),
+with a guide; `make ha-dashboard-check` keeps them in step with the firmware.
+Any particular install's own dashboards and alerts stay in that Home
+Assistant.
 
 ### Installing it in Home Assistant
 
@@ -191,17 +233,24 @@ was first written (`bridges/homeassistant/config/www/piscine/`).
 ## The device's page (`webui/`)
 
 The device serves a page of our own instead of ESPHome's stock one, with the
-look of the Home Assistant dashboard. It has three tabs:
+look of the Home Assistant dashboard. It has four tabs:
 
 - **Contrôle**, for daily use: Home Assistant's `piscine-card` panel (the
-  pump's state, today's plan timeline, Auto/Manuel, forced speed and its
-  duration), with tiles for the temperatures (the pool's with today's
-  min/max) and the filling meter.
-- **Avancé**: the filtration settings with their Apply gate, today's plan in
+  pump's state, today's plan timeline, the pool's last 7 days, Auto/Manuel,
+  forced speed and its duration), with tiles for the temperatures (the
+  pool's with today's min/max).
+- **Remplissage**: the card's `water` variant on the controller's own record
+  (Fill Water Today, Days and Months): today, this month, the flow, and the
+  litres by day over 30 days or by month over 12.
+- **Avancé**: the filtration settings with their Apply gate, the boost
+  pulses and the freeze-protection threshold (the
+  card's settings variant, the rows of its « Réglages » tab in Home Assistant), today's plan in
   detail, the last 7 days (hours filtered, pool min/max), the device's
   sensors, and its live log.
-- **Wi-Fi** (see below): the connection and its statistics, and a way to
-  join a network. Only shown when the device has those entities.
+- **Contrôleur**: a Wi-Fi section (see below: the connection and its
+  statistics, and a way to join a network; only when the device has those
+  entities) and a Firmware one (the commit it was built from, ESPHome's
+  version, and « Vérifier », as in the card's « Avancé »).
 
 How it fits together:
 
@@ -216,13 +265,20 @@ How it fits together:
   device's REST calls. The two HA scripts the card calls,
   `piscine_forcer_vitesse` and `piscine_retour_auto`, only set the Manual
   Override select (and its timeout), so they map onto that directly.
-- **No charts, on purpose.** The device keeps no history of its sensors, so
-  a chart would only show the time a page happened to be open. What the page
-  shows over time, the device records itself: today's pool min/max (Pool
-  Water Min/Max Today) and, for each of the last 7 days, the hours filtered
-  and the pool's min/max (Daily History). The page only keeps the Manual
-  Override's changes in memory from the moment it opens (gone on reload),
-  for the card's record of today's overrides.
+- **Only what the device records.** The device keeps no history of its
+  sensors, so a curve would only show the time a page happened to be open.
+  What the page shows over time, the device records itself: today's pool
+  min/max (Pool Water Min/Max Today), each of the last 7 days' hours
+  filtered and pool min/max (Daily History), and the fill water of today,
+  the last 30 days and the last 12 months (Fill Water Today, Days, Months).
+  So the card's temperature graph runs with `recorder: false` here: 7 days,
+  with no range to pick; its fill water is the `water` variant on that
+  record, in the page's « Remplissage » tab. The panel has no tabs: its
+  « Avancé » and « Réglages » are the page's Avancé tab. Nor the card's
+  light: the page's own « Connecté au contrôleur » chip is its link to the
+  device. The page only keeps the Manual Override's changes in memory from
+  the moment it opens (gone on reload), for the card's record of today's
+  overrides.
 - **No framework.** Icons are path data from `@mdi/js` (the set HA uses),
   in [icons.js](webui/icons.js).
 - **What's missing on the device:** sunrise/sunset (the card's timeline has
@@ -270,13 +326,14 @@ same way:
   `pool-controller`; its page answers at http://192.168.4.1, still behind
   the web login. Not ESPHome's `captive_portal`: that answers every page
   request itself, without login, so the page would be unreachable.
-- **Join a network from the page** (Wi-Fi tab): pick one of the networks
+- **Join a network from the page** (Contrôleur tab, Wi-Fi): pick one of the networks
   nearby or type it, give the password, « Se connecter ». The device tries
   for 30 s and saves the network only if it connects; otherwise it keeps the
   current one. The password is held on the device and never sent back to a
   page or to HA. A network saved this way takes precedence over the one in
   `secrets.yaml`, until it's replaced the same way.
-- **Wi-Fi statistics:** signal (dBm and %), network, router (BSSID), IP and
+- **Wi-Fi statistics:** signal (dBm, % and in words: bon, moyen, faible, as
+  the pool card also says it), network, router (BSSID), IP and
   MAC addresses, disconnections since boot, devices on the hotspot.
 - **Clock.** On the hotspot alone there's no internet, so no time, so no
   daily plan. When the device has no clock, the page sets it to the

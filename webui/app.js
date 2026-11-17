@@ -1,10 +1,11 @@
 /*
- * The controller's own page: « Contrôle » runs Home Assistant's piscine-card (unchanged, fed by
- * esphome-hass.js) next to HA-style tiles; « Avancé » has the settings, today's plan, the device's
- * sensors and its live log; « Wi-Fi » (wifi-setup.yaml) its connection, statistics and a way to
- * join a network. No charts: the device keeps no history of its sensors, only what it records
- * itself (today's water min/max, and each of the last 7 days). Everything talks to the ESP32 only,
- * so it keeps working while Home Assistant is down.
+ * The controller's own page: « Contrôle » runs Home Assistant's piscine-card (unchanged, fed by
+ * esphome-hass.js) next to HA-style tiles; « Remplissage » the card's water variant; « Avancé » the
+ * settings, today's plan, the device's sensors and its live log; « Contrôleur » its Wi-Fi
+ * (wifi-setup.yaml: connection, statistics, joining a network) and its firmware. The device keeps no
+ * history of its sensors, so the only charts are of what it records itself: the pool's min/max and
+ * filtration of the last 7 days, and the fill water of 30 days and 12 months. Everything talks to the
+ * ESP32 only (but « Vérifier », which asks GitHub), so it keeps working while Home Assistant is down.
  */
 import { EspHass, E } from "./esphome-hass.js";
 import { ICONS } from "./icons.js";
@@ -62,10 +63,10 @@ const run = (p, ok) => p.then(() => ok && toast(ok)).catch((e) => toast(`Refusé
 
 /* ================================================================ tabs */
 
-const TABS = ["controle", "avance", "wifi"];
+const TABS = ["controle", "remplissage", "avance", "controleur"];
 let tab = "controle";
 function route() {
-  const want = location.hash.slice(1);
+  const want = location.hash.slice(1) === "wifi" ? "controleur" : location.hash.slice(1); // the tab's old name
   tab = TABS.includes(want) ? want : "controle";
   for (const t of TABS) {
     $(`tab-${t}`).hidden = t !== tab;
@@ -83,13 +84,16 @@ addEventListener("location-changed", route); // what piscine-card fires after it
 const card = document.createElement("piscine-card");
 card.setConfig({
   variant: "panel",
-  more_path: "#avance", // its « Planning, réglages et remplissage » link opens the Avancé tab
+  recorder: false, // no recorder nor statistics here: the temperature graph keeps its 7 days, from Daily History
+  settings_tab: false, // the Avancé tab is this page's « Réglages »
+  temperatures: false, // the Températures tiles next to the card show them
+  controller_light: false, // its header's « Connecté au contrôleur » chip is this page's link to the controller
   entities: {
     override: E.override, commanded: E.commanded, planned: E.planned, nextAt: E.nextAt, nextTo: E.nextTo,
     b1s: E.b1s, b1e: E.b1e, b2s: E.b2s, b2e: E.b2e, hoursToday: E.hoursToday, hoursPlanned: E.hoursPlanned,
-    water: E.water, outdoor: E.outdoor, online: E.online, stuck: E.overrideActive, notComputed: E.notComputed,
+    water: E.water, waterMin: E.waterMin, waterMax: E.waterMax, history: E.history, outdoor: E.outdoor, online: E.online, stuck: E.overrideActive, notComputed: E.notComputed,
     recomputed: E.recomputed, boostInterval: E.boostInterval, boostDuration: E.boostDuration,
-    highEvery: E.highEvery, timeout: E.timeout, endsAt: E.endsAt,
+    highEvery: E.highEvery, timeout: E.timeout, endsAt: E.endsAt, freezeAt: E.freezeAt,
     sun: "sun.sun", // not on the device: the timeline just has no sunrise/sunset marks
   },
 });
@@ -109,15 +113,13 @@ const TILES = [
     subTitle: "Minimum et maximum depuis minuit, mesurés pompe en marche (la sonde est sur le retour)" },
   { id: E.outdoor, name: "Extérieure", icon: "weather-partly-cloudy", group: "temps" },
   { id: E.pad, name: "Local technique", icon: "home-thermometer-outline", group: "temps" },
-  { id: E.flow, name: "Débit de remplissage", icon: "water-pump", group: "water" },
-  { id: E.volume, name: "Volume total rempli", icon: "water", group: "water" },
 ];
 for (const t of TILES) {
   t.el = h(`<div class="card tile${t.full ? " full" : ""}">
     <div class="row"><span class="ic">${icon(t.icon)}</span>
       <span class="txt"><div class="name">${t.name}</div><div class="state num"></div>
         ${t.sub ? `<div class="sub num" title="${t.subTitle}"></div>` : ""}</span></div></div>`);
-  $(t.group === "temps" ? "tilesTemps" : "tilesWater").appendChild(t.el);
+  $("tilesTemps").appendChild(t.el);
 }
 
 function updateControl() {
@@ -236,31 +238,33 @@ function buttonRow(host, { id, label, sub, iconName, text = "Appuyer", ok, fill,
 }
 const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}</div>`));
 
-/* ---- Réglages */
+/* ---- Réglages: piscine-card's settings variant, the rows Home Assistant's dashboard shows too */
 {
-  const host = $("settingsRows");
-  const pending = () => s(E.pending) === "on";
-  updaters.push(() => {
-    $("pendingChip").hidden = !pending();
-    $("pendingBanner").hidden = !pending();
+  const settings = document.createElement("piscine-card");
+  settings.setConfig({
+    variant: "settings",
+    icons: ICONS, // no <ha-icon> here
+    entities: {
+      min: E.min, max: E.max, offset: E.offset, warm: E.warm, pending: E.pending, apply: E.apply,
+      boostDuration: E.boostDuration, boostInterval: E.boostInterval, highEvery: E.highEvery, freezeAt: E.freezeAt,
+    },
   });
-  $("applyNow").addEventListener("click", (ev) => {
-    ev.target.classList.add("busy");
-    run(hass.press(E.apply), "Réglages appliqués : plan du jour recalculé").finally(() => ev.target.classList.remove("busy"));
+  settings.classList.add("o1");
+  $("settingsHost").replaceWith(settings);
+  updaters.push(() => { if (st(E.min)) settings.hass = hass; });
+}
+
+/* ---- Remplissage: piscine-card's water variant, from the controller's own record (Fill Water Today, Days, Months)
+   rather than Home Assistant's statistics: the same readings and chart, 30 days and 12 months */
+{
+  const water = document.createElement("piscine-card");
+  water.setConfig({
+    variant: "water",
+    recorder: false,
+    entities: { flow: E.flow, volume: E.volume, fillToday: E.fillToday, fillDays: E.fillDays, fillMonths: E.fillMonths },
   });
-  sect(host, "Durée de filtration · s'applique avec « Appliquer »");
-  numberRow(host, { id: E.min, label: "Filtration minimale", sub: "Plancher, même par eau froide" });
-  numberRow(host, { id: E.max, label: "Filtration maximale", sub: "Plafond, même en pleine chaleur" });
-  numberRow(host, { id: E.offset, label: "Ajustement de durée", sub: "Ajouté à la durée calculée" });
-  numberRow(host, { id: E.warm, label: "Décalage du pic de chaleur", sub: "Centre du 2ᵉ bloc par rapport au midi solaire" });
-  buttonRow(host, { id: E.apply, label: "Appliquer les réglages", sub: "Recalcule le plan du jour", text: "Appliquer", fill: true,
-    ok: "Réglages appliqués : plan du jour recalculé", disabled: () => !pending() });
-  sect(host, "Impulsions · immédiat");
-  numberRow(host, { id: E.boostDuration, label: "Durée d'une impulsion" });
-  numberRow(host, { id: E.boostInterval, label: "Intervalle entre impulsions", sub: "0 = pas d'impulsion" });
-  numberRow(host, { id: E.highEvery, label: "Une impulsion High toutes les", sub: "Les autres sont en Medium" });
-  sect(host, "Override manuel · immédiat");
-  numberRow(host, { id: E.timeout, label: "Retour automatique en Auto après", sub: "0 = jamais (alerte après 30 min)" });
+  $("waterHost").replaceWith(water);
+  updaters.push(() => { if (st(E.flow)) water.hass = hass; });
 }
 
 /* ---- Plan du jour */
@@ -338,6 +342,8 @@ const CLOCK_SOURCE = {
 /** The device sends "0-00-00 00:00:00" for a clock that was never set. */
 const clockSet = () => s(E.clockSource) !== "None" && /^\d{4}-/.test(s(E.clock) || "");
 const quality = (dbm) => Math.max(0, Math.min(100, 2 * (dbm + 100))); // HA's dBm -> % rule of thumb
+/** bon / moyen / faible, as the card says it (its steps are this page's bars below). */
+const signalWord = (dbm) => (dbm >= -67 ? "bon" : dbm >= -75 ? "moyen" : "faible");
 const bars = (dbm) =>
   !Number.isFinite(dbm) ? "wifi-strength-outline"
   : dbm >= -55 ? "wifi-strength-4" : dbm >= -67 ? "wifi-strength-3" : dbm >= -75 ? "wifi-strength-2" : "wifi-strength-1";
@@ -362,8 +368,8 @@ const orDash = (id) => () => s(id) || "—";
 
   let joiningTo = null, lastMode = null, netsKey = "";
   updaters.push(() => {
-    // The tab only exists on a firmware with wifi-setup.yaml.
-    document.querySelector('.tabs a[data-tab="wifi"]').hidden = !st(E.wifiMode);
+    // The section only exists on a firmware with wifi-setup.yaml.
+    $("wifiStack").hidden = !st(E.wifiMode);
     if (!st(E.wifiMode)) return;
     const m = mode(), chip = $("wifiChip");
     chip.className = `chip ${m === "Connected" ? "ok" : m === "Hotspot" ? "warn" : ""}`;
@@ -372,7 +378,7 @@ const orDash = (id) => () => s(id) || "—";
     const clients = n(E.hotspotClients) || 0;
     const [ic, title, sub] =
       m === "Connected" ? [bars(n(E.wifiSignal)), `Connecté à « ${s(E.wifiSsid)} »`,
-        Number.isFinite(n(E.wifiSignal)) ? `Signal ${n(E.wifiSignal)} dBm · ${quality(n(E.wifiSignal))} %` : ""]
+        Number.isFinite(n(E.wifiSignal)) ? `Signal ${n(E.wifiSignal)} dBm · ${quality(n(E.wifiSignal))} % · ${signalWord(n(E.wifiSignal))}` : ""]
       : m === "Hotspot" ? ["access-point", `Point d'accès « ${AP_SSID} »`,
         `Ouvert, sans mot de passe · ${clients} appareil${clients > 1 ? "s" : ""} connecté${clients > 1 ? "s" : ""} · http://192.168.4.1`]
       : ["wifi-sync", `Connexion à « ${joiningTo || s(E.joinSsid) || "…"} »`, "Jusqu'à 30 s"];
@@ -436,6 +442,39 @@ const orDash = (id) => () => s(id) || "—";
   });
 }
 
+/* ---- Firmware: the commit `make` compiled (Firmware Version), ESPHome's version, and « Vérifier », which asks GitHub
+   whether main has changed the firmware since. The card's own parsing and check, so both hosts say the same. */
+{
+  const Card = customElements.get("piscine-card"), host = $("fwRows");
+  const version = () => Card.parseVersion(s(E.fwVersion)), esphome = () => Card.parseEsphome(s(E.esphomeVersion));
+  valueRow(host, { id: E.fwVersion, label: "Version", iconName: "tag-outline", value: () => version()?.label || "—", sub: () => version()?.sub || "" });
+  valueRow(host, { id: E.esphomeVersion, label: "ESPHome", iconName: "chip", value: () => esphome()?.version || "—", sub: () => esphome()?.built || "" });
+  const row = h(`<div class="erow"><span class="ic">${icon("cloud-sync-outline")}</span><span class="name"><span>Mise à jour</span><small></small></span>
+    <button class="btn">Vérifier</button></div>`);
+  host.appendChild(row);
+  const small = row.querySelector("small"), btn = row.querySelector("button");
+  let busy = false, result = null, drawn = "";
+  btn.addEventListener("click", async () => {
+    const v = version();
+    if (!v?.ref || busy) return;
+    busy = true; result = null; update();
+    result = await Card.checkFirmware("davidterranova/pool-controller", v.ref);
+    busy = false; update();
+  });
+  updaters.push(() => {
+    const v = version();
+    const r = busy ? { text: "Vérification auprès de GitHub…" } : result
+      || { text: !v ? "Ce firmware ne dit pas de quel commit il vient : il faut l'installer avec make ota."
+        : !v.ref ? "Compilé hors de make : pas de commit à comparer." : "Compare cette version avec la branche main du dépôt sur GitHub." };
+    btn.disabled = busy || !v?.ref;
+    const key = [r.text, r.cls, r.href].join("|");
+    if (key === drawn) return; // a link rebuilt every second would lose its hover
+    drawn = key;
+    small.className = r.cls || ""; small.textContent = r.text;
+    if (r.href) small.append(" ", h(`<a href="${esc(r.href)}" target="_blank" rel="noopener">Voir les changements</a>`));
+  });
+}
+
 /* ---- Alerts above both tabs: on the hotspot, and a clock that was never set */
 {
   const host = $("alerts");
@@ -446,7 +485,7 @@ const orDash = (id) => () => s(id) || "—";
     const d = new Date();
     return run(hass.setDateTime(E.clock, localStamp(d)), `Horloge du contrôleur réglée sur ce navigateur (${clock(d)})`);
   };
-  const goWifi = () => (location.hash = "#wifi");
+  const goWifi = () => (location.hash = "#controleur");
   updaters.push(() => {
     // No internet, no SNTP: the device can't place today's plan. This page has a clock; hand it over,
     // once per page load, and only when the device has none at all.

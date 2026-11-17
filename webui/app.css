@@ -72,6 +72,8 @@ svg { display: block; fill: currentColor; }
 .tabs a { position: relative; display: flex; align-items: center; gap: 8px; padding: 12px 14px; color: var(--secondary-text-color);
   text-decoration: none; font-weight: 500; font-size: 14px; }
 .tabs a svg { width: 20px; height: 20px; }
+/* four tabs on a phone: the words alone, tighter, and a scroll rather than a cut if a font runs wider */
+@media (max-width: 479px) { .tabs { overflow-x: auto; scrollbar-width: none; gap: 0; } .tabs a { padding: 12px 10px; } .tabs a svg { display: none; } }
 .tabs a[aria-selected="true"] { color: var(--acc); }
 .tabs a[aria-selected="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px 2px 0 0; background: var(--acc); }
 
@@ -86,6 +88,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 16px 16px 40px; }
 }
 .stack { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .cols.advanced > .stack { gap: 16px; }
+.cols.water { max-width: 880px; } /* one chart: a dialog's width reads better than the whole page */
 @media (max-width: 999px) {
   /* One column: the two stacks dissolve into the grid, which orders the cards for reading. */
   .cols.advanced > .stack { display: contents; }
@@ -112,7 +115,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 16px 16px 40px; }
 .tile .ic { width: 36px; height: 36px; flex: none; display: grid; place-items: center; color: var(--acc); }
 .tile .ic svg { width: 24px; height: 24px; }
 .tile .txt { min-width: 0; }
-.tile .name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .name { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
 .tile .state { font-size: 12px; color: var(--secondary-text-color); }
 .tile .sub { font-size: 12px; color: var(--secondary-text-color); margin-top: 2px; }
 
@@ -122,9 +125,14 @@ main { max-width: 1240px; margin: 0 auto; padding: 16px 16px 40px; }
 .erow .ic { width: 40px; height: 40px; flex: none; display: grid; place-items: center; color: var(--secondary-text-color); }
 .erow .ic svg { width: 24px; height: 24px; }
 .erow.problem .ic { color: var(--danger); }
-.erow .name { flex: 1; min-width: 0; }
-.erow .name span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.erow .name small { display: block; font-size: 12px; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* names and descriptions wrap rather than being cut, as in piscine-card's settings variant */
+.erow .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.erow .name span { display: block; }
+.erow .name small { display: block; font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); margin-top: 1px; }
+/* Firmware › Mise à jour: GitHub's verdict, and its link */
+.erow .name small.fw-up, .erow .name small a { color: var(--acc); }
+.erow .name small.fw-ok { color: var(--ok); }
+.erow .name small a { font-weight: 500; text-decoration: none; }
 .erow .val { text-align: right; white-space: nowrap; }
 .erow .val.bad { color: var(--danger); font-weight: 500; }
 .erow .val.good { color: var(--secondary-text-color); }

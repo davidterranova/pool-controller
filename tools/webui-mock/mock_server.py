@@ -240,6 +240,7 @@ N = {
     "boost_dur": "Boost Pulse Duration",
     "boost_int": "Boost Pulse Interval",
     "boost_high": "High Boost Frequency",
+    "freeze_at": "Freeze Protection Temperature",
     "pool_temp": "Pool Return Temperature",
     "pad_temp": "Equipment Pad Temperature",
     "outdoor_temp": "Outdoor Temperature",
@@ -247,6 +248,11 @@ N = {
     "status": "Status",
     "flow": "Piscine - Débit remplissage",
     "volume": "Piscine - Volume total remplissage",
+    "fill_today": "Fill Water Today",
+    "fill_days": "Fill Water Days",
+    "fill_months": "Fill Water Months",
+    "fw_version": "Firmware Version",
+    "esphome_version": "ESPHome Version",
 }
 # The Wi-Fi entities (wifi-setup.yaml, a package of the config).
 W = {
@@ -414,6 +420,14 @@ class PoolSim:
             measured = d != 6
             self.history.append((today - timedelta(days=d), random.uniform(4.5, 7.5) * 3600 if measured else 0.0,
                                  lo if measured else None, round(lo + random.uniform(0.3, 0.9), 1) if measured else None))
+        # Fill water: the last 30 closed days and 12 months, newest first (None = unknown), seeded with a real
+        # summer (~950 L every three days, then next to nothing); a fill of a few minutes every quarter hour, so
+        # the page's « Remplissage » counts live.
+        days = [0, 2, 19, 0, 0, 0, 0, 0, 0, 0, 4, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0]
+        self.fill_days = days[:]
+        self.fill_days[12] = None  # a day the device was off
+        self.fill_months = [23, 30, 9538, 2913, None, None, None, None, None, None, None, None]  # this month's closed days first
+        self.fill_today = 0.0
         self.last_tick = time.time()
         self.last_drift = time.time()
 
@@ -502,7 +516,7 @@ class PoolSim:
 
     def desired(self, now: int) -> str:
         temp = self.temps["pool_temp"]
-        if temp < 3.0:
+        if temp < self.num("freeze_at", 3.0):  # Freeze Protection Temperature, as evaluate_speed
             return "Low"
         if self.override != "Auto":
             return self.override
@@ -542,11 +556,20 @@ class PoolSim:
         # Filtration runtime.
         if self.counted_day != today:
             self.history = [(self.counted_day, self.filtration_s, self.water_lo, self.water_hi)] + self.history[:6]
+            self.fill_days = [round(self.fill_today)] + self.fill_days[:29]
+            if today.month != self.counted_day.month:
+                self.fill_months = [0] + self.fill_months[:11]
+            self.fill_months[0] = (self.fill_months[0] or 0) + round(self.fill_today)
+            self.fill_today = 0.0
             self.filtration_s = 0.0
             self.counted_day = today
             self.water_lo = self.water_hi = None
         elif self.commanded != "Off":
             self.filtration_s += now - self.last_tick
+        # The fill valve: 3 min at 14 L/min every quarter hour.
+        self.flow = 14.0 if int(now) % 900 < 180 else 0.0
+        self.volume += self.flow * (now - self.last_tick) / 60
+        self.fill_today += self.flow * (now - self.last_tick) / 60
         self.last_tick = now
         # Slow drift so the sensors look alive.
         if now - self.last_drift > 30:
@@ -636,13 +659,26 @@ class PoolSim:
             N["outdoor_temp"]: round(self.temps["outdoor_temp"], 2),
             N["status"]: self.wifi.mode == "Connected",  # the API link to HA needs the home network
             N["flow"]: self.flow,
-            N["volume"]: self.volume,
+            N["volume"]: round(self.volume),
+            N["fill_today"]: round(self.fill_today),
+            N["fill_days"]: _fill_line(self.counted_day - timedelta(days=1) if self.counted_day else None, self.fill_days),
+            N["fill_months"]: _fill_line(datetime.now().strftime("%Y-%m"), self.fill_months),
+            # A real commit of the repo, so the page's « Vérifier » gets a real answer from GitHub.
+            N["fw_version"]: "v1.2.1-37-g9d79cd5",
+            N["esphome_version"]: "2026.7.2 2026-11-17 18:05:00 +0000",
         }
         values.update(self.wifi.snapshot())
         values.update(self.static)
         values.update(self.numbers)
         values.update(self.selects)
         return values
+
+
+def _fill_line(head, values) -> str:
+    """Fill Water Days / Months as the device prints them: "2026-11-16: 0 19 - 940 …"."""
+    if head is None:
+        return "--"
+    return f"{head}: " + " ".join("-" if v is None else str(v) for v in values)
 
 
 def _history_day(day, sec, lo, hi) -> str:

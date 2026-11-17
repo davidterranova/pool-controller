@@ -132,9 +132,11 @@ programmed hour *plus your UTC offset*, not local wall-clock time. Setting
 
 Re-evaluated every 30 seconds, highest priority wins:
 
-1. **Freeze protection** — if `Pool Return Temperature` drops below 3°C,
-   force `Low` speed. This overrides everything else, including manual
-   override, unconditionally.
+1. **Freeze protection** — if `Pool Return Temperature` drops below
+   **Freeze Protection Temperature** (number, HA- and page-editable,
+   default 3 °C, 0–10 in steps of 0.5, applied at once), force `Low` speed.
+   This overrides everything else, including manual override,
+   unconditionally.
 2. **Manual Override** (select, HA-editable) — if set to anything other
    than `Auto`, forces that speed. It **ends on its own** after **Manual
    Override Timeout** minutes (number, HA-editable, default 60, step 5, up
@@ -265,7 +267,29 @@ Re-evaluated every 30 seconds, highest priority wins:
      so with the pump stopped it reads the pipe cooling or warming toward
      the equipment pad, not the pool. Unknown until the pump has run 10
      minutes today; kept across reboots; closed into Daily History at
-     midnight.
+     midnight. Both are `state_class: measurement`, so Home Assistant keeps
+     their long-term statistics beyond Daily History's 7 days; the pool
+     card's 30-day view reads each day's final values from the 23:00 hourly
+     row, since HA's 00:00 hour still holds the previous day's value until
+     the reset.
+   - **Fill Water Today** is the litres the fill-line meter counted since
+     midnight, kept across reboots (the meter's own total restarts at 0 on
+     boot). **Fill Water Days** (diagnostic) lists the last 30 completed
+     days, newest first, from the newest one's date — `2026-11-16: 0 19 0 -
+     940 …`, `-` for a day the device was off or had no clock — and **Fill
+     Water Months** this month's completed days, then the 11 months before —
+     `2026-11: 23 30 950 …`. The device closes each day into them at
+     midnight (one flash write a day); `--` before the first midnight. Like
+     Daily History, they exist for the device's own page, which has no
+     recorder: Home Assistant has the meter's own statistics.
+   - **Firmware Version** (diagnostic) is the commit of this repo the
+     firmware was compiled from, as `git describe --tags --always --dirty`
+     says it: `v1.3.0`, `v1.3.0-4-g1a2b3c4` (4 commits after that tag),
+     with `-dirty` when the working tree had uncommitted changes. `make
+     build` and `make ota` pass it in (`-s firmware_version`); compiled any
+     other way it is `dev`. **ESPHome Version** is ESPHome's version and the
+     build time. The pool card's « Vérifier » compares the first with main
+     on GitHub.
 4. **Hot-night keep-alive** — only reached when the autonomous schedule
    above says `Off` (i.e. outside both blocks) and only overnight, before
    today's sunrise or after today's sunset: if `Pool Return Temperature` is
@@ -551,13 +575,14 @@ no Home Assistant involved. Log in as `admin` with
 
 The page is our own, not ESPHome's stock one: it has the look of the Home
 Assistant dashboard and runs HA's pool card unchanged (see the README, "The
-device's page"). Three tabs:
+device's page"). Four tabs:
 
 | Tab | What's in it |
 |---|---|
-| **Contrôle** | The pool card's panel (pump state, today's plan timeline, Auto/Manuel, forced speed and duration), the temperatures with today's pool min/max, the fill-water meter |
-| **Avancé** | Filtration settings with their Apply gate, today's plan in detail, the last 7 days (Daily History), the device's sensors, its live log |
-| **Wi-Fi** | The connection and its statistics, joining another network, the device's clock (see "Wi-Fi and the fallback hotspot" below) |
+| **Contrôle** | The pool card's panel (pump state, today's plan timeline, the pool's temperature over the last 7 days, Auto/Manuel, forced speed and duration), the temperatures with today's pool min/max |
+| **Remplissage** | The fill water from the device's own record (Fill Water Today, Days, Months): today, this month, the flow, litres by day over 30 days or by month over 12 (the pool card's water variant) |
+| **Avancé** | Filtration settings with their Apply gate, boost pulses and freeze-protection threshold (the pool card's settings variant, as in Home Assistant), today's plan in detail, the last 7 days (Daily History), the device's sensors, its live log |
+| **Contrôleur** | Wi-Fi: the connection and its statistics, joining another network (see "Wi-Fi and the fallback hotspot" below). Firmware: the commit it was built from, ESPHome's version, and « Vérifier » (is there a newer one on main?) |
 
 The `sorting_groups:` under `web_server:` (Pump, Today's Plan, Filtration
 Settings, Sensors, Wi-Fi) and each entity's `web_server: {sorting_group_id,
@@ -614,16 +639,31 @@ From [wifi-setup.yaml](wifi-setup.yaml), a package of the firmware:
 
 ## Changing the freeze-protection threshold
 
-The 3°C cutoff is a literal constant inside the schedule lambda (the
-`interval:` block near the bottom of `pool-controller.yaml`), not a
-substitution — edit it directly there if you need a different threshold.
+**Freeze Protection Temperature** (number, default 3 °C, kept across
+reboots) is the cutoff: set it from Home Assistant (the pool card's
+« Réglages » tab, or the settings component of
+[home-assistant/dashboard](home-assistant/dashboard/README.md)), from the
+device's own page (Avancé › Réglages › Hors gel), or as any HA number. It
+applies on the spot, no Apply needed: it only moves a comparison the
+controller makes on every tick. The pool card draws it on its temperature
+graph, in red.
+
+Mind what it is compared with. `Pool Return Temperature` is on the return
+pipe: with the pump running it reads the pool; stopped, it drifts toward
+the equipment pad's air. In winter the pad is the warmer of the two
+(14.5 °C in the pipe for a 13.1 °C pool on a November night), so with the
+pump off the protection reacts to the pipe, which cools after the pool.
+There is no hysteresis either: a reading hovering on the threshold can
+switch Low on and off at each new reading (every 5 minutes, median
+filtered).
 
 ## Changing the hot-night keep-alive threshold
 
-Same deal as the freeze-protection threshold above: the 28°C cutoff for the
+Unlike the freeze-protection threshold above, the 28°C cutoff for the
 hot-night keep-alive tier (see Control logic) is a literal constant in the
-same schedule lambda, not a substitution — edit it directly there if your
-climate calls for a different value.
+schedule lambda (the `interval:` block near the bottom of
+`pool-controller.yaml`), not a substitution — edit it directly there if
+your climate calls for a different value.
 
 ## Manual Override timeout and alert
 

@@ -39,6 +39,10 @@ substitutions:
   relay_run_pin: GPIO27   # Relay 4 -> pump DI4 (Run/Stop)
   onewire_pin: GPIO4
   water_meter_pin: GPIO33 # AJN15TI water meter, reed switch dry contact (green wire); black wire -> GND
+  # Which commit of this repo the firmware is: `make build` / `make ota` pass
+  # `git describe --tags --always --dirty` (Firmware Version below). "dev"
+  # when compiled another way (ESPHome's dashboard, a plain `esphome run`).
+  firmware_version: dev
 
 wifi:
   ssid: !secret wifi_ssid
@@ -220,16 +224,47 @@ sensor:
       accuracy_decimals: 0
       filters:
         - multiply: 1.0
+      # Today's litres (fill_today in globals:): the total restarts at 0 on
+      # boot, so what counts is what it added since the last reading.
+      on_value:
+        - lambda: |-
+            uint32_t total = (uint32_t) x;
+            uint32_t added = total >= id(fill_total_seen) ? total - id(fill_total_seen) : total;
+            id(fill_total_seen) = total;
+            if (added == 0) return;
+            id(filtration_accrue).execute();  // midnight first, so the litres land in the right day
+            id(fill_today) += added;
+  # Fill water since midnight, in litres, from the meter above: kept across
+  # reboots (the meter's own total isn't) and closed into Fill Water Days and
+  # Months at midnight. For the device's own page, which has no recorder to
+  # make a daily figure from the total; every 30 s, not every litre, so a
+  # fill doesn't flood Home Assistant's recorder.
+  - platform: template
+    name: "Fill Water Today"
+    web_server: {sorting_group_id: grp_sensors, sorting_weight: 75}
+    id: fill_today_sensor
+    unit_of_measurement: 'L'
+    device_class: water
+    state_class: total_increasing
+    icon: mdi:water-plus
+    accuracy_decimals: 0
+    update_interval: 30s
+    lambda: 'return (float) id(fill_today);'
   # The pool's lowest and highest temperature so far today, from Pool Return
   # Temperature's pumping readings only (see its on_value above). Unknown
   # until the pump has run 10 min today. Closed into Daily History at
   # midnight.
+  # state_class makes HA keep their long-term statistics, which outlive
+  # Daily History's 7 days: the pool card's 30-day view reads each day from
+  # its 23:00 hourly row (min of Min Today, max of Max Today). Not HA's daily
+  # min/max: its 00:00 hour still holds yesterday's value until the reset.
   - platform: template
     name: "Pool Water Min Today"
     id: water_min_today_sensor
     web_server: {sorting_group_id: grp_sensors, sorting_weight: 12}
     unit_of_measurement: "°C"
     device_class: temperature
+    state_class: measurement
     icon: mdi:thermometer-chevron-down
     accuracy_decimals: 1
     update_interval: 5min
@@ -242,6 +277,7 @@ sensor:
     web_server: {sorting_group_id: grp_sensors, sorting_weight: 14}
     unit_of_measurement: "°C"
     device_class: temperature
+    state_class: measurement
     icon: mdi:thermometer-chevron-up
     accuracy_decimals: 1
     update_interval: 5min
@@ -441,6 +477,76 @@ text_sensor:
         out += buf;
       }
       return out.empty() ? std::string("--") : out;
+  # Fill water, for the device's own page (Home Assistant has the meter's
+  # long-term statistics). Days: the last 30 closed days, newest first, from
+  # the date of the newest -- "2026-11-16: 0 19 0 - 940 …" in litres, "-" for
+  # a day the device was off or had no clock. Months: this month's closed
+  # days so far, then the 11 months before -- "2026-11: 23 30 950 …". Today's
+  # litres are Fill Water Today, so neither changes during a fill: both are
+  # pushed by filtration_accrue at midnight, the interval only covers the
+  # first publish after boot. "--" until a first day has been closed.
+  - platform: template
+    name: "Fill Water Days"
+    web_server: {sorting_group_id: grp_sensors, sorting_weight: 76}
+    id: fill_days_text
+    icon: mdi:calendar-month
+    entity_category: diagnostic
+    update_interval: 1h
+    lambda: |-
+      uint32_t d = id(fill_days_date);
+      if (d == 0) return std::string("--");
+      char buf[16];
+      snprintf(buf, sizeof(buf), "%04u-%02u-%02u:", (unsigned) (d / 10000), (unsigned) (d / 100 % 100), (unsigned) (d % 100));
+      std::string out = buf;
+      for (int i = 0; i < 30; i++) {
+        uint16_t v = id(fill_days)[i];
+        if (v == 0xFFFF) { out += " -"; continue; }
+        snprintf(buf, sizeof(buf), " %u", (unsigned) v);
+        out += buf;
+      }
+      return out;
+  - platform: template
+    name: "Fill Water Months"
+    web_server: {sorting_group_id: grp_sensors, sorting_weight: 77}
+    id: fill_months_text
+    icon: mdi:calendar-range
+    entity_category: diagnostic
+    update_interval: 1h
+    lambda: |-
+      uint32_t key = id(fill_months_key);
+      if (key == 0) return std::string("--");
+      // Shown from this month: on the 1st, its closed days are none yet and
+      // fill_months[0] is still last month's.
+      auto t = id(local_time).now();
+      uint32_t cur = t.is_valid() ? t.year * 100UL + t.month : key;
+      int off = (int) (cur / 100 * 12 + cur % 100) - (int) (key / 100 * 12 + key % 100);
+      if (off < 0) off = 0;
+      char buf[16];
+      snprintf(buf, sizeof(buf), "%04u-%02u:", (unsigned) (cur / 100), (unsigned) (cur % 100));
+      std::string out = buf;
+      for (int j = 0; j < 12; j++) {
+        int i = j - off;
+        if (i < 0) { out += j == 0 ? " 0" : " -"; continue; }
+        if (id(fill_months)[i] == UINT32_MAX) { out += " -"; continue; }
+        snprintf(buf, sizeof(buf), " %u", (unsigned) id(fill_months)[i]);
+        out += buf;
+      }
+      return out;
+  # What the controller runs: this repo's commit (the substitution above, so
+  # the pool card can ask GitHub whether main has changed the firmware since)
+  # and ESPHome's version with its build time. Constant until the next flash.
+  - platform: template
+    name: "Firmware Version"
+    web_server: {sorting_group_id: grp_sensors, sorting_weight: 90}
+    id: firmware_version_text
+    icon: mdi:tag-outline
+    entity_category: diagnostic
+    lambda: 'return std::string("${firmware_version}");'
+  - platform: version
+    name: "ESPHome Version"
+    web_server: {sorting_group_id: grp_sensors, sorting_weight: 91}
+    hide_timestamp: false
+    entity_category: diagnostic
   # When the current Manual Override will end on its own, per Manual Override
   # Timeout (number: below) -- the device's own deadline, derived from the
   # same millis() stamp the expiry reads, not a copy of anything HA computed.
@@ -572,6 +678,29 @@ number:
     min_value: 1
     max_value: 10
     step: 1
+    initial_value: 3
+    restore_value: true
+    optimistic: true
+    on_value:
+      - script.execute: evaluate_speed
+  # Below this Pool Return Temperature the pump is forced to Low, whatever
+  # the plan or a Manual Override says (evaluate_speed, tier 1). It was a
+  # literal 3 °C; a setting since 2026-11-17 so it can be tuned from HA's
+  # dashboard or the device's own page without a reflash. Applies at once,
+  # like the boost tunables above: it only moves a comparison evaluate_speed
+  # already makes every tick. Caveat that comes with the probe: pump stopped,
+  # it reads the return pipe in the equipment pad, not the pool, and the pad
+  # is warmer than the water in winter -- see POOL-CONTROLLER.md.
+  - platform: template
+    name: "Freeze Protection Temperature"
+    web_server: {sorting_group_id: grp_config, sorting_weight: 100}
+    id: freeze_protection_c
+    icon: mdi:snowflake-thermometer
+    unit_of_measurement: "°C"
+    device_class: temperature
+    min_value: 0
+    max_value: 10
+    step: 0.5
     initial_value: 3
     restore_value: true
     optimistic: true
@@ -820,6 +949,40 @@ globals:
     type: int16_t[7]
     restore_value: true
     initial_value: '{INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN}'
+  # Fill water: litres since midnight (restored: a reboot keeps the day's
+  # count, at the cost of a flash write every flash_write_interval while a
+  # fill runs), and the meter's total at its last reading, which restarts at
+  # 0 on boot like the meter.
+  - id: fill_total_seen
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: fill_today
+    type: uint32_t
+    restore_value: true
+    initial_value: '0'
+  # The last 30 closed days in litres, newest first, the newest dated by
+  # fill_days_date (YYYYMMDD, 0 = none yet); 0xFFFF = unknown (the device was
+  # off that day, or had no clock). fill_months[0] is the closed days of month
+  # fill_months_key (YYYYMM), then the 11 months before; UINT32_MAX = unknown.
+  # Shifted by filtration_accrue's midnight rollover, so one flash write a
+  # day. Read by Fill Water Days and Fill Water Months.
+  - id: fill_days
+    type: uint16_t[30]
+    restore_value: true
+    initial_value: '{0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF}'
+  - id: fill_days_date
+    type: uint32_t
+    restore_value: true
+    initial_value: '0'
+  - id: fill_months
+    type: uint32_t[12]
+    restore_value: true
+    initial_value: '{UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX}'
+  - id: fill_months_key
+    type: uint32_t
+    restore_value: true
+    initial_value: '0'
 
   # --- Applied (confirmed) schedule-shaping tunables ------------------------
   # What evaluate_speed's Part 1 actually reads -- NOT the Min/Max Filtration
@@ -1157,7 +1320,40 @@ script:
               id(history_water_min)[0] = id(water_min_today);
               id(history_water_max)[0] = id(water_max_today);
               id(daily_history).update();
+              // Fill water: the day into the last 30 (days the device missed
+              // stay unknown) and into its month.
+              auto civil = [](uint32_t ymd) -> int32_t {  // days since 1970-01-01 (H. Hinnant's days_from_civil)
+                int y = ymd / 10000, m = ymd / 100 % 100, d = ymd % 100;
+                y -= m <= 2;
+                int era = (y >= 0 ? y : y - 399) / 400, yoe = y - era * 400;
+                int doy = (153 * (m > 2 ? m - 3 : m + 9) + 2) / 5 + d - 1;
+                return era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468;
+              };
+              uint32_t closed = id(filtration_counted_date);
+              int gap = id(fill_days_date) ? civil(closed) - civil(id(fill_days_date)) : 30;
+              if (gap > 0) {  // (not when the clock went back)
+                int n = gap < 30 ? gap : 30;
+                for (int i = 29; i >= n; i--) id(fill_days)[i] = id(fill_days)[i - n];
+                for (int i = 1; i < n; i++) id(fill_days)[i] = 0xFFFF;
+                id(fill_days)[0] = id(fill_today) < 0xFFFF ? id(fill_today) : 0xFFFE;
+                id(fill_days_date) = closed;
+                uint32_t ym = closed / 100, key = id(fill_months_key);
+                int mgap = key ? (int) (ym / 100 * 12 + ym % 100) - (int) (key / 100 * 12 + key % 100) : 12;
+                if (mgap > 0) {
+                  int k = mgap < 12 ? mgap : 12;
+                  for (int i = 11; i >= k; i--) id(fill_months)[i] = id(fill_months)[i - k];
+                  for (int i = 1; i < k; i++) id(fill_months)[i] = UINT32_MAX;
+                  id(fill_months)[0] = 0;
+                  id(fill_months_key) = ym;
+                }
+                if (mgap >= 0) id(fill_months)[0] += id(fill_today);
+              }
             }
+            // A new day of fill water, whether or not the last one was dated.
+            id(fill_today) = 0;
+            id(fill_today_sensor).update();
+            id(fill_days_text).update();
+            id(fill_months_text).update();
             // The new day starts with no water reading.
             id(water_min_today) = INT16_MIN;
             id(water_max_today) = INT16_MIN;
@@ -1502,8 +1698,11 @@ script:
           // ===== Part 3: priority chain, highest wins. =====
           std::string desired = "Off";
 
-          // 1. Freeze protection always wins, Home Assistant or not.
-          if (id(pool_return_temp).state < 3.0) {
+          // 1. Freeze protection always wins, Home Assistant or not. The
+          // threshold is the Freeze Protection Temperature number (3 °C by
+          // default); a NaN reading compares false, so a dead probe never
+          // forces Low on its own.
+          if (id(pool_return_temp).state < id(freeze_protection_c).state) {
             desired = "Low";
           }
           // 2. Manual override (set from the HA dashboard) wins over the

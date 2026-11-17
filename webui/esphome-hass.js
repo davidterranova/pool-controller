@@ -51,6 +51,7 @@ export const E = {
   boostDuration: "number/Boost Pulse Duration",
   boostInterval: "number/Boost Pulse Interval",
   highEvery: "number/High Boost Frequency",
+  freezeAt: "number/Freeze Protection Temperature",
   water: "sensor/Pool Return Temperature",
   waterMin: "sensor/Pool Water Min Today",
   waterMax: "sensor/Pool Water Max Today",
@@ -61,6 +62,11 @@ export const E = {
   online: "page/connected", // synthetic: this page's own link to the device (see _setLink)
   flow: "sensor/Piscine - Débit remplissage",
   volume: "sensor/Piscine - Volume total remplissage",
+  fillToday: "sensor/Fill Water Today",
+  fillDays: "text_sensor/Fill Water Days",
+  fillMonths: "text_sensor/Fill Water Months",
+  fwVersion: "text_sensor/Firmware Version",
+  esphomeVersion: "text_sensor/ESPHome Version",
   // From wifi-setup.yaml: the page hides what a firmware without it doesn't have.
   wifiMode: "text_sensor/WiFi Mode",
   wifiSignal: "sensor/WiFi Signal",

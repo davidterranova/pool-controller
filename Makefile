@@ -1,5 +1,8 @@
 CONFIG := pool-controller.yaml
 ESPHOME := docker run --rm -v "$(CURDIR):/config" ghcr.io/esphome/esphome
+# The commit the firmware is built from, as its Firmware Version entity reports it
+# (the pool card compares it with main on GitHub): v1.3.0, v1.3.0-4-g1a2b3c4, …-dirty.
+FW_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_DIR := .esphome/build/pool-controller/build
 ESPTOOL := /Users/davidterranova/.espressif/tools/python/v6.0.2/venv/bin/esptool
 
@@ -14,7 +17,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build flash status kill-port ota ip logs webui mock-ui mock-webui mock-ui-check clean
+.PHONY: validate build flash status kill-port ota ip logs webui mock-ui mock-webui mock-ui-check ha-dashboard-check clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate: webui
@@ -23,7 +26,7 @@ validate: webui
 # Validates, then fully compiles the firmware (catches errors inside lambdas
 # too, which `validate` alone can't since those are raw C++).
 build: webui
-	$(ESPHOME) compile $(CONFIG)
+	$(ESPHOME) -s firmware_version $(FW_VERSION) compile $(CONFIG)
 
 # Flashes over UART via esptool (bundled with the ESP-IDF install), not through
 # Docker: Docker Desktop on macOS can't pass a host USB-serial device into the
@@ -100,6 +103,12 @@ mock-webui:
 # drives) and fails if $(CONFIG) has an entity type the mock can't render.
 mock-ui-check:
 	$(MOCK) --check $(MOCK_ARGS) /config/$(CONFIG)
+
+# Checks home-assistant/dashboard/ (the dashboard components and the scripts piscine-card calls) against
+# $(CONFIG): every controller entity id it names must exist, as a fresh install names it, and its
+# piscine-card must map every entity the card uses. Python in the ESPHome image, like the mock.
+ha-dashboard-check:
+	docker run --rm -v "$(CURDIR):/config" --entrypoint python3 ghcr.io/esphome/esphome /config/tools/ha-dashboard-check.py /config/$(CONFIG) /config/home-assistant/dashboard
 
 # The device's own page (webui/), bundled into the two files the firmware
 # embeds: web_server's js_include and css_include in $(CONFIG). Rebuilt only
