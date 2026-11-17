@@ -272,6 +272,16 @@ Re-evaluated every 30 seconds, highest priority wins:
      card's 30-day view reads each day's final values from the 23:00 hourly
      row, since HA's 00:00 hour still holds the previous day's value until
      the reset.
+   - **Fill Water Today** is the litres the fill-line meter counted since
+     midnight, kept across reboots (the meter's own total restarts at 0 on
+     boot). **Fill Water Days** (diagnostic) lists the last 30 completed
+     days, newest first, from the newest one's date — `2026-11-16: 0 19 0 -
+     940 …`, `-` for a day the device was off or had no clock — and **Fill
+     Water Months** this month's completed days, then the 11 months before —
+     `2026-11: 23 30 950 …`. The device closes each day into them at
+     midnight (one flash write a day); `--` before the first midnight. Like
+     Daily History, they exist for the device's own page, which has no
+     recorder: Home Assistant has the meter's own statistics.
 4. **Hot-night keep-alive** — only reached when the autonomous schedule
    above says `Off` (i.e. outside both blocks) and only overnight, before
    today's sunrise or after today's sunset: if `Pool Return Temperature` is
