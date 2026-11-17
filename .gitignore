@@ -1,4 +1,5 @@
 secrets.yaml
+.ota-password
 .esphome/
 .vscode/
 webui/dist/

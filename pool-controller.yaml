@@ -1,6 +1,11 @@
 esphome:
   name: pool-controller
   friendly_name: Pool Controller
+  # What Home Assistant and the update check see: firmware_version is the
+  # release's tag (v1.4.0) in a CI release, see substitutions: below.
+  project:
+    name: davidterranova.pool-controller
+    version: ${firmware_version}
   # The "Pump" fan entity below (see fan:) has no restore/initial state of
   # its own, so it always boots into a default "off" state -- and its
   # on_state handler unconditionally syncs that into Manual Override,
@@ -10,18 +15,19 @@ esphome:
   # seconds after boot, once every component's own initial/restored state
   # has settled, so any *real* user interaction with the fan afterwards
   # still syncs normally.
+  # A list: device-settings.yaml adds its own on_boot entries to it.
   on_boot:
-    priority: -100
-    then:
-      - delay: 3s
-      - lambda: 'id(boot_guard_active) = false;'
-      # Relays restore ALWAYS_OFF on every boot (see switch: below) and would
-      # otherwise sit that way for up to 30s until the next interval: tick --
-      # even when the restored schedule blocks or freeze protection call for
-      # the pump to be running right now. Running evaluate_speed here closes
-      # that gap; it's already safe to call this early since it no-ops on an
-      # invalid time reading or a not-yet-converted temperature sensor.
-      - script.execute: evaluate_speed
+    - priority: -100
+      then:
+        - delay: 3s
+        - lambda: 'id(boot_guard_active) = false;'
+        # Relays restore ALWAYS_OFF on every boot (see switch: below) and would
+        # otherwise sit that way for up to 30s until the next interval: tick --
+        # even when the restored schedule blocks or freeze protection call for
+        # the pump to be running right now. Running evaluate_speed here closes
+        # that gap; it's already safe to call this early since it no-ops on an
+        # invalid time reading or a not-yet-converted temperature sensor.
+        - script.execute: evaluate_speed
 
 esp32:
   board: esp32dev
@@ -40,28 +46,40 @@ substitutions:
   onewire_pin: GPIO4
   water_meter_pin: GPIO33 # AJN15TI water meter, reed switch dry contact (green wire); black wire -> GND
   # Which commit of this repo the firmware is: `make build` / `make ota` pass
-  # `git describe --tags --always --dirty` (Firmware Version below). "dev"
-  # when compiled another way (ESPHome's dashboard, a plain `esphome run`).
+  # `git describe --tags --always --dirty` (Firmware Version below), a CI
+  # release its tag. "dev" when compiled another way (ESPHome's dashboard, a
+  # plain `esphome run`).
   firmware_version: dev
+  # Only for uploading (`make ota` passes it to `esphome upload`); never
+  # compiled in: the controller's OTA password is a setting (OTA Password).
+  ota_password: ""
 
+# Nothing personal is compiled in: no network, key, password, position or
+# probe address. Each controller is set up at run time and keeps its settings
+# in NVS (device-settings.yaml), so one firmware, built by CI, fits all.
 wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
+  # No network here: the one saved by Improv serial or joined from the page
+  # (wifi-setup.yaml). Without one, the hotspot comes up at once.
   # No reboot_timeout: ESPHome turns it off once a hotspot is configured
   # (wifi-setup.yaml, below), so that package brings its own -- reboot after
   # 15 min without Wi-Fi, unless someone is on the hotspot.
 
 # The fallback hotspot, joining a network from the device's page, Wi-Fi
 # statistics and setting the clock from the browser: see wifi-setup.yaml.
+# The controller's settings (page and OTA passwords, API key, position,
+# timezone, probe roles, Setup State, Factory Reset): device-settings.yaml.
 packages:
   wifi_setup: !include wifi-setup.yaml
+  device_settings: !include device-settings.yaml
 
 logger:
   level: INFO
 
 api:
-  encryption:
-    key: !secret pool_controller_api_key
+  # No key compiled in: Home Assistant sets one when it pairs (or the page's
+  # API Key), kept in NVS. Until then the API is open on the LAN, as on any
+  # ESPHome device being added; Setup State lists api_key meanwhile.
+  encryption: {}
   # ESPHome's default reboots the device if no API client (i.e. Home
   # Assistant) connects for a while -- exactly the dependency this whole
   # design exists to avoid. This device must keep running its schedule
@@ -70,7 +88,12 @@ api:
 
 ota:
   platform: esphome
-  password: !secret pool_controller_ota_password
+  id: ota_esphome
+  # Empty when compiled (see ota_password in substitutions: above), yet
+  # present: that compiles in the password check, and device-settings.yaml
+  # sets the stored password (random until one is set) at boot. With an API
+  # key set, an upload holding the key (Home Assistant's) needs no password.
+  password: ${ota_password}
 
 # A local web UI at http://pool-controller.local/ -- the same controls and
 # readings as the Home Assistant entities card, served by the device itself,
@@ -87,7 +110,9 @@ ota:
 #   park the pump. Digest rather than basic, so the password never crosses
 #   the network in reversible form -- but it is still plain HTTP, which keeps
 #   out casual access on a trusted home network; it is not meant for
-#   internet exposure.
+#   internet exposure. The password is a setting (Page Password,
+#   device-settings.yaml); until one is set the page opens without a login
+#   (setup mode), so a new controller can be set up from it.
 # - No firmware upload from the page: that would take an
 #   `ota: - platform: web_server` entry, deliberately not added, so OTA
 #   stays on the password-protected esphome platform above.
@@ -102,13 +127,20 @@ web_server:
   # embedded, and js_url is empty, so it isn't fetched from the internet
   # either. To get the stock page back: drop these three lines and set
   # `local: true`.
+  # `local: false` spelled out: with no network in the YAML, ESPHome 2026.11
+  # reads Wi-Fi as « AP only » and would otherwise embed its stock page and
+  # serve it as a captive portal on the hotspot, outside the login.
+  local: false
   js_url: ""
   css_include: webui/dist/device.css
   js_include: webui/dist/device.js
   auth:
     type: digest
+    # Placeholders, required by the schema: device-settings.yaml replaces
+    # them at boot, before the server starts (user admin, the stored Page
+    # Password, or no login at all while none is set).
     username: admin
-    password: !secret pool_controller_web_password
+    password: replaced-at-boot
   sorting_groups:
     - id: grp_pump
       name: "Pump"
@@ -139,23 +171,29 @@ time:
     id: local_time
     # REQUIRED for the schedule below: sunrise/sunset day-selection and the
     # once-daily recompute both key off local wall-clock fields, not just
-    # the underlying UTC epoch. Without this, ESPHome's RTC defaults to
-    # plain UTC with no DST.
-    timezone: !secret pool_timezone
+    # the underlying UTC epoch. The zone is a setting (Timezone,
+    # device-settings.yaml), applied at boot; this neutral one must stay, or
+    # the timezone code isn't compiled in at all (and with no value, the
+    # build would take the zone of the machine compiling it).
+    timezone: UTC0
     # Falls back to your router's DHCP-advertised NTP server; add explicit
     # servers here if your network doesn't advertise one.
 
 # Used to compute today's sunrise/sunset for the autonomous filtration
-# schedule below. Latitude/longitude are treated as sensitive (reveal the
-# pool's approximate location), same as the credentials above -- hence
-# !secret rather than the substitutions: block.
+# schedule below. The pool's position is a setting (Latitude, Longitude in
+# device-settings.yaml), applied at boot; these zeros are placeholders the
+# schedule never uses: it waits until a position is set.
 sun:
   id: sun_id
-  latitude: !secret pool_latitude
-  longitude: !secret pool_longitude
+  latitude: 0.0
+  longitude: 0.0
 
+# The DS18B20 probes. Which one is the pool, the pad or outdoors is a
+# setting (Pool/Pad/Outdoor Probe, device-settings.yaml), so the sensors
+# below have no `address:`; a sensor whose role has no probe reads unknown.
 one_wire:
   - platform: gpio
+    id: probe_bus
     pin: ${onewire_pin}
 
 sensor:
@@ -163,7 +201,6 @@ sensor:
     id: pool_return_temp
     name: "Pool Return Temperature"
     web_server: {sorting_group_id: grp_sensors, sorting_weight: 10}
-    address: 0x52000000518FE928   # current bench-test sensor; was 0x1c3c01d075640128 before the swap
     filters:
       - median: {window_size: 5, send_every: 5}
     # Today's water min/max (see water_min_today in globals:). The sensor is
@@ -187,12 +224,10 @@ sensor:
     id: pad_ambient_temp
     name: "Equipment Pad Temperature"
     web_server: {sorting_group_id: grp_sensors, sorting_weight: 20}
-    address: 0xFF00000026007028   # was 0x3c2c01d0756a0328 before the sensor swap
   - platform: dallas_temp
     id: outdoor_temp
     name: "Outdoor Temperature"
     web_server: {sorting_group_id: grp_sensors, sorting_weight: 30}
-    address: 0xFC00000051AD2428
   # AJN15TI water meter fill-in, reed switch dry contact -- passive, no
   # power needed. K = 1 pulse/liter, so pulse_meter's native pulses/minute
   # already reads as L/min with a 1.0 multiply.
@@ -817,11 +852,13 @@ button:
     # instead of waiting for their own poll interval -- component.update
     # works on any PollingComponent, dallas_temp included. Useful right
     # before pressing Recompute Schedule Now, since that button's plan is
-    # only as fresh as whatever Pool Return Temperature last read.
+    # only as fresh as whatever Pool Return Temperature last read. Detected
+    # Probes too (device-settings.yaml).
     on_press:
       - component.update: pool_return_temp
       - component.update: pad_ambient_temp
       - component.update: outdoor_temp
+      - script.execute: probes_read
 
 globals:
   - id: last_commanded
@@ -1136,14 +1173,17 @@ binary_sensor:
   # hot-night-keep-alive tiers indefinitely with no alert -- only a stale
   # "Last Recomputed At: Never" as a silent hint. device_class: problem so
   # it renders as an alert on typical dashboards.
+  # Schedule Waiting For (device-settings.yaml) says why. On at once, without
+  # the 5 minutes, while there's no position or timezone to compute with.
   - platform: template
     name: "Schedule Not Computed"
     web_server: {sorting_group_id: grp_plan, sorting_weight: 120}
     icon: mdi:calendar-alert
     device_class: problem
     lambda: |-
-      return id(sched_block1_start) == 0 && id(sched_block2_start) == 0 &&
-             millis() > 5 * 60 * 1000;
+      if (id(sched_block1_start) != 0 || id(sched_block2_start) != 0) return false;
+      return millis() > 5 * 60 * 1000 ||
+             !pool_settings::position_set(id(latitude), id(longitude)) || id(timezone_posix).empty();
   # True when an open-ended Manual Override (Manual Override Timeout set to
   # 0) has been sitting on something other than "Auto" for over 30 minutes.
   # Manual Override outranks the whole autonomous schedule, and with the
@@ -1455,7 +1495,11 @@ script:
     then:
       - lambda: |-
           // ===== Part 1: recompute today's autonomous (tier 3) plan, if stale =====
-          if (id(local_time).now().is_valid()) {
+          // Not before the pool's position and timezone are set
+          // (device-settings.yaml): sunrise at 0°, 0° in UTC would be a plan
+          // for somewhere else. Schedule Waiting For says what's missing.
+          if (id(local_time).now().is_valid() &&
+              pool_settings::position_set(id(latitude), id(longitude)) && !id(timezone_posix).empty()) {
             int today = id(local_time).now().day_of_year;
             if (today != id(sched_computed_day)) {
               float temp = id(pool_return_temp).state;

@@ -67,10 +67,15 @@ kill-port:
 	fi
 
 # Pushes a rebuilt firmware over the network (port 3232) instead of USB --
-# only works once the device has already joined Wi-Fi.
+# only works once the device has already joined Wi-Fi. The upload needs the
+# controller's OTA Password (set on its page; nothing is compiled in): from
+# OTA_PASSWORD=... or the untracked file .ota-password (gitignored), given to
+# the upload only, never to the build.
+OTA_PASSWORD ?= $(shell cat .ota-password 2>/dev/null)
 ota: build
 	@test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
-	$(ESPHOME) upload $(CONFIG) --device $(HOST)
+	@test -n "$(OTA_PASSWORD)" || (echo "No OTA password: put the controller's OTA Password in .ota-password, or pass OTA_PASSWORD=..." && exit 1)
+	@$(ESPHOME) -s ota_password "$(OTA_PASSWORD)" upload $(CONFIG) --device $(HOST)
 
 # Resolves the pool-controller's current IP via mDNS (same lookup `ota` uses).
 ip:
