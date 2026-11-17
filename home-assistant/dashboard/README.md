@@ -20,7 +20,7 @@ helper, no other custom card.
    as its id (`piscine_forcer_vitesse`, `piscine_retour_auto`). The card writes the Manual Override
    select only through them.
 3. **Create the dashboard.** Settings → Dashboards → Add dashboard → New dashboard from scratch, with
-   the URL `dashboard-piscine` (the card's « Planning, réglages » link opens
+   the URL `dashboard-piscine` (the card's « Planning et réglages » link opens
    `/dashboard-piscine/reglages`; change `more_path` in the card if you pick another URL). Open it →
    ✏️ → ⋮ → Raw configuration editor, paste [dashboard.yaml](dashboard.yaml), save.
 4. **Or take only some components.** Each section of `dashboard.yaml` stands on its own: copy one into
@@ -48,6 +48,10 @@ pop-up; the tile is the card's own:
       variant: panel
       entities: { … }
 ```
+
+The panel has two tabs: « Pompe » (state, today's plan, the pool's temperature, Auto/Manuel) and
+« Remplissage » (the fill water). The second one needs the `volume` entity and the recorder; without
+them, the panel has no tabs.
 
 ## Entity ids
 
@@ -80,8 +84,11 @@ entity the dashboard relies on therefore can't land without the dashboard follow
 - **Plan and reality, filtration.** Raw history (the recorder keeps about 10 days), not daily
   statistics: Filtration Hours Today resets at midnight, and a statistics day also counts the value
   it starts with, so a day that filtered less than the one before would show the day before's total.
-- **Fill water.** The meter's total only grows, so its daily statistics (`change`) are exact, over
-  any span.
+- **Fill water.** The meter's total only grows, so its statistics (`change`) are exact, over any
+  span. The card's « Remplissage » tab shows them by day (30 days), by week (13 weeks) or by month
+  (12 months), with the period's total, its average and its largest bar; the running day, week or
+  month adds what the meter counted since the last hour Home Assistant compiled. The component in
+  the Piscine view draws the same with Home Assistant's own cards.
 - **Settings.** Everything the controller lets you tune, grouped by when it applies: the four
   filtration-length settings wait for « Appliquer » because they reshape today's plan; freeze
   protection, the boost pulses and the override timeout apply at once. The device's own page

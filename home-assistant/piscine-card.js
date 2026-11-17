@@ -40,6 +40,13 @@
  * tag at the foot of the axis, so a 13 °C curve isn't squashed to show 3 °C.
  * `recorder: false` (the device's own page) leaves only 7 j, which the device keeps itself.
  *
+ * Fill water (tab « Remplissage », next to « Pompe »; recorder only, so not on the device's page; mock-up
+ * 2026-11-17). The water meter on the fill line (Piscine - Volume total remplissage, total_increasing) as HA's
+ * statistics `change`: 30 j one bar a day, 90 j one a week (13 weeks from a Monday, HA's weeks), 12 mois one a
+ * month, the period's total above. The running day/week/month adds what the meter counted since the last
+ * compiled hour (the live state against that hour's `state`; after a reboot the meter restarts from 0). A tab
+ * rather than one more block: the pop-up stays a pump control, and the water history is one tap away.
+ *
  * Layout: one column on a phone (Bubble bottom sheet). From 680 px of container width (the Bubble
  * adaptive-dialog on a screen, width_desktop 760px) the panel is two columns with the day plan and the
  * temperature across the full width under the header — layout « B » approved on the mock-up (« Screen »
@@ -75,6 +82,8 @@ const DEFAULT_ENTITIES = {
   timeout: "number.piscine_pool_controller_manual_override_timeout",
   freezeAt: "number.piscine_pool_controller_freeze_protection_temperature",
   endsAt: "sensor.piscine_pool_controller_manual_override_ends_at",
+  flow: "sensor.piscine_pool_controller_piscine_debit_remplissage",
+  volume: "sensor.piscine_pool_controller_piscine_volume_total_remplissage",
   sForce: "script.piscine_forcer_vitesse",
   sAuto: "script.piscine_retour_auto",
 };
@@ -91,6 +100,9 @@ const T_STEP_MIN = 5;      // 24 h curve: one point per 5 min, the sensor's own 
 const T_RANGES = { "24h": "24 h", "7d": "7 j", "30d": "30 j" };
 const WD = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
 const MO = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const W_RANGES = { "30d": "30 j", "90d": "90 j", "12m": "12 mois" };
+const W_PERIOD = { "30d": "day", "90d": "week", "12m": "month" };
 
 const ICONS = {
   pump: "M12 2L9.5 6H14.5L12 2M12 22L14.5 18H9.5L12 22M2 12L6 14.5V9.5L2 12M22 12L18 9.5V14.5L22 12M12 8A4 4 0 0 0 8 12A4 4 0 0 0 12 16A4 4 0 0 0 16 12A4 4 0 0 0 12 8M12 10A2 2 0 0 1 14 12A2 2 0 0 1 12 14A2 2 0 0 1 10 12A2 2 0 0 1 12 10Z",
@@ -120,6 +132,11 @@ const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDa
 /** The date `ago` days before today, at local midnight (DST-safe). */
 const dayAgo = (ago) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ago); return d; };
 const num = (s) => { const v = parseFloat(s); return Number.isFinite(v) ? v : NaN; };
+/** Litres: « 940 L », « 9 538 L », then m³ from 10 000 L. */
+const fmtL = (v) => (!Number.isFinite(v) ? "–" : v >= 10000 ? `${(v / 1000).toFixed(1).replace(".", ",")} m³`
+  : `${Math.round(v).toLocaleString("fr-FR").replace(/\s/g, "\u00a0")} L`);
+/** Axis label: « 500 L », « 1,5 m³ ». */
+const axL = (v) => (v >= 1000 ? `${String(+(v / 1000).toFixed(2)).replace(".", ",")} m³` : `${Math.round(v)} L`);
 /** Daily History "2026-11-13: 6.42 h 25.9/26.6 °C, 2026-11-12: 6.70 h" -> { "2026-11-13": {hours, lo, hi}, … }. */
 const parseDays = (text) => Object.fromEntries([...String(text || "").matchAll(
   /(\d{4}-\d{2}-\d{2}): ([\d.]+) h(?: (-?[\d.]+)\/(-?[\d.]+) °C)?/g)]
@@ -346,12 +363,30 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .tl-leg i.k-band { background:var(--acc); opacity:.2; }
 .tl-leg i.k-rng { width:6px; height:11px; background:var(--acc); border-radius:2px; }
 
+/* tabs « Pompe » / « Remplissage »: the pump tab is everything the panel had; the water tab hides it */
+.tabs { order:-2; display:flex; gap:4px; border-bottom:1px solid var(--line); margin:-8px 0 -6px; }
+.tabs button { position:relative; border:0; background:none; padding:10px 12px; font-size:14px; font-weight:500; color:var(--muted); cursor:pointer; }
+.tabs button[aria-selected="true"] { color:var(--acc); }
+.tabs button[aria-selected="true"]::after { content:""; position:absolute; left:8px; right:8px; bottom:-1px; height:2px; border-radius:2px 2px 0 0; background:var(--acc); }
+.panel.on-water > :not(.sh-head):not(.tabs):not(.water):not(.toast) { display:none !important; }
+.panel:not(.on-water) > .water { display:none; }
+.water { display:flex; flex-direction:column; gap:6px; }
+.water .readings { margin-bottom:12px; }
+.reading.live .v { color:var(--acc); }
+.chart .bar { fill:var(--acc); }
+.chart .bar.cur { opacity:.55; } .chart .bar.hov { opacity:.8; } .chart .bar.cur.hov { opacity:.45; }
+.chart .base { stroke:var(--muted); stroke-width:1; opacity:.5; }
+.tl-leg i.k-bar { width:8px; height:11px; background:var(--acc); border-radius:2px 2px 0 0; }
+.tl-leg i.k-cur { width:8px; height:11px; background:var(--acc); opacity:.55; border-radius:2px 2px 0 0; }
+
+
 /* Wide panel (Bubble popup_mode: adaptive-dialog on a screen, width_desktop 760px): day plan and pool
    temperature across the full width under the header (24 h on ~700 px), then readings/alerts/Auto on the left,
    Pilotage and the manual controls on the right. Phones never reach 680 px. */
 @container (min-width: 680px) {
   .panel { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 28px; align-items:start; padding:6px 6px 4px; }
-  .sh-head, .foot, .plan, .temp { grid-column:1 / -1; }
+  .sh-head, .tabs, .water, .foot, .plan, .temp { grid-column:1 / -1; }
+  .water .chart { height:170px; }
   .temp { padding-bottom:20px; border-bottom:1px solid var(--line); }
   .temp .chart { height:150px; }
   .plan .tl { height:34px; }
@@ -368,6 +403,25 @@ const PANEL_HTML = `
     <span class="ico big" id="ico">${svg("pump")}</span>
     <div class="t"><h3>Pompe piscine</h3><span class="status" id="status"></span></div>
     <button class="x" id="close" aria-label="Fermer">${svg("close")}</button>
+  </div>
+  <div class="tabs" role="tablist" id="tabs" hidden>
+    <button role="tab" data-tab="pump" aria-selected="true">Pompe</button>
+    <button role="tab" data-tab="water" aria-selected="false">Remplissage</button>
+  </div>
+  <div class="water" role="tabpanel">
+    <div class="readings">
+      <div class="reading"><span class="l">Rempli aujourd'hui</span><span class="v num" id="wToday"></span></div>
+      <div class="reading" id="wFlowBox"><span class="l">Débit</span><span class="v num" id="wFlow"></span></div>
+    </div>
+    <div class="temp-h">
+      <p class="lbl">Eau de remplissage</p>
+      <div class="seg mini" role="radiogroup" aria-label="Période du graphique" id="wRange">
+        ${Object.entries(W_RANGES).map(([r, l]) => `<button role="radio" data-r="${r}">${l}</button>`).join("")}
+      </div>
+    </div>
+    <p class="temp-sum num" id="wSum"></p>
+    <div class="chart" id="wChart" tabindex="0" role="img" aria-label="Eau de remplissage"><svg id="wSvg" aria-hidden="true"></svg><div class="ttip" id="wTip" hidden></div><div class="empty" id="wEmpty" hidden></div></div>
+    <div class="tl-leg" id="wLeg"></div>
   </div>
   <div class="plan">
     <div class="plan-h"><p class="lbl">Plan du jour</p><span class="num" id="planSum"></span></div>
@@ -440,7 +494,7 @@ const PANEL_HTML = `
       <p class="hint" id="durHint"></p>
     </div>
   </div>
-  <button class="link" id="more"><span>Planning, réglages et remplissage</span>${svg("chevron")}</button>
+  <button class="link" id="more"><span>Planning et réglages</span>${svg("chevron")}</button>
   </div>
   <div class="foot"><span class="num" id="sync"></span><span class="num" id="plannedTxt"></span></div>
   <div class="toast" id="toast" role="status"></div>
@@ -475,6 +529,11 @@ class PiscineCard extends HTMLElement {
     this._stats = null;        // 30 j: { "YYYY-MM-DD": {lo, hi} } from the statistics
     this._statsAt = 0; this._statsLoading = false; this._statsErr = false;
     this._tVer = 0; this._tDrawn = "";
+    this._tab = "pump";        // panel: « Pompe » or « Remplissage » (water)
+    this._wRange = "30d"; this._wHover = null;
+    this._wStats = {};         // range -> {start (ms), rows [{t, change, state}]}, from the statistics
+    this._wAt = {}; this._wDay = {}; this._wLoading = {}; this._wErr = {};
+    this._wVer = 0; this._wDrawn = "";
   }
 
   set hass(hass) {
@@ -485,7 +544,7 @@ class PiscineCard extends HTMLElement {
   }
   connectedCallback() {
     this._timer = setInterval(() => this._hass && this._update(), 1000);
-    if (this._ro && this._built) this._ro.observe(this._$("tChart"));
+    if (this._ro && this._built) { this._ro.observe(this._$("tChart")); this._ro.observe(this._$("wChart")); }
   }
   disconnectedCallback() { clearInterval(this._timer); clearTimeout(this._toastTimer); this._ro?.disconnect(); }
 
@@ -837,6 +896,142 @@ class PiscineCard extends HTMLElement {
     if (hovX !== null) { const tw = tip.offsetWidth; tip.style.left = `${Math.min(Math.max(4, hovX > W / 2 ? hovX - tw - 10 : hovX + 10), W - tw - 4)}px`; }
   }
 
+  /* ---------- fill water (« Remplissage ») ---------- */
+  /** A range's first bucket: today − 29 days; the Monday 12 weeks before this week's; the 1st, 11 months back. */
+  _wStart(range, now = new Date()) {
+    const d = new Date(now); d.setHours(0, 0, 0, 0);
+    if (range === "30d") d.setDate(d.getDate() - 29);
+    else if (range === "90d") d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - 12 * 7);
+    else { d.setDate(1); d.setMonth(d.getMonth() - 11); }
+    return d;
+  }
+  /** The meter's statistics over a range (change per day, week or month), reloaded on a new day or after 15 min. */
+  _loadWater(range) {
+    const day = new Date().toDateString();
+    if (!this._config.recorder || this._wLoading[range]
+      || (this._wDay[range] === day && Date.now() - (this._wAt[range] || 0) < 15 * M_MS)) return;
+    this._wLoading[range] = true;
+    const id = this._e.volume, start = this._wStart(range);
+    this._hass.callWS({ type: "recorder/statistics_during_period", start_time: start.toISOString(), statistic_ids: [id],
+      period: W_PERIOD[range], types: ["change", "state"], units: { volume: "L" } })
+      .then((r) => {
+        const rows = ((r && r[id]) || []).map((x) => ({ t: typeof x.start === "number" ? x.start : Date.parse(x.start), change: x.change, state: x.state }))
+          .filter((x) => Number.isFinite(x.t));
+        this._wStats[range] = { rows }; this._wErr[range] = false;
+      })
+      .catch((err) => { console.warn("piscine-card: water statistics unavailable", err); this._wStats[range] = { rows: [] }; this._wErr[range] = true; })
+      .finally(() => { this._wAt[range] = Date.now(); this._wDay[range] = day; this._wLoading[range] = false; this._wVer++; this._update(); });
+  }
+  /**
+   * A range's buckets, oldest first: {t, value (litres; NaN without a statistics row: HA down, or before the meter's
+   * first statistics), cur (holds now)}. The running one gets what the meter counted since the last compiled hour:
+   * its live state against that hour's, or the whole live state when it is lower (the ESP32 rebooted, it restarted at 0).
+   */
+  _waterBuckets(range) {
+    const st = this._wStats[range];
+    if (!st) return null;
+    const now = new Date();
+    const key = (t) => { const x = new Date(t); return range === "12m" ? `${x.getFullYear()}-${x.getMonth()}` : dayKey(x); };
+    const next = (x) => {
+      const y = new Date(x);
+      if (range === "30d") y.setDate(y.getDate() + 1); else if (range === "90d") y.setDate(y.getDate() + 7); else y.setMonth(y.getMonth() + 1);
+      return y;
+    };
+    const byKey = new Map(st.rows.map((r) => [key(r.t), r])), out = [];
+    for (let x = this._wStart(range, now); x <= now; x = next(x)) {
+      const row = byKey.get(key(x.getTime()));
+      out.push({ t: x.getTime(), value: row && Number.isFinite(row.change) ? row.change : NaN, cur: now < next(x) });
+    }
+    const last = st.rows[st.rows.length - 1], live = this._n("volume"), cur = out[out.length - 1];
+    if (last && Number.isFinite(last.state) && Number.isFinite(live) && cur && cur.cur)
+      cur.value = (Number.isFinite(cur.value) ? cur.value : 0) + (live >= last.state ? live - last.state : live);
+    return out;
+  }
+
+  _renderWater() {
+    const box = this._$("wChart");
+    if (!box || this._tab !== "water") return;
+    const range = this._wRange;
+    this._loadWater("30d"); // today's reading
+    if (range !== "30d") this._loadWater(range);
+    this.shadowRoot.querySelectorAll("#wRange button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.r === range)));
+    const unit = (txt) => txt.replace(/ (\S+)$/, "<small>$1</small>");
+    const days = this._waterBuckets("30d"), flow = this._n("flow");
+    this._$("wToday").innerHTML = days ? unit(fmtL(days[days.length - 1].value)) : "…";
+    this._$("wFlow").innerHTML = `${fmt1(flow)}<small>L/min</small>`;
+    this._$("wFlowBox").classList.toggle("live", flow > 0);
+
+    const W = box.clientWidth, H = box.clientHeight;
+    if (!W) return;
+    const key = [range, this._wHover, W, H, this._wVer, Math.floor(Date.now() / M_MS), this._s("volume")].join("|");
+    if (key === this._wDrawn) return;
+    this._wDrawn = key;
+    const svg = this._$("wSvg"), tip = this._$("wTip"), empty = this._$("wEmpty"), sum = this._$("wSum"), leg = this._$("wLeg");
+    const showEmpty = (msg) => { empty.hidden = false; empty.textContent = msg; svg.innerHTML = ""; tip.hidden = true; sum.innerHTML = ""; leg.innerHTML = ""; box.setAttribute("aria-label", msg); };
+    const b = this._waterBuckets(range);
+    if (!b) return showEmpty("Chargement des statistiques…");
+    const known = b.filter((x) => Number.isFinite(x.value));
+    if (!known.length) return showEmpty(this._wErr[range] ? "Statistiques de Home Assistant indisponibles."
+      : "Pas encore de statistiques pour ce compteur : Home Assistant les calcule chaque heure.");
+    empty.hidden = true;
+
+    const L = 8, R = W - 40, TOP = 14, BOT = H - 20, n = b.length;
+    const max = Math.max(...known.map((x) => x.value), 0);
+    // about three gridlines on 1, 2, 5 × 10^k
+    const raw = Math.max(max, 3) / 3, mag = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 5, 10].map((m) => m * mag).find((v) => v >= raw);
+    const hi = Math.max(step, Math.ceil(max / step) * step), y = (v) => BOT - (v / hi) * (BOT - TOP);
+    let g = "";
+    for (let v = step; v <= hi + 1e-9; v += step) g += `<line class="gl" x1="${L}" x2="${R}" y1="${y(v)}" y2="${y(v)}"/><text x="${R + 5}" y="${y(v) + 3.5}">${axL(v)}</text>`;
+    g += `<line class="base" x1="${L}" x2="${R}" y1="${BOT}" y2="${BOT}"/><text x="${R + 5}" y="${BOT + 3.5}">0</text>`;
+    const cw = (R - L) / n, cx = (i) => L + cw * (i + 0.5), bw = Math.max(2, Math.min(18, cw - (n > 20 ? 3 : 6))), rr = Math.min(3, bw / 2);
+    // rounded at the data end only, anchored on the baseline
+    const bar = (x, top) => { const r = Math.min(rr, BOT - top); return `M${x},${BOT}V${top + r}Q${x},${top} ${x + r},${top}H${x + bw - r}Q${x + bw},${top} ${x + bw},${top + r}V${BOT}Z`; };
+    const date = (x) => new Date(x.t);
+    const label = (x, i) => {
+      const k = n - 1 - i, t = date(x);
+      if (range === "30d") return k === 0 ? "auj." : k % 7 ? "" : `${t.getDate()} ${MO[t.getMonth()]}`;
+      if (range === "90d") return k % 3 ? "" : `${t.getDate()} ${MO[t.getMonth()]}`;
+      return cw >= 30 || k % 2 === 0 ? MO[t.getMonth()] : "";
+    };
+    const long = (x) => {
+      const t = date(x);
+      if (range === "30d") return x.cur ? "aujourd'hui" : `${WD[t.getDay()]} ${t.getDate()} ${MO[t.getMonth()]}`;
+      if (range === "90d") return `semaine du ${t.getDate()} ${MO[t.getMonth()]}${x.cur ? ", en cours" : ""}`;
+      return `${MONTHS[t.getMonth()]} ${t.getFullYear()}${x.cur ? ", en cours" : ""}`;
+    };
+    const peak = known.reduce((a, x) => (x.value > a.value ? x : a));
+    b.forEach((x, i) => {
+      const lb = label(x, i);
+      if (lb) g += `<text x="${cx(i)}" y="${H - 6}" text-anchor="middle">${lb}</text>`;
+      if (!(x.value > 0)) return;
+      const top = Math.min(y(x.value), BOT - 2); // a few litres still show
+      g += `<path class="bar${x.cur ? " cur" : ""}${this._wHover === i ? " hov" : ""}" d="${bar(cx(i) - bw / 2, top)}"/>`;
+      if (x === peak) g += `<text class="vl" x="${Math.min(Math.max(cx(i), L + 16), R - 16)}" y="${top - 4}" text-anchor="middle">${fmtL(x.value)}</text>`;
+    });
+    let hovX = null;
+    const hb = this._wHover !== null ? b[this._wHover] : null;
+    if (hb) {
+      tip.innerHTML = "<b></b><span></span>";
+      tip.querySelector("b").textContent = Number.isFinite(hb.value) ? fmtL(hb.value) : "Pas de relevé";
+      tip.querySelector("span").textContent = long(hb);
+      hovX = cx(this._wHover);
+    }
+    const per = { "30d": ["30 jours", "jour", "Aujourd'hui"], "90d": ["13 semaines", "semaine", "Semaine en cours"], "12m": ["12 mois", "mois", "Mois en cours"] }[range];
+    const total = known.reduce((a, x) => a + x.value, 0), closed = known.filter((x) => !x.cur), base = closed.length ? closed : known;
+    let s = `<b>${fmtL(total)}</b> sur ${per[0]} · ${fmtL(base.reduce((a, x) => a + x.value, 0) / base.length)} par ${per[1]} en moyenne`;
+    const end = (t) => (t.endsWith(".") ? t : `${t}.`); // « 15 nov. » already ends the sentence
+    if (peak.value > 0) s += `<span>Le plus : ${fmtL(peak.value)}, ${end(long(peak))}</span>`;
+    const first = b.findIndex((x) => Number.isFinite(x.value));
+    if (first > 0) s += `<span>Premier relevé : ${end(long(b[first]))}</span>`;
+    sum.innerHTML = s;
+    leg.innerHTML = `<span><i class="k-bar"></i>Litres par ${per[1]}, compteur du remplissage</span><span><i class="k-cur"></i>${per[2]}</span>`;
+    box.setAttribute("aria-label", `Eau de remplissage sur ${per[0]} : ${b.map((x) => `${long(x)} ${Number.isFinite(x.value) ? fmtL(x.value) : "pas de relevé"}`).join(", ")}`);
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.innerHTML = g;
+    tip.hidden = hovX === null;
+    if (hovX !== null) { const tw = tip.offsetWidth; tip.style.left = `${Math.min(Math.max(4, hovX > W / 2 ? hovX - tw - 10 : hovX + 10), W - tw - 4)}px`; }
+  }
+
   /* ---------- build ---------- */
   _build() {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
@@ -943,16 +1138,52 @@ class PiscineCard extends HTMLElement {
       }
       this._renderTemp();
     });
+
+    // tabs « Pompe » / « Remplissage » (arrows move between them, as in a tablist)
+    const tabs = [...this.shadowRoot.querySelectorAll("#tabs button")];
+    tabs.forEach((b, i) => {
+      b.addEventListener("click", () => { this._tab = b.dataset.tab; this._wHover = null; this._update(); });
+      b.addEventListener("keydown", (e) => {
+        if (!["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+        const t = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+        t.focus(); t.click();
+      });
+    });
+    // fill water: range and bar under the pointer or the arrows
+    this.shadowRoot.querySelectorAll("#wRange button").forEach((b) => b.addEventListener("click", () => {
+      this._wRange = b.dataset.r; this._wHover = null; this._renderWater();
+    }));
+    const wbox = this._$("wChart"), bars = () => (this._waterBuckets(this._wRange) || []).length;
+    const wAt = (clientX) => {
+      const n = bars(); if (!n) return;
+      const r = wbox.getBoundingClientRect(), f = Math.min(1, Math.max(0, (clientX - r.left - 8) / (r.width - 48)));
+      this._wHover = Math.min(n - 1, Math.floor(f * n)); this._renderWater();
+    };
+    const wLeave = () => { if (this._wHover !== null) { this._wHover = null; this._renderWater(); } };
+    wbox.addEventListener("pointermove", (e) => wAt(e.clientX));
+    wbox.addEventListener("pointerdown", (e) => wAt(e.clientX));
+    wbox.addEventListener("pointerleave", wLeave);
+    wbox.addEventListener("blur", wLeave);
+    wbox.addEventListener("keydown", (e) => {
+      const n = bars();
+      if (!n || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+      e.preventDefault();
+      const h = this._wHover ?? n - 1;
+      this._wHover = e.key === "Home" ? 0 : e.key === "End" ? n - 1 : Math.min(n - 1, Math.max(0, h + (e.key === "ArrowLeft" ? -1 : 1)));
+      this._renderWater();
+    });
+
     this._ro?.disconnect(); // a new setConfig rebuilds the panel
-    this._ro = new ResizeObserver(() => this._renderTemp());
+    this._ro = new ResizeObserver(() => { this._renderTemp(); this._renderWater(); });
     this._ro.observe(box);
+    this._ro.observe(wbox);
   }
 
   /* ---------- update ---------- */
   _update() {
     if (!this._built || !this._hass) return;
-    if (this._config.variant === "panel") { this._loadHistory(); this._trackLive(); }
-    if (this._config.variant === "panel") this._updatePanel(); else this._updateTile();
+    if (this._config.variant === "panel") { this._loadHistory(); this._trackLive(); this._updatePanel(); }
+    else this._updateTile();
   }
 
   _tileSecondary() {
@@ -1027,6 +1258,16 @@ class PiscineCard extends HTMLElement {
     const ph = this._phase();
     const inOvr = this._inOvr(), online = this._online(), freeze = this._freeze(), stuck = this._stuck();
     const until = this._ovrUntil();
+
+    // the « Remplissage » tab needs the recorder's statistics and a water meter
+    const water = this._config.recorder && !!this._st("volume");
+    if (!water) this._tab = "pump";
+    this._$("tabs").hidden = !water;
+    this.shadowRoot.querySelector(".panel").classList.toggle("on-water", this._tab === "water");
+    this.shadowRoot.querySelectorAll("#tabs button").forEach((b) => {
+      const on = b.dataset.tab === this._tab;
+      b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1;
+    });
 
     this._$("ico").className = this._icoClass("ico big");
     this._$("ico").style.setProperty("--spd", this._spinSpeed());
@@ -1115,6 +1356,7 @@ class PiscineCard extends HTMLElement {
     this._$("plannedTxt").textContent = `Plan seul : ${SPEEDS[planned]}`;
 
     this._renderTemp();
+    this._renderWater();
   }
 }
 

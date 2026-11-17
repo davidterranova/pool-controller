@@ -84,7 +84,7 @@ const card = document.createElement("piscine-card");
 card.setConfig({
   variant: "panel",
   recorder: false, // no recorder nor statistics here: the temperature graph keeps its 7 days, from Daily History
-  more_path: "#avance", // its « Planning, réglages et remplissage » link opens the Avancé tab
+  more_path: "#avance", // its « Planning et réglages » link opens the Avancé tab
   entities: {
     override: E.override, commanded: E.commanded, planned: E.planned, nextAt: E.nextAt, nextTo: E.nextTo,
     b1s: E.b1s, b1e: E.b1e, b2s: E.b2s, b2e: E.b2e, hoursToday: E.hoursToday, hoursPlanned: E.hoursPlanned,

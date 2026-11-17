@@ -15,9 +15,9 @@ views:
     max_columns: 3
     sections:
       # ── Component: the pump ────────────────────────────────────────────────────────────────────────
-      # piscine-card's panel: state, today's plan, the pool's temperature (24 h / 7 j / 30 j), Auto/Manuel.
-      # Its defaults are one particular install's entity ids, so every entity is given here. It calls the
-      # two scripts of scripts.yaml.
+      # piscine-card's panel: state, today's plan, the pool's temperature (24 h / 7 j / 30 j), Auto/Manuel,
+      # and its « Remplissage » tab (fill water per day, week or month). Its defaults are one particular
+      # install's entity ids, so every entity is given here. It calls the two scripts of scripts.yaml.
       - type: grid
         cards:
           - type: heading
@@ -25,7 +25,7 @@ views:
             icon: mdi:pump
           - type: custom:piscine-card
             variant: panel
-            more_path: /dashboard-piscine/reglages   # « Planning, réglages » opens the Réglages view below
+            more_path: /dashboard-piscine/reglages   # « Planning et réglages » opens the Réglages view below
             grid_options: {columns: full}
             entities:
               override: select.pool_controller_manual_override
@@ -55,6 +55,8 @@ views:
               timeout: number.pool_controller_manual_override_timeout
               freezeAt: number.pool_controller_freeze_protection_temperature
               endsAt: sensor.pool_controller_manual_override_ends_at
+              flow: sensor.pool_controller_piscine_debit_remplissage
+              volume: sensor.pool_controller_piscine_volume_total_remplissage
               sForce: script.piscine_forcer_vitesse
               sAuto: script.piscine_retour_auto
 
@@ -127,6 +129,8 @@ views:
 
       # ── Component: fill water ──────────────────────────────────────────────────────────────────────
       # The water meter on the fill line. Its total only grows, so its daily statistics (change) are exact.
+      # piscine-card's « Remplissage » tab draws the same, by day, week or month with the period's total;
+      # this is the same meter with Home Assistant's own cards, for a dashboard without the card.
       - type: grid
         cards:
           - type: heading

@@ -129,10 +129,11 @@ you set `local: true` back).
 
 [home-assistant/piscine-card.js](home-assistant/piscine-card.js) is
 `custom:piscine-card`, the pool card of the Home Assistant dashboard: a tile,
-and a panel shown in a pop-up with the pump's state, today's plan timeline,
-the pool's temperature (24 h, 7 days, 30 days), Auto/Manuel, the forced speed
-and its duration. It's a plain custom element, no framework and no build
-step, in French.
+and a panel shown in a pop-up with two tabs. « Pompe » has the pump's state,
+today's plan timeline, the pool's temperature (24 h, 7 days, 30 days),
+Auto/Manuel, the forced speed and its duration; « Remplissage » the fill water,
+by day, week or month with the period's total. It's a plain custom element,
+no framework and no build step, in French.
 
 It lives here because it's written against this firmware's entities, and
 because it now has two users that must change together:
@@ -153,7 +154,10 @@ What it needs from Home Assistant, besides the entities:
   Temperature with Pump Commanded Speed, for the temperature curve;
 - the long-term statistics of Pool Water Min/Max Today, for the 30-day view
   (they have a `state_class` since 2026-11-17, so that view fills up from the
-  day the firmware was flashed; before that, only Daily History's 7 days).
+  day the firmware was flashed; before that, only Daily History's 7 days);
+- the long-term statistics of the fill meter (Piscine - Volume total
+  remplissage, `total_increasing`), for the « Remplissage » tab. Without the
+  meter or the recorder, the panel has no tabs.
 
 The temperature graph exists because the probe is on the return pipe: it
 reads the pool only while water flows, and with the pump stopped it drifts
@@ -245,7 +249,8 @@ How it fits together:
   min/max (Pool Water Min/Max Today) and, for each of the last 7 days, the
   hours filtered and the pool's min/max (Daily History). So the card's
   temperature graph runs with `recorder: false` here: its 7-day view works,
-  its 24 h and 30-day views say they're in Home Assistant. The page only
+  its 24 h and 30-day views say they're in Home Assistant, and it has no
+  « Remplissage » tab (that history is Home Assistant's statistics). The page only
   keeps the Manual Override's changes in memory from the moment it opens
   (gone on reload), for the card's record of today's overrides.
 - **No framework.** Icons are path data from `@mdi/js` (the set HA uses),
