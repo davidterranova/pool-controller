@@ -233,13 +233,15 @@ How it fits together:
   device's REST calls. The two HA scripts the card calls,
   `piscine_forcer_vitesse` and `piscine_retour_auto`, only set the Manual
   Override select (and its timeout), so they map onto that directly.
-- **No charts, on purpose.** The device keeps no history of its sensors, so
-  a chart would only show the time a page happened to be open. What the page
-  shows over time, the device records itself: today's pool min/max (Pool
-  Water Min/Max Today) and, for each of the last 7 days, the hours filtered
-  and the pool's min/max (Daily History). The page only keeps the Manual
-  Override's changes in memory from the moment it opens (gone on reload),
-  for the card's record of today's overrides.
+- **Only what the device records.** The device keeps no history of its
+  sensors, so a curve would only show the time a page happened to be open.
+  What the page shows over time, the device records itself: today's pool
+  min/max (Pool Water Min/Max Today) and, for each of the last 7 days, the
+  hours filtered and the pool's min/max (Daily History). So the card's
+  temperature graph runs with `recorder: false` here: its 7-day view works,
+  its 24 h and 30-day views say they're in Home Assistant. The page only
+  keeps the Manual Override's changes in memory from the moment it opens
+  (gone on reload), for the card's record of today's overrides.
 - **No framework.** Icons are path data from `@mdi/js` (the set HA uses),
   in [icons.js](webui/icons.js).
 - **What's missing on the device:** sunrise/sunset (the card's timeline has

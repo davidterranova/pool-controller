@@ -559,7 +559,7 @@ device's page"). Three tabs:
 
 | Tab | What's in it |
 |---|---|
-| **Contrôle** | The pool card's panel (pump state, today's plan timeline, Auto/Manuel, forced speed and duration), the temperatures with today's pool min/max, the fill-water meter |
+| **Contrôle** | The pool card's panel (pump state, today's plan timeline, the pool's temperature over the last 7 days, Auto/Manuel, forced speed and duration), the temperatures with today's pool min/max, the fill-water meter |
 | **Avancé** | Filtration settings with their Apply gate, today's plan in detail, the last 7 days (Daily History), the device's sensors, its live log |
 | **Wi-Fi** | The connection and its statistics, joining another network, the device's clock (see "Wi-Fi and the fallback hotspot" below) |
 
