@@ -28,7 +28,7 @@ Target:
 | 2 | Firmware: settings package, no `!secret` left | 1 | | todo | |
 | 3 | Controller's page: setup wizard, « Contrôleur » sections | contract below (UI on the mock); 2 to finish | | todo | |
 | 4 | Card: Firmware section on the update entity, position/timezone from HA | contract below; 6 to finish | | todo | |
-| 5 | CI: releases carry the firmware, manifest + files on GitHub Pages | 2 (for a real build) | | todo | |
+| 5 | CI: releases carry the firmware, manifest + files on GitHub Pages | 2 (for a real build) | ci/wp5-firmware-releases | in progress | |
 | 6 | Firmware: updates (http_request OTA + update entity + auto-update) | 1, 5 (manifest URL) | | todo | |
 | 7 | Install page (ESP Web Tools) + docs | 5 | | todo | |
 | 8 | Migration of an existing controller built with secrets.yaml | 2, 3, 6 | | todo | |
