@@ -32,9 +32,9 @@ repo itself — layout and tooling.
 
 - **Docker** — `validate`, `build`, and `ota` run the official
   `ghcr.io/esphome/esphome` image, so no local Python/ESPHome install is
-  needed for those. The latest one by default; `make build
-  ESPHOME_IMAGE=ghcr.io/esphome/esphome:<version>` pins one, as CI's
-  release build does.
+  needed for those. The version is pinned once, `ESPHOME_VERSION` at the top
+  of the Makefile, and CI builds and checks with it too; `make build
+  ESPHOME_VERSION=<version>` tries another.
 - **esptool** (bundled with a local ESP-IDF install) — used only for the
   initial USB flash. Docker Desktop on macOS can't pass a host USB-serial
   device through to a Linux container, so `make flash` shells out to the
@@ -371,7 +371,7 @@ A release carries:
 - `piscine-card.js`, for the Marketplace (HACS), as above;
 - once the firmware holds no secret, the controller's firmware, built by
   [.github/workflows/firmware.yml](.github/workflows/firmware.yml) with a
-  pinned ESPHome (`ESPHOME_IMAGE` there) and `-s firmware_version v<VERSION>`:
+  pinned ESPHome (the Makefile's `ESPHOME_VERSION`) and `-s firmware_version v<VERSION>`:
   - `firmware.ota.bin`: what an installed controller downloads to update;
   - `firmware.factory.bin`: a whole flash image, for a first install from a
     browser;
