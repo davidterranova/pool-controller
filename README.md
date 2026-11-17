@@ -260,9 +260,8 @@ How it fits together:
   What the page shows over time, the device records itself: today's pool
   min/max (Pool Water Min/Max Today) and, for each of the last 7 days, the
   hours filtered and the pool's min/max (Daily History). So the card's
-  temperature graph runs with `recorder: false` here: its 7-day view works,
-  its 24 h, 30-day, 90-day and year views say they're in Home Assistant,
-  and it has no tabs: no « Remplissage » (that history is Home Assistant's
+  temperature graph runs with `recorder: false` here: 7 days, with no range
+  to pick, and it has no tabs: no « Remplissage » (that history is Home Assistant's
   statistics), and its « Avancé » and « Réglages » are the page's Avancé tab. Nor the card's
   light: the page's own « Connecté au contrôleur » chip is its link to the
   device. The page only keeps the Manual Override's changes in memory from

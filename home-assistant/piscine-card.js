@@ -47,7 +47,7 @@
  * Every view draws the freeze-protection threshold (number Freeze Protection Temperature, 3 °C by default), in
  * red: a dotted line over the zone where Low is forced once the water comes within FREEZE_NEAR_C of it, else a
  * tag at the foot of the axis, so a 13 °C curve isn't squashed to show 3 °C.
- * `recorder: false` (the device's own page) leaves only 7 j, which the device keeps itself.
+ * `recorder: false` (the device's own page) leaves only 7 j, which the device keeps itself, and no range to pick.
  *
  * The controller's light (a dot on the tile; in the panel's header a button that opens « Avancé » › Contrôleur):
  * when the controller was last heard, from the newest update of any of its entities. Green while it talks; amber
@@ -1112,7 +1112,7 @@ class PiscineCard extends HTMLElement {
   _renderTemp() {
     const box = this._$("tChart");
     if (!box) return;
-    const range = this._range, rec = this._config.recorder;
+    const rec = this._config.recorder, range = rec ? this._range : "7d"; // without the recorder: Daily History's 7 days
     this.shadowRoot.querySelectorAll("#tRange button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.r === range)));
     if (T_SPAN[range]) this._loadStats();
     const W = box.clientWidth, H = box.clientHeight;
@@ -1129,9 +1129,6 @@ class PiscineCard extends HTMLElement {
       sum.innerHTML = summary; leg.innerHTML = ""; box.setAttribute("aria-label", msg);
     };
     const nowTxt = `<b>${fmt1(this._n("water"))} °C</b> maintenant`;
-    if (!rec && range !== "7d") {
-      return showEmpty(`Pas d'historique sur le contrôleur : ${range === "24h" ? "la courbe des 24 h est" : `les ${T_SPAN[range]} sont`} dans Home Assistant. Les 7 derniers jours, eux, sont gardés par le contrôleur.`, nowTxt);
-    }
     if (range === "24h" && !this._wHist) return showEmpty("Chargement de l'historique…", nowTxt);
     if (T_SPAN[range] && !this._stats) return showEmpty("Chargement des statistiques…", nowTxt);
     empty.hidden = true;
@@ -1603,6 +1600,8 @@ class PiscineCard extends HTMLElement {
     };
     this._$("more").addEventListener("click", () => openAdv());
     this._$("ctlLink").addEventListener("click", () => openAdv("ctlRows"));
+    // without the recorder only Daily History's 7 days exist: no range to choose
+    this._$("tRange").hidden = !this._config.recorder;
     this.shadowRoot.querySelectorAll(".ptile").forEach((b) => b.addEventListener("click", () => {
       this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: this._e[b.dataset.key] } }));
     }));
