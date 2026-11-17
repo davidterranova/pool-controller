@@ -22,6 +22,7 @@ repo itself — layout and tooling.
 | `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS). `dashboard/`: dashboard components for these entities and the scripts the card calls, with a guide ([home-assistant/dashboard/README.md](home-assistant/dashboard/README.md)). |
 | `hacs.json` | Tells the Marketplace (HACS) which file this repo publishes: the card above, from each GitHub release. |
 | `tools/webui-mock/` | Local mock of the device's web UI, for working on the page without flashing (see below). |
+| `tools/release/` | Release helpers for CI: the guard that keeps secrets out of a published firmware, and the firmware's `manifest.json` (see [Releases](#releases)). |
 | `webui/` | The device's own web page, built around the same `piscine-card` (see below). `make webui` bundles it into `webui/dist/` (gitignored), which the firmware embeds. |
 | `docs/plans/` | Plans for work spanning several PRs, with their progress: [secret-free firmware and OTA updates](docs/plans/secret-free-firmware.md). |
 | `.gitignore` | Excludes `secrets.yaml`, `.esphome/` (build cache), `.vscode/`. |
@@ -31,7 +32,9 @@ repo itself — layout and tooling.
 
 - **Docker** — `validate`, `build`, and `ota` run the official
   `ghcr.io/esphome/esphome` image, so no local Python/ESPHome install is
-  needed for those.
+  needed for those. The latest one by default; `make build
+  ESPHOME_IMAGE=ghcr.io/esphome/esphome:<version>` pins one, as CI's
+  release build does.
 - **esptool** (bundled with a local ESP-IDF install) — used only for the
   initial USB flash. Docker Desktop on macOS can't pass a host USB-serial
   device through to a Linux container, so `make flash` shells out to the
@@ -209,16 +212,15 @@ releases), as a custom repository:
    the version in its query string. Don't add a resource by hand: it would
    load the card twice.
 
-Releases in this repo are only the card's
-([hacs.json](hacs.json)): each carries `piscine-card.js` as an asset, and
-its tag is the card's `VERSION`. The firmware is built and flashed from a
-checkout, not released.
+Each release carries `piscine-card.js` as an asset, which is what the
+Marketplace installs ([hacs.json](hacs.json)), and its tag is the card's
+`VERSION`. See [Releases](#releases) for what else it carries.
 
 ### Shipping a change to the card
 
 1. Bump `VERSION` at the top of the card. A pull request that changes the
    card without a new `VERSION` fails CI
-   ([.github/workflows/card.yml](.github/workflows/card.yml)).
+   ([.github/workflows/release.yml](.github/workflows/release.yml)).
 2. Check the panel on the device's page against the mock (`make
    mock-webui`). It doesn't exercise the HA-only parts: the tile variant, the
    scripts, the recorder.
@@ -354,6 +356,58 @@ Once the device has joined Wi-Fi, prefer `make ota` over `make flash` — no
 cable needed. `make flash` (USB) is only required for the very first flash,
 or if the device is stuck in a state where it can't reach Wi-Fi at all (e.g.
 a bad password baked into a previous build).
+
+## Releases
+
+One version for the whole project: the card's `const VERSION = "x.y.z"`
+(`home-assistant/piscine-card.js`). A pull request that changes the card,
+the firmware (`pool-controller.yaml` or any `*.yaml` package beside it) or
+the device's page (`webui/`) needs a `VERSION` that isn't released yet; on
+merge, [.github/workflows/release.yml](.github/workflows/release.yml)
+publishes release `v<VERSION>`. Nobody tags or releases by hand.
+
+A release carries:
+
+- `piscine-card.js`, for the Marketplace (HACS), as above;
+- once the firmware holds no secret, the controller's firmware, built by
+  [.github/workflows/firmware.yml](.github/workflows/firmware.yml) with a
+  pinned ESPHome (`ESPHOME_IMAGE` there) and `-s firmware_version v<VERSION>`:
+  - `firmware.ota.bin`: what an installed controller downloads to update;
+  - `firmware.factory.bin`: a whole flash image, for a first install from a
+    browser;
+  - `manifest.json`: ESP Web Tools' manifest, whose `ota` block (path, md5,
+    summary, release URL) is what ESPHome's `update: platform:
+    http_request` reads. Its paths are relative, so the three files work
+    wherever they sit together.
+
+**No firmware is released while it reads secrets.yaml.** A published
+firmware must hold nothing personal, and today's still compiles in the
+Wi-Fi credentials, keys, passwords and location (`!secret`).
+`tools/release/secret_guard.py` lists them; while it finds any, the release
+build makes nothing and the release carries the card only, with a notice
+saying why. The [secret-free firmware plan](docs/plans/secret-free-firmware.md)
+removes them (WP2). Until then, flash from a checkout (`make ota`).
+
+**Trying the build.** Actions › Firmware › Run workflow (or `gh workflow
+run firmware.yml --ref <branch>`) builds `dev-<commit>` as a workflow
+artifact, never a release. While the sources still read secrets.yaml it
+compiles with placeholder secrets, and the artifact is named
+`firmware-dev-<commit>-placeholder-secrets-not-a-release`: a test of the
+build, not something to install.
+
+**GitHub Pages (the owner's call).** Controllers will look for updates at a
+stable URL, `https://<owner>.github.io/<repo>/firmware/manifest.json`. The
+release workflow publishes the release's three files there, replacing the
+previous ones, only when the repository allows it:
+
+1. Settings › Pages › Build and deployment › Source: **GitHub Actions**.
+2. Settings › Secrets and variables › Actions › Variables: add
+   `PUBLISH_FIRMWARE_PAGES` = `true`.
+
+Without both, a firmware release is attached to the release only, and the
+workflow says so. Each deploy replaces the whole Pages site, so the job
+rebuilds it: `/firmware/`, plus `docs/install/` as `/install/` once the
+install page exists.
 
 ## Troubleshooting
 
