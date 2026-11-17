@@ -342,6 +342,8 @@ const CLOCK_SOURCE = {
 /** The device sends "0-00-00 00:00:00" for a clock that was never set. */
 const clockSet = () => s(E.clockSource) !== "None" && /^\d{4}-/.test(s(E.clock) || "");
 const quality = (dbm) => Math.max(0, Math.min(100, 2 * (dbm + 100))); // HA's dBm -> % rule of thumb
+/** bon / moyen / faible, as the card says it (its steps are this page's bars below). */
+const signalWord = (dbm) => (dbm >= -67 ? "bon" : dbm >= -75 ? "moyen" : "faible");
 const bars = (dbm) =>
   !Number.isFinite(dbm) ? "wifi-strength-outline"
   : dbm >= -55 ? "wifi-strength-4" : dbm >= -67 ? "wifi-strength-3" : dbm >= -75 ? "wifi-strength-2" : "wifi-strength-1";
@@ -376,7 +378,7 @@ const orDash = (id) => () => s(id) || "—";
     const clients = n(E.hotspotClients) || 0;
     const [ic, title, sub] =
       m === "Connected" ? [bars(n(E.wifiSignal)), `Connecté à « ${s(E.wifiSsid)} »`,
-        Number.isFinite(n(E.wifiSignal)) ? `Signal ${n(E.wifiSignal)} dBm · ${quality(n(E.wifiSignal))} %` : ""]
+        Number.isFinite(n(E.wifiSignal)) ? `Signal ${n(E.wifiSignal)} dBm · ${quality(n(E.wifiSignal))} % · ${signalWord(n(E.wifiSignal))}` : ""]
       : m === "Hotspot" ? ["access-point", `Point d'accès « ${AP_SSID} »`,
         `Ouvert, sans mot de passe · ${clients} appareil${clients > 1 ? "s" : ""} connecté${clients > 1 ? "s" : ""} · http://192.168.4.1`]
       : ["wifi-sync", `Connexion à « ${joiningTo || s(E.joinSsid) || "…"} »`, "Jusqu'à 30 s"];

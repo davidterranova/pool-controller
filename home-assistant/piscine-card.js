@@ -207,8 +207,8 @@ const PLAN_ROWS = [
 const CTL_ROWS = [
   { key: "online", label: "Liaison avec Home Assistant", icon: "lan-connect", tone: (c) => ({ late: "warn", lost: "bad" })[c._light().h] || "",
     val: (c) => c._lightText(c._light(), "En ligne", "Muet"), sub: (c) => (c._light().seen ? `Dernier message reçu à ${stampMs(c._light().seen)}` : "") },
-  { key: "wifiSignal", label: "Signal Wi-Fi", icon: "wifi",
-    val: (c) => `${Math.round(c._n("wifiSignal"))} dBm · ${Math.max(0, Math.min(100, 2 * (c._n("wifiSignal") + 100)))} %`, // HA's dBm -> % rule of thumb
+  { key: "wifiSignal", label: "Signal Wi-Fi", icon: "wifi", tone: (c) => wifiQuality(c._n("wifiSignal")).tone,
+    val: (c) => `${Math.round(c._n("wifiSignal"))} dBm · ${Math.max(0, Math.min(100, 2 * (c._n("wifiSignal") + 100)))} % · ${wifiQuality(c._n("wifiSignal")).word}`, // HA's dBm -> % rule of thumb
     sub: (c) => (c._s("wifiSsid") && c._s("wifiSsid") !== "unknown" ? `Réseau « ${c._s("wifiSsid")} »` : "") },
   { key: "wifiDisc", label: "Déconnexions Wi-Fi", sub: () => "Depuis le démarrage", icon: "wifi-alert", val: (c) => String(Math.round(c._n("wifiDisc"))) },
   { key: "fw", label: "Firmware", icon: "chip", has: (c) => !!c._firmware(), val: (c) => c._firmware().version, sub: (c) => c._firmware().built },
@@ -243,6 +243,8 @@ const fmtD = (min) => {
 };
 /** Minutes ago -> « à l'instant », « il y a 3 min », « il y a 2 h », « il y a 4 j ». */
 const agoTxt = (m) => (!(m >= 1) ? "à l'instant" : m < 90 ? `il y a ${Math.round(m)} min` : m < 36 * 60 ? `il y a ${Math.round(m / 60)} h` : `il y a ${Math.round(m / 1440)} j`);
+/** A Wi-Fi signal in words, on the steps of the device page's bars icon: bon (3–4 bars), moyen (2), faible (1). */
+const wifiQuality = (dbm) => (dbm >= -67 ? { word: "bon", tone: "" } : dbm >= -75 ? { word: "moyen", tone: "warn" } : { word: "faible", tone: "bad" });
 /** A time in ms -> "HH:MM" today, else "DD/MM HH:MM". */
 const stampMs = (t) => { const d = new Date(t); return dayKey(d) === dayKey(new Date()) ? fmtT(d) : `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${fmtT(d)}`; };
 /** "HH:MM" text sensor -> minutes of day, or null for "--:--" / unavailable. */

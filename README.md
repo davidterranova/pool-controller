@@ -325,7 +325,8 @@ same way:
   current one. The password is held on the device and never sent back to a
   page or to HA. A network saved this way takes precedence over the one in
   `secrets.yaml`, until it's replaced the same way.
-- **Wi-Fi statistics:** signal (dBm and %), network, router (BSSID), IP and
+- **Wi-Fi statistics:** signal (dBm, % and in words: bon, moyen, faible, as
+  the pool card also says it), network, router (BSSID), IP and
   MAC addresses, disconnections since boot, devices on the hotspot.
 - **Clock.** On the hotspot alone there's no internet, so no time, so no
   daily plan. When the device has no clock, the page sets it to the
