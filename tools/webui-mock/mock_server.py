@@ -251,6 +251,8 @@ N = {
     "fill_today": "Fill Water Today",
     "fill_days": "Fill Water Days",
     "fill_months": "Fill Water Months",
+    "fw_version": "Firmware Version",
+    "esphome_version": "ESPHome Version",
 }
 # The Wi-Fi entities (wifi-setup.yaml, a package of the config).
 W = {
@@ -661,6 +663,9 @@ class PoolSim:
             N["fill_today"]: round(self.fill_today),
             N["fill_days"]: _fill_line(self.counted_day - timedelta(days=1) if self.counted_day else None, self.fill_days),
             N["fill_months"]: _fill_line(datetime.now().strftime("%Y-%m"), self.fill_months),
+            # A real commit of the repo, so the page's « Vérifier » gets a real answer from GitHub.
+            N["fw_version"]: "v1.2.1-37-g9d79cd5",
+            N["esphome_version"]: "2026.7.2 2026-11-17 18:05:00 +0000",
         }
         values.update(self.wifi.snapshot())
         values.update(self.static)

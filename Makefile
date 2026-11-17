@@ -1,5 +1,8 @@
 CONFIG := pool-controller.yaml
 ESPHOME := docker run --rm -v "$(CURDIR):/config" ghcr.io/esphome/esphome
+# The commit the firmware is built from, as its Firmware Version entity reports it
+# (the pool card compares it with main on GitHub): v1.3.0, v1.3.0-4-g1a2b3c4, …-dirty.
+FW_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_DIR := .esphome/build/pool-controller/build
 ESPTOOL := /Users/davidterranova/.espressif/tools/python/v6.0.2/venv/bin/esptool
 
@@ -23,7 +26,7 @@ validate: webui
 # Validates, then fully compiles the firmware (catches errors inside lambdas
 # too, which `validate` alone can't since those are raw C++).
 build: webui
-	$(ESPHOME) compile $(CONFIG)
+	$(ESPHOME) -s firmware_version $(FW_VERSION) compile $(CONFIG)
 
 # Flashes over UART via esptool (bundled with the ESP-IDF install), not through
 # Docker: Docker Desktop on macOS can't pass a host USB-serial device into the

@@ -282,6 +282,14 @@ Re-evaluated every 30 seconds, highest priority wins:
      midnight (one flash write a day); `--` before the first midnight. Like
      Daily History, they exist for the device's own page, which has no
      recorder: Home Assistant has the meter's own statistics.
+   - **Firmware Version** (diagnostic) is the commit of this repo the
+     firmware was compiled from, as `git describe --tags --always --dirty`
+     says it: `v1.3.0`, `v1.3.0-4-g1a2b3c4` (4 commits after that tag),
+     with `-dirty` when the working tree had uncommitted changes. `make
+     build` and `make ota` pass it in (`-s firmware_version`); compiled any
+     other way it is `dev`. **ESPHome Version** is ESPHome's version and the
+     build time. The pool card's « Vérifier » compares the first with main
+     on GitHub.
 4. **Hot-night keep-alive** — only reached when the autonomous schedule
    above says `Off` (i.e. outside both blocks) and only overnight, before
    today's sunrise or after today's sunset: if `Pool Return Temperature` is
