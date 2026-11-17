@@ -24,7 +24,7 @@ Target:
 | WP | What | Depends on | Branch | Status | PR |
 |---|---|---|---|---|---|
 | 0 | Card 1.3.1: parse ESPHome 2026.7's version string (« … (config hash …, built YYYY-MM-DD HH:MM:SS +0000) ») | — | fix/card-esphome-version-built | done | #28 (merged) |
-| 1 | Spike: confirm the runtime hooks on hardware with ESPHome 2026.11 | — | spike/wp1-runtime-hooks | in progress | |
+| 1 | Spike: confirm the runtime hooks on hardware with ESPHome 2026.11 | — | spike/wp1-runtime-hooks | review (hardware checks left) | #30 |
 | 2 | Firmware: settings package, no `!secret` left | 1 | | todo | |
 | 3 | Controller's page: setup wizard, « Contrôleur » sections | contract below (UI on the mock); 2 to finish | | todo | |
 | 4 | Card: Firmware section on the update entity, position/timezone from HA | contract below; 6 to finish | | todo | |
