@@ -23,6 +23,7 @@ repo itself — layout and tooling.
 | `hacs.json` | Tells the Marketplace (HACS) which file this repo publishes: the card above, from each GitHub release. |
 | `tools/webui-mock/` | Local mock of the device's web UI, for working on the page without flashing (see below). |
 | `webui/` | The device's own web page, built around the same `piscine-card` (see below). `make webui` bundles it into `webui/dist/` (gitignored), which the firmware embeds. |
+| `docs/plans/` | Plans for work spanning several PRs, with their progress: [secret-free firmware and OTA updates](docs/plans/secret-free-firmware.md). |
 | `.gitignore` | Excludes `secrets.yaml`, `.esphome/` (build cache), `.vscode/`. |
 | `LICENSE` | MIT. |
 
