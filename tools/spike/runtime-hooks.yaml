@@ -1,0 +1,256 @@
+# WP1 spike (docs/plans/secret-free-firmware.md): does each runtime hook the
+# secret-free firmware relies on exist and compile? Not a firmware to flash:
+# it only has to build. No `!secret` anywhere; every value below is a
+# placeholder.
+#
+#   docker run --rm -v "$PWD:/config" ghcr.io/esphome/esphome:<tag> \
+#     compile tools/spike/runtime-hooks.yaml
+#
+# Hooks whose signature changed between ESPHome releases are wrapped in
+# ESPHOME_VERSION_CODE checks, so the same file builds on 2026.7 and 2026.11;
+# the plan's spike log says which branch is which.
+
+esphome:
+  name: wp1-spike
+  friendly_name: WP1 Spike
+  project:
+    name: davidterranova.pool-controller
+    version: "0.0.0-spike"
+  on_boot:
+    # After globals restore (HARDWARE, 800) and the one_wire bus scan (BUS,
+    # 1000); before dallas_temp (DATA, 600) and web_server (WIFI - 1, 249).
+    priority: 700
+    then:
+      - lambda: |-
+          // --- page login, before web_server's setup -------------------
+          // An empty stored password = setup mode, no login.
+          auto *web = web_server_base::global_web_server_base;
+          if (id(page_password).empty()) {
+          #if ESPHOME_VERSION_CODE >= VERSION_CODE(2026, 11, 0)
+            // const char *, kept as is: nullptr = no auth (Credentials::is_set)
+            web->set_auth_username(nullptr);
+            web->set_auth_password(nullptr);
+          #else
+            // std::string copies; an empty username skips the auth wrapper
+            // when web_server registers its handlers (add_handler)
+            web->set_auth_username("");
+            web->set_auth_password("");
+          #endif
+          } else {
+            // 2026.11 keeps the pointer: it must outlive the call (a global's
+            // c_str(), re-set whenever the global changes).
+            web->set_auth_username("admin");
+            web->set_auth_password(id(page_password).c_str());
+          }
+
+          // --- OTA password ------------------------------------------------
+          if (id(ota_password).empty()) {
+            // Never leave OTA open: a random one until the page sets one.
+            char buf[33];
+            for (int i = 0; i < 32; i += 8)
+              snprintf(buf + i, 9, "%08" PRIx32, random_uint32());
+            id(ota_password) = buf;
+          }
+          id(ota_id).set_auth_password(id(ota_password));
+
+          // --- probes: addresses before dallas_temp's setup ----------------
+          if (id(pool_probe_address) != 0)
+            id(pool_temp).set_address(id(pool_probe_address));
+
+          // --- position and timezone -----------------------------------------
+          id(sun_id).set_latitude(id(latitude));
+          id(sun_id).set_longitude(id(longitude));
+          #if ESPHOME_VERSION_CODE >= VERSION_CODE(2026, 11, 0)
+          // 2026.11 has no RealTimeClock::set_timezone() and no on-device
+          // POSIX parser: codegen pre-parses, then time::set_global_tz().
+          // "CET-1CEST,M3.5.0,M10.5.0/3", by hand:
+          time::ParsedTimezone tz{};
+          tz.std_offset_seconds = -3600;  // POSIX: positive west
+          tz.dst_offset_seconds = -7200;
+          tz.dst_start.type = time::DSTRuleType::MONTH_WEEK_DAY;
+          tz.dst_start.month = 3;
+          tz.dst_start.week = 5;
+          tz.dst_start.day_of_week = 0;
+          tz.dst_start.time_seconds = 2 * 3600;
+          tz.dst_end.type = time::DSTRuleType::MONTH_WEEK_DAY;
+          tz.dst_end.month = 10;
+          tz.dst_end.week = 5;
+          tz.dst_end.day_of_week = 0;
+          tz.dst_end.time_seconds = 3 * 3600;
+          time::set_global_tz(tz);
+          #else
+          id(local_time).set_timezone(id(timezone_posix));
+          #endif
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+    advanced:
+      minimum_chip_revision: "3.1"
+      sram1_as_iram: true
+
+wifi:
+  # No station network in the YAML, as in the generic firmware: credentials
+  # come from Improv serial or the page (wifi.configure) and are saved.
+  ap:
+    ssid: "wp1-spike"
+    ap_timeout: 1min
+
+improv_serial:
+
+logger:
+  level: INFO
+
+api:
+  # No key: provisioned at run time (save_noise_psk) and kept in NVS.
+  encryption: {}
+  reboot_timeout: 0s
+
+ota:
+  - platform: esphome
+    id: ota_id
+    # Present but empty: compiles the auth path (USE_OTA_PASSWORD) so
+    # set_auth_password() exists.
+    password: ""
+  - platform: http_request
+
+http_request:
+  verify_ssl: true
+
+update:
+  - platform: http_request
+    id: firmware_update
+    name: "Firmware"
+    source: https://example.invalid/firmware/manifest.json
+    update_interval: never
+
+web_server:
+  port: 80
+  version: 3
+  # Our own page in the real firmware (js_url ""), so no stock page and, on
+  # 2026.11, no captive portal either (see the spike log).
+  js_url: ""
+  auth:
+    type: digest
+    # Placeholders: replaced in on_boot above, before web_server's setup.
+    username: placeholder
+    password: placeholder
+
+time:
+  - platform: sntp
+    id: local_time
+    # Compiles the timezone code (USE_TIME_TIMEZONE); the real zone is set
+    # on boot. Without a value, the zone of the machine that builds is used.
+    timezone: UTC0
+
+sun:
+  id: sun_id
+  latitude: 0.0
+  longitude: 0.0
+
+one_wire:
+  - platform: gpio
+    id: probe_bus
+    pin: GPIO4
+
+globals:
+  - id: page_password
+    type: std::string
+    restore_value: true
+    max_restore_data_length: 64
+    initial_value: '""'
+  - id: ota_password
+    type: std::string
+    restore_value: true
+    max_restore_data_length: 64
+    initial_value: '""'
+  - id: pool_probe_address
+    type: uint64_t
+    restore_value: true
+    initial_value: '0'
+  - id: latitude
+    type: double
+    restore_value: true
+    initial_value: '0.0'
+  - id: longitude
+    type: double
+    restore_value: true
+    initial_value: '0.0'
+  - id: timezone_posix
+    type: std::string
+    restore_value: true
+    max_restore_data_length: 64
+    initial_value: '"CET-1CEST,M3.5.0,M10.5.0/3"'
+
+sensor:
+  - platform: dallas_temp
+    id: pool_temp
+    name: "Pool Temperature"
+    # No address: set on boot from pool_probe_address.
+
+text_sensor:
+  - platform: template
+    id: detected_probes
+    name: "Detected Probes"
+
+text:
+  # Write-only: the value goes to a global, the state never holds it.
+  - platform: template
+    name: "API Key"
+    mode: password
+    max_length: 44
+    set_action:
+      - lambda: |-
+          // base64 of 32 bytes, as Home Assistant shows it
+          std::vector<uint8_t> raw = base64_decode(x);
+          if (raw.size() != 32) {
+            ESP_LOGW("spike", "API key: expected 32 bytes, got %u", (unsigned) raw.size());
+            return;
+          }
+          #if ESPHOME_VERSION_CODE >= VERSION_CODE(2026, 11, 0)
+          noise::psk_t psk;
+          #else
+          api::psk_t psk;
+          #endif
+          std::copy(raw.begin(), raw.end(), psk.begin());
+          bool ok = api::global_api_server->save_noise_psk(psk, true);
+          ESP_LOGI("spike", "save_noise_psk: %s", ok ? "saved" : "failed");
+  - platform: template
+    name: "Page Password"
+    mode: password
+    max_length: 64
+    set_action:
+      - lambda: |-
+          id(page_password) = x;
+          auto *web = web_server_base::global_web_server_base;
+          web->set_auth_username("admin");
+          web->set_auth_password(id(page_password).c_str());
+  - platform: template
+    name: "OTA Password"
+    mode: password
+    max_length: 64
+    set_action:
+      - lambda: |-
+          id(ota_password) = x;
+          id(ota_id).set_auth_password(x);
+
+button:
+  - platform: template
+    name: "Rescan Probes"
+    on_press:
+      - lambda: |-
+          id(probe_bus).search();
+          std::string out;
+          for (uint64_t address : id(probe_bus).get_devices()) {
+            char buf[24];
+            snprintf(buf, sizeof(buf), "%s%016" PRIx64, out.empty() ? "" : ", ", address);
+            out += buf;
+          }
+          id(detected_probes).publish_state(out);
+  - platform: template
+    name: "Check for Update"
+    on_press:
+      - component.update: firmware_update
+  - platform: factory_reset
+    name: "Factory Reset"
