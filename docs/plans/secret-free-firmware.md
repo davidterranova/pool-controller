@@ -25,7 +25,7 @@ Target:
 |---|---|---|---|---|---|
 | 0 | Card 1.3.1: parse ESPHome 2026.7's version string (« … (config hash …, built YYYY-MM-DD HH:MM:SS +0000) ») | — | fix/card-esphome-version-built | done | #28 (merged) |
 | 1 | Spike: confirm the runtime hooks on hardware with ESPHome 2026.11 | — | spike/wp1-runtime-hooks | review (hardware checks left) | #30 |
-| 2 | Firmware: settings package, no `!secret` left | 1 | | todo | |
+| 2 | Firmware: settings package, no `!secret` left | 1 | feat/wp2-device-settings | in progress | |
 | 3 | Controller's page: setup wizard, « Contrôleur » sections | contract below (UI on the mock); 2 to finish | | todo | |
 | 4 | Card: Firmware section on the update entity, position/timezone from HA | contract below; 6 to finish | | todo | |
 | 5 | CI: releases carry the firmware, manifest + files on GitHub Pages | 2 (for a real build) | ci/wp5-firmware-releases | done (publishing waits for WP2 and the owner) | #29 (merged) |
@@ -34,6 +34,8 @@ Target:
 | 8 | Migration of an existing controller built with secrets.yaml | 2, 3, 6 | | todo | |
 
 Parallel from day one: 0, 1, the mock-ups of 3 and 4, and 5's workflow (tested on a dummy build).
+
+Integration branch: WP2, WP3 and WP6 merge into `feat/secret-free-firmware`, not main, which gets it once the firmware is usable end to end (so main never releases a firmware nobody can set up).
 
 ## What leaves the build
 
