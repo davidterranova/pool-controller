@@ -90,7 +90,7 @@ card.setConfig({
     b1s: E.b1s, b1e: E.b1e, b2s: E.b2s, b2e: E.b2e, hoursToday: E.hoursToday, hoursPlanned: E.hoursPlanned,
     water: E.water, waterMin: E.waterMin, waterMax: E.waterMax, history: E.history, outdoor: E.outdoor, online: E.online, stuck: E.overrideActive, notComputed: E.notComputed,
     recomputed: E.recomputed, boostInterval: E.boostInterval, boostDuration: E.boostDuration,
-    highEvery: E.highEvery, timeout: E.timeout, endsAt: E.endsAt,
+    highEvery: E.highEvery, timeout: E.timeout, endsAt: E.endsAt, freezeAt: E.freezeAt,
     sun: "sun.sun", // not on the device: the timeline just has no sunrise/sunset marks
   },
 });
@@ -260,6 +260,8 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
   numberRow(host, { id: E.boostDuration, label: "Durée d'une impulsion" });
   numberRow(host, { id: E.boostInterval, label: "Intervalle entre impulsions", sub: "0 = pas d'impulsion" });
   numberRow(host, { id: E.highEvery, label: "Une impulsion High toutes les", sub: "Les autres sont en Medium" });
+  sect(host, "Hors gel · immédiat");
+  numberRow(host, { id: E.freezeAt, label: "Low forcé sous", sub: "Quand l'eau descend sous ce seuil, quoi qu'on demande" });
   sect(host, "Override manuel · immédiat");
   numberRow(host, { id: E.timeout, label: "Retour automatique en Auto après", sub: "0 = jamais (alerte après 30 min)" });
 }

@@ -51,6 +51,7 @@ export const E = {
   boostDuration: "number/Boost Pulse Duration",
   boostInterval: "number/Boost Pulse Interval",
   highEvery: "number/High Boost Frequency",
+  freezeAt: "number/Freeze Protection Temperature",
   water: "sensor/Pool Return Temperature",
   waterMin: "sensor/Pool Water Min Today",
   waterMax: "sensor/Pool Water Max Today",
