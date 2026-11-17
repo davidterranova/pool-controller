@@ -1,0 +1,187 @@
+name: Firmware
+
+# Builds the controller's firmware the way a release ships it: the device's
+# page bundled (make webui), compiled with a pinned ESPHome, then the three
+# files a release carries and GitHub Pages serves under /firmware/:
+#   firmware.ota.bin      what an installed controller downloads to update;
+#   firmware.factory.bin  a whole flash image, for a first install from a browser;
+#   manifest.json         ESP Web Tools' manifest, with the `ota` block ESPHome's
+#                         `update: platform: http_request` reads (tools/release/manifest.py).
+#
+# Called by release.yml with the release's tag as `version`. Run by hand
+# (Actions › Firmware › Run workflow, or `gh workflow run firmware.yml
+# --ref <branch>`), or on a pull request that changes this build, it makes a
+# development build, `dev-<commit>`, as a workflow artifact only.
+#
+# Nothing personal may ship: tools/release/secret_guard.py lists every
+# `!secret` the firmware still reads from secrets.yaml. A release build has
+# no secrets.yaml at all; while the guard finds any, it builds nothing and
+# says so, and the release goes out with the card only. A development build
+# then compiles with placeholder secrets instead (as validate.yml does), and
+# its artifact is named `…-placeholder-secrets-not-a-release`.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The release's tag (vX.Y.Z), compiled in as firmware_version.
+        type: string
+        required: true
+    outputs:
+      artifact:
+        description: Name of the workflow artifact holding the three files ('' when nothing was built).
+        value: ${{ jobs.build.outputs.artifact }}
+      publishable:
+        description: "'true' when the files may be attached to the release and published."
+        value: ${{ jobs.build.outputs.publishable }}
+      secrets:
+        description: The `!secret` lines the guard found, one per line ('' when none).
+        value: ${{ jobs.build.outputs.secrets }}
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/firmware.yml
+      - tools/release/**
+      - Makefile
+
+permissions:
+  contents: read
+
+env:
+  # The ESPHome the firmware is built and released with. Bump it here only.
+  ESPHOME_IMAGE: ghcr.io/esphome/esphome:2026.7.2
+  CONFIG: pool-controller.yaml
+  # Where ESPHome 2026.x puts the images (esphome: name: in $CONFIG).
+  BUILD_DIR: .esphome/build/pool-controller/build
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      artifact: ${{ steps.collect.outputs.artifact }}
+      publishable: ${{ steps.collect.outputs.publishable }}
+      secrets: ${{ steps.guard.outputs.secrets }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: version
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ -n "$RELEASE_VERSION" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "version=dev-${SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: No secrets compiled in
+        id: guard
+        env:
+          RELEASE: ${{ steps.version.outputs.release }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          rc=0
+          found=$(python3 tools/release/secret_guard.py "$CONFIG") || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "No !secret left in the firmware's sources."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "placeholders=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [ "$rc" -eq 1 ] || { echo "$found"; exit "$rc"; }
+          {
+            echo "secrets<<EOF"
+            echo "$found"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### The firmware still compiles in secrets.yaml"
+            echo
+            echo "A published firmware must hold nothing personal, so none is built for a release while these remain:"
+            echo
+            echo '```'
+            echo "$found"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          count=$(echo "$found" | wc -l | tr -d ' ')
+          if [ "$RELEASE" = true ]; then
+            echo "::notice title=No firmware in $VERSION::$CONFIG still reads $count value(s) from secrets.yaml (!secret), so no firmware is built for this release; it carries the card only. See the job summary."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=Test build with placeholder secrets::$CONFIG still reads $count value(s) from secrets.yaml (!secret): building $VERSION with placeholders, as a test only. Its artifact is not a release and must not be installed."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "placeholders=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Only for a development build of sources that still read secrets: the
+      # same placeholders as validate.yml, which compile but connect nowhere.
+      # pool_controller_api_key has to decode as a base64 32-byte key.
+      - name: Placeholder secrets.yaml (test build only)
+        if: steps.guard.outputs.placeholders == 'true' && steps.version.outputs.release == 'false'
+        run: |
+          cat > secrets.yaml <<'EOF'
+          wifi_ssid: "placeholder"
+          wifi_password: "placeholder"
+          pool_controller_api_key: "bK1YlLBsY0Ouxeekl8eHkLoQ6TORbg4RbocsLsXDqvQ="
+          pool_controller_ota_password: "placeholder"
+          pool_controller_web_password: "placeholder"
+          pool_latitude: "0.0"
+          pool_longitude: "0.0"
+          pool_timezone: "UTC"
+          EOF
+
+      - name: A release build has no secrets.yaml
+        if: steps.version.outputs.release == 'true'
+        run: test ! -e secrets.yaml
+
+      # `make build`: the page bundled by esbuild in node:22-alpine (make
+      # webui), then `esphome -s firmware_version <version> compile`.
+      - name: Compile
+        if: steps.guard.outputs.build == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: make build ESPHOME_IMAGE="$ESPHOME_IMAGE" FW_VERSION="$VERSION"
+
+      - name: Images and manifest
+        id: collect
+        if: steps.guard.outputs.build == 'true'
+        env:
+          RELEASE: ${{ steps.version.outputs.release }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PLACEHOLDERS: ${{ steps.guard.outputs.placeholders }}
+        run: |
+          mkdir dist
+          cp "$BUILD_DIR/firmware.ota.bin" "$BUILD_DIR/firmware.factory.bin" dist/
+          if [ "$RELEASE" = true ]; then
+            artifact="firmware-$VERSION"
+            summary="Pool Controller $VERSION"
+            url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$VERSION"
+          else
+            artifact="firmware-$VERSION"
+            summary="Development build $VERSION, not a release"
+            url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          fi
+          if [ "$PLACEHOLDERS" = true ]; then
+            artifact="$artifact-placeholder-secrets-not-a-release"
+            summary="TEST BUILD with placeholder secrets: do not install"
+          fi
+          python3 tools/release/manifest.py dist --version "$VERSION" --summary "$summary" --release-url "$url"
+          ls -l dist
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
+          if [ "$RELEASE" = true ] && [ "$PLACEHOLDERS" != true ]; then
+            echo "publishable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publishable=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: steps.guard.outputs.build == 'true'
+        with:
+          name: ${{ steps.collect.outputs.artifact }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: ${{ steps.version.outputs.release == 'true' && 90 || 14 }}
