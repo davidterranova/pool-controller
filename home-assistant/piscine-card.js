@@ -94,7 +94,7 @@
  * temperature across the full width under the header — layout « B » approved on the mock-up (« Screen »
  * view) on 2026-11-11.
  */
-const VERSION = "1.3.0";
+const VERSION = "1.3.1";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",
@@ -1020,13 +1020,17 @@ class PiscineCard extends HTMLElement {
     if (bare) return { label: bare.slice(0, 7), sub: `Commit ${bare.slice(0, 7)}${local}`, ref: bare, dirty: !!dirty };
     return { label: n ? `${tag} +${n}` : tag, sub: (hash ? `Commit ${hash.slice(0, 7)}, ${n} commit${+n > 1 ? "s" : ""} après ${tag}` : "Version publiée") + local, ref: hash || tag, dirty: !!dirty };
   }
-  /** ESPHome's version and build time: « 2026.7.2 2026-11-17 18:05:00 +0000 » (ESPHome Version) or « 2026.7.2
-      (2026-11-14 11:25:41 +0000) » (Home Assistant's device registry) -> {version, built}. */
+  /**
+   * ESPHome's version and build time -> {version, built}, from ESPHome Version (« 2026.7.2 (config hash 0x528082c4,
+   * built 2026-11-17 18:11:55 +0000) » since 2026.7, « 2026.7.2 2026-11-17 18:05:00 +0000 » before) or from Home
+   * Assistant's device registry (« 2026.7.2 (2026-11-14 11:25:41 +0000) »).
+   */
   static parseEsphome(text) {
     const m = /^(\S+)(?:\s+\(?(.+?)\)?)?$/.exec(String(text || "").trim());
     if (!m || m[1] === "unknown" || m[1] === "unavailable") return null;
-    const t = m[2] ? new Date(Date.parse(m[2].replace(/^(\d{4}-\d{2}-\d{2}) /, "$1T").replace(/ ?([+-]\d{2}):?(\d{2})$/, "$1:$2"))) : null;
-    const built = t && !isNaN(t) ? `Compilé le ${pad(t.getDate())}/${pad(t.getMonth() + 1)}/${t.getFullYear()} à ${fmtT(t)}` : m[2] ? `Compilé ${m[2]}` : "";
+    const when = m[2] && (/\bbuilt\s+(.+)$/.exec(m[2])?.[1] ?? m[2]); // after « config hash …, built »
+    const t = when ? new Date(Date.parse(when.replace(/^(\d{4}-\d{2}-\d{2}) /, "$1T").replace(/ ?([+-]\d{2}):?(\d{2})$/, "$1:$2"))) : null;
+    const built = t && !isNaN(t) ? `Compilé le ${pad(t.getDate())}/${pad(t.getMonth() + 1)}/${t.getFullYear()} à ${fmtT(t)}` : when ? `Compilé ${when}` : "";
     return { version: m[1], built };
   }
   /**
