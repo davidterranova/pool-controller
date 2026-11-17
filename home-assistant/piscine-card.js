@@ -35,9 +35,9 @@
  *   30 j   the same two sensors' long-term statistics (state_class since firmware 2026-11-17), each day read
  *          from its 23:00 hourly row: Min Today only falls and Max Today only rises within a day, so that row
  *          holds the day's final values, while HA's 00:00 hour still carries yesterday's until the reset.
- * All three draw the freeze-protection threshold (number Freeze Protection Temperature, 3 °C by default): a
- * dotted line over the zone where Low is forced once the water comes within FREEZE_NEAR_C of it, else a tag at
- * the foot of the axis, so a 13 °C curve isn't squashed to show 3 °C.
+ * All three draw the freeze-protection threshold (number Freeze Protection Temperature, 3 °C by default), in
+ * red: a dotted line over the zone where Low is forced once the water comes within FREEZE_NEAR_C of it, else a
+ * tag at the foot of the axis, so a 13 °C curve isn't squashed to show 3 °C.
  * `recorder: false` (the device's own page) leaves only 7 j, which the device keeps itself.
  *
  * Layout: one column on a phone (Bubble bottom sheet). From 680 px of container width (the Bubble
@@ -330,11 +330,11 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .chart .pt.ok { fill:var(--acc); } .chart .pt.no { fill:var(--muted); }
 .chart .rng { fill:var(--acc); opacity:.5; }
 .chart .rng.today { opacity:1; } .chart .rng.hov { opacity:.8; }
-/* freeze-protection threshold: dotted line and the zone where Low is forced, or a tag at the foot of the axis */
-.chart .fz { stroke:var(--cool); stroke-width:1.5; stroke-dasharray:1 3; stroke-linecap:round; }
-.chart .fz-zone { fill:var(--cool); opacity:.08; }
-.chart text.fz-t { fill:var(--cool); font-weight:500; }
-.tl-leg i.k-fz { width:14px; height:0; border-radius:0; border-top:2px dotted var(--cool); vertical-align:3px; }
+/* freeze-protection threshold, in red: dotted line and the zone where Low is forced, or a tag at the foot of the axis */
+.chart .fz { stroke:var(--danger); stroke-width:1.5; stroke-dasharray:1 3; stroke-linecap:round; }
+.chart .fz-zone { fill:var(--danger); opacity:.07; }
+.chart text.fz-t { fill:var(--danger); font-weight:500; }
+.tl-leg i.k-fz { width:14px; height:0; border-radius:0; border-top:2px dotted var(--danger); vertical-align:3px; }
 .chart .empty { position:absolute; inset:0; display:grid; place-items:center; text-align:center; padding:0 20px; font-size:12px; color:var(--muted); cursor:default; }
 .ttip { position:absolute; top:6px; pointer-events:none; background:var(--card); color:var(--muted); box-shadow:0 2px 10px rgba(0,0,0,.18);
   border-radius:8px; padding:5px 9px; font-size:11px; line-height:1.35; white-space:nowrap; z-index:2; }

@@ -625,7 +625,7 @@ reboots) is the cutoff: set it from Home Assistant's `dashboard-piscine`
 (Configuration view), from the device's own page (Avancé › Réglages ›
 Hors gel), or as any HA number. It applies on the spot, no Apply needed:
 it only moves a comparison the controller makes on every tick. The pool
-card draws it on its temperature graph.
+card draws it on its temperature graph, in red.
 
 Mind what it is compared with. `Pool Return Temperature` is on the return
 pipe: with the pump running it reads the pool; stopped, it drifts toward
