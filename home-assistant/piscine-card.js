@@ -639,6 +639,8 @@ class PiscineCard extends HTMLElement {
   /**
    * The last 24 h of the water sensor, one point per 5 min: {t, v (NaN while unavailable), on (pump running),
    * ok (a pool reading: pumping for POOL_AFTER_MIN, the firmware's rule)}. Both histories are step functions.
+   * Points sit on the clock's 5-min marks, not on « now − 24 h »: from one redraw to the next the curve only
+   * slides, instead of being resampled at other instants and changing shape.
    */
   _tempSeries(now) {
     const W = this._wHist || [], C = this._cHist || [], out = [];
@@ -654,7 +656,8 @@ class PiscineCard extends HTMLElement {
       }
       out.push({ t, v, on, ok: on && Number.isFinite(v) && t - onSince >= POOL_AFTER_MIN * M_MS });
     };
-    for (let t = now - 24 * H_MS; t < now; t += T_STEP_MIN * M_MS) at(t);
+    const step = T_STEP_MIN * M_MS;
+    for (let t = Math.ceil((now - 24 * H_MS) / step) * step; t < now; t += step) at(t);
     at(now);
     return out;
   }
