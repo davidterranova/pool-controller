@@ -138,6 +138,9 @@ as on its own page's Avancé tab: the settings, today's plan with
 « Recalculer », the last 7 days, the controller's link, Wi-Fi and probes. A
 third variant, `settings`, draws the settings alone, with a line under each
 saying what it does.
+A light on the tile and in the panel's header says when the controller was
+last heard: green while it talks, amber when it goes quiet or has just gone
+offline, red after 15 min; each new message sends a ring out of it.
 It's a plain custom element, no framework and no build step, in French.
 
 It lives here because it's written against this firmware's entities, and
@@ -162,7 +165,9 @@ What it needs from Home Assistant, besides the entities:
   day the firmware was flashed; before that, only Daily History's 7 days);
 - the long-term statistics of the fill meter (Piscine - Volume total
   remplissage, `total_increasing`), for the « Remplissage » tab. Without the
-  meter or the recorder, that tab isn't there.
+  meter or the recorder, that tab isn't there;
+- the Device Clock ([wifi-setup.yaml](wifi-setup.yaml)), which changes every
+  minute: the light's heartbeat. Without it, the light only follows the link.
 
 The temperature graph exists because the probe is on the return pipe: it
 reads the pool only while water flows, and with the pump stopped it drifts
@@ -255,11 +260,13 @@ How it fits together:
   min/max (Pool Water Min/Max Today) and, for each of the last 7 days, the
   hours filtered and the pool's min/max (Daily History). So the card's
   temperature graph runs with `recorder: false` here: its 7-day view works,
-  its 24 h and 30-day views say they're in Home Assistant, and it has no tabs:
-  no « Remplissage » (that history is Home Assistant's statistics), and its
-  « Réglages » are the page's Avancé tab. The page only
-  keeps the Manual Override's changes in memory from the moment it opens
-  (gone on reload), for the card's record of today's overrides.
+  its 24 h and 30-day views say they're in Home Assistant, and it has no
+  tabs: no « Remplissage » (that history is Home Assistant's
+  statistics), and its « Réglages » are the page's Avancé tab. Nor the card's
+  light: the page's own « Connecté au contrôleur » chip is its link to the
+  device. The page only keeps the Manual Override's changes in memory from
+  the moment it opens (gone on reload), for the card's record of today's
+  overrides.
 - **No framework.** Icons are path data from `@mdi/js` (the set HA uses),
   in [icons.js](webui/icons.js).
 - **What's missing on the device:** sunrise/sunset (the card's timeline has

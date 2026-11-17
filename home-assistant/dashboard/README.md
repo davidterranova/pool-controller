@@ -58,6 +58,11 @@ The panel has three tabs, so the pop-up needs no dashboard behind it:
   The card's « Planning et réglages » link opens it. `settings_tab: false` drops the tab, and the link
   then opens `more_path`; `temperatures: false` drops the temperatures at the foot of « Pompe ».
 
+Its header, and the tile, have a light for the controller: green while it talks (the Device Clock, `clock`,
+changes every minute), amber when it goes quiet or has been offline for less than 15 min, red beyond. In the
+header it says when the controller was last heard and opens « Réglages » › Contrôleur. `controller_light:
+false` drops it; `controller_health: { warn: 3, alert: 15, beat: 4 }` sets its minutes before amber and red.
+
 What this dashboard adds to the card: the three probes' curves and their 90-day daily means, the
 pump's plan against reality over the last days, and the fill water with Home Assistant's own cards.
 

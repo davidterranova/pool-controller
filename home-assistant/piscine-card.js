@@ -13,6 +13,8 @@
  *   variant: panel       # full controls, placed inside the Bubble pop-up
  *   settings_tab: false  # optional: no « Réglages » tab; « Planning et réglages » then opens more_path
  *   temperatures: false  # optional: no outdoor / equipment-pad block at the foot of « Pompe »
+ *   controller_light: false                            # optional: no light for the controller (tile, header)
+ *   controller_health: { warn: 3, alert: 15, beat: 4 }  # optional: its minutes before amber, before red; seconds between beats
  *
  * The card never writes the controller's Manual Override select itself:
  *   force a speed   script.piscine_forcer_vitesse (vitesse: Off|Low|Medium|High)
@@ -41,6 +43,13 @@
  * red: a dotted line over the zone where Low is forced once the water comes within FREEZE_NEAR_C of it, else a
  * tag at the foot of the axis, so a 13 °C curve isn't squashed to show 3 °C.
  * `recorder: false` (the device's own page) leaves only 7 j, which the device keeps itself.
+ *
+ * The controller's light (a dot on the tile; in the panel's header a button that opens « Réglages » › Contrôleur):
+ * when the controller was last heard, from the newest update of any of its entities. Green while it talks; amber
+ * when it has been quiet for `warn` min, or offline for less than `alert` (a restart, an OTA, a Wi-Fi drop usually
+ * end on their own); red beyond. Each new message pops the dot and sends a ring out of it (every `beat` s at most).
+ * Its heartbeat is the Device Clock (wifi-setup.yaml, entity `clock`), which changes every minute; without it a
+ * still night leaves every value as it was, so only the link counts. Offline, the light replaces the pump's state.
  *
  * Fill water (tab « Remplissage », next to « Pompe »; recorder only, so not on the device's page; mock-up
  * 2026-11-17). The water meter on the fill line (Piscine - Volume total remplissage, total_increasing) as HA's
@@ -116,6 +125,7 @@ const DEFAULT_ENTITIES = {
   wifiSignal: "sensor.piscine_pool_controller_wifi_signal",
   wifiSsid: "sensor.piscine_pool_controller_wifi_ssid",
   wifiDisc: "sensor.piscine_pool_controller_wifi_disconnects",
+  clock: "datetime.piscine_pool_controller_device_clock",
   sForce: "script.piscine_forcer_vitesse",
   sAuto: "script.piscine_retour_auto",
 };
@@ -130,6 +140,10 @@ const H_MS = 3600000, M_MS = 60000;
 const POOL_AFTER_MIN = 10; // firmware: a reading counts as the pool after this long pumping (Pool Water Min/Max Today)
 const T_STEP_MIN = 5;      // 24 h curve: one point per 5 min, the sensor's own pace
 const T_RANGES = { "24h": "24 h", "7d": "7 j", "30d": "30 j" };
+/** The controller's light (`controller_health`): minutes before amber, before red; seconds between two heartbeats. */
+const HEALTH = { warn: 3, alert: 15, beat: 4 };
+/** Never keys: the sun and the two scripts are Home Assistant's, not the controller's. */
+const NOT_CONTROLLER = new Set(["sun", "sForce", "sAuto"]);
 const WD = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
 const MO = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
@@ -176,8 +190,8 @@ const PLAN_ROWS = [
   { key: "recompute", label: "Recalculer le plan maintenant", icon: "refresh", button: "Recalculer", ok: "Plan du jour recalculé" },
 ];
 const CTL_ROWS = [
-  { key: "online", label: "Liaison avec Home Assistant", icon: "lan-connect", bad: (c) => !c._online(),
-    val: (c) => (c._online() ? "En ligne" : `Hors ligne depuis ${fmtD((Date.now() - Date.parse(c._st("online").last_changed)) / 60000)}`) },
+  { key: "online", label: "Liaison avec Home Assistant", icon: "lan-connect", tone: (c) => ({ late: "warn", lost: "bad" })[c._light().h] || "",
+    val: (c) => c._lightText(c._light(), "En ligne", "Muet"), sub: (c) => (c._light().seen ? `Dernier message reçu à ${stampMs(c._light().seen)}` : "") },
   { key: "wifiSignal", label: "Signal Wi-Fi", icon: "wifi",
     val: (c) => `${Math.round(c._n("wifiSignal"))} dBm · ${Math.max(0, Math.min(100, 2 * (c._n("wifiSignal") + 100)))} %`, // HA's dBm -> % rule of thumb
     sub: (c) => (c._s("wifiSsid") && c._s("wifiSsid") !== "unknown" ? `Réseau « ${c._s("wifiSsid")} »` : "") },
@@ -209,6 +223,10 @@ const fmtD = (min) => {
   const m = Math.max(0, Math.round(min)), h = Math.floor(m / 60), r = m % 60;
   return h ? (r ? `${h} h ${pad(r)}` : `${h} h`) : `${r} min`;
 };
+/** Minutes ago -> « à l'instant », « il y a 3 min », « il y a 2 h », « il y a 4 j ». */
+const agoTxt = (m) => (!(m >= 1) ? "à l'instant" : m < 90 ? `il y a ${Math.round(m)} min` : m < 36 * 60 ? `il y a ${Math.round(m / 60)} h` : `il y a ${Math.round(m / 1440)} j`);
+/** A time in ms -> "HH:MM" today, else "DD/MM HH:MM". */
+const stampMs = (t) => { const d = new Date(t); return dayKey(d) === dayKey(new Date()) ? fmtT(d) : `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${fmtT(d)}`; };
 /** "HH:MM" text sensor -> minutes of day, or null for "--:--" / unavailable. */
 const hhmm = (s) => {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || "").trim());
@@ -243,6 +261,7 @@ const STYLE = `
   --amber:#c98500; --amber-soft:rgba(227,154,6,.17);
   --cool:#2a72cf; --cool-soft:rgba(42,114,207,.13);
   --danger:#cc3a2f; --danger-soft:rgba(204,58,47,.12);
+  --good:#2e9a4a;
   --idle:#858c94; --idle-soft:rgba(133,140,148,.17);
   --raised:rgba(127,135,145,.12); --line:rgba(127,135,145,.28);
   --fg:var(--primary-text-color,#1b1e22); --muted:var(--secondary-text-color,#626a73);
@@ -258,6 +277,7 @@ const STYLE = `
   --amber:#f0b03a; --amber-soft:rgba(240,176,58,.17);
   --cool:#5f9dee; --cool-soft:rgba(95,157,238,.17);
   --danger:#ff6b60; --danger-soft:rgba(255,107,96,.15);
+  --good:#4cc26a;
   --idle:#8f969e; --idle-soft:rgba(143,150,158,.17);
   --raised:rgba(255,255,255,.07); --line:rgba(255,255,255,.12);
   --shadow:0 1px 2px rgba(0,0,0,.35);
@@ -287,7 +307,7 @@ svg { display:block; fill:currentColor; }
 @keyframes spin { to { transform:rotate(360deg); } }
 
 /* tile */
-ha-card.tile { display:flex; align-items:center; gap:12px; padding:12px; cursor:pointer; height:100%;
+ha-card.tile { display:flex; align-items:center; gap:12px; padding:12px; cursor:pointer; height:100%; position:relative;
   transition:transform .12s ease; -webkit-tap-highlight-color:transparent; }
 ha-card.tile:active { transform:scale(.985); }
 .tile .txt { min-width:0; flex:1; display:flex; flex-direction:column; gap:1px; }
@@ -301,6 +321,21 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .tile.vertical .txt { width:100%; align-items:center; }
 .tile.vertical .s { white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
 .tile.vertical .val, .tile.vertical .chev { display:none; }
+.tile .led { align-self:flex-start; margin:5px -2px 0 0; }
+.tile.vertical .led { position:absolute; top:10px; right:10px; margin:0; }
+
+/* The controller's light: a dot in a thin ring of its own colour. Green = a message
+   within HEALTH.warn min; amber = quiet for longer, or offline for less than HEALTH.alert min (a restart, an OTA, a
+   Wi-Fi drop); red = beyond. On each new message the dot pops and a ring leaves it and fades (every HEALTH.beat s at most). */
+.led { --c:var(--good); position:relative; width:9px; height:9px; border-radius:50%; flex:none;
+  background:color-mix(in srgb,var(--c) 75%,transparent); box-shadow:0 0 0 2.5px color-mix(in srgb,var(--c) 16%,transparent); }
+.led.late, .clink.late { --c:var(--amber); }
+.led.lost, .clink.lost { --c:var(--danger); }
+.led::after { content:""; position:absolute; inset:-1px; border-radius:50%; border:2px solid var(--c); opacity:0; pointer-events:none; }
+.led.ping { animation:beat .45s ease-out; }
+.led.ping::after { animation:ping 1.3s cubic-bezier(.15,.6,.3,1); }
+@keyframes beat { 30% { transform:scale(1.4); } }
+@keyframes ping { 0% { opacity:.6; transform:scale(1); } 100% { opacity:0; transform:scale(3.6); } }
 
 /* panel */
 .panel { display:flex; flex-direction:column; gap:18px; padding:4px 2px 8px; color:var(--fg); }
@@ -319,6 +354,10 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .status.amber { background:var(--amber-soft); color:var(--amber); }
 .status.cool { background:var(--cool-soft); color:var(--cool); }
 .status.danger { background:var(--danger-soft); color:var(--danger); }
+.st-row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:4px; }
+.st-row .status { margin-top:0; }
+.clink { --c:var(--good); display:inline-flex; align-items:center; gap:7px; height:22px; padding:0 10px 0 8px; border:0; border-radius:12px;
+  font-size:12px; font-weight:500; cursor:pointer; background:color-mix(in srgb,var(--c) 13%,transparent); color:var(--c); }
 .x { width:38px; height:38px; border-radius:50%; border:0; background:var(--raised); display:grid; place-items:center; cursor:pointer; flex:none; }
 .x svg { width:20px; height:20px; fill:var(--muted); }
 
@@ -566,7 +605,8 @@ const PANEL_HTML = `
 <div class="panel">
   <div class="sh-head">
     <span class="ico big" id="ico">${svg("pump")}</span>
-    <div class="t"><h3>Pompe piscine</h3><span class="status" id="status"></span></div>
+    <div class="t"><h3>Pompe piscine</h3>
+      <div class="st-row"><span class="status" id="status"></span><button class="clink" id="ctlLink" hidden><span class="led" id="ctlLed"></span><span id="ctlTxt"></span></button></div></div>
     <button class="x" id="close" aria-label="Fermer">${svg("close")}</button>
   </div>
   <div class="tabs" role="tablist" id="tabs" hidden>
@@ -700,6 +740,7 @@ const TILE_HTML = `
   <span class="ico" id="ico">${svg("pump")}</span>
   <span class="txt"><span class="p">Pompe piscine</span><span class="s" id="sec"></span></span>
   <span class="val num" id="val"></span>
+  <span class="led" id="led" role="img" hidden></span>
   <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.chevron}"/></svg>
 </ha-card>`;
 
@@ -709,7 +750,8 @@ class PiscineCard extends HTMLElement {
     if (!["tile", "panel", "settings"].includes(variant)) throw new Error("variant must be tile, panel or settings");
     this._config = { variant, layout: config.layout || "horizontal", popup_hash: config.popup_hash || "#piscine", more_path: config.more_path || MORE_PATH,
       recorder: config.recorder !== false, title: config.title ?? "Réglages", icons: config.icons || null,
-      settings_tab: config.settings_tab !== false, temperatures: config.temperatures !== false };
+      settings_tab: config.settings_tab !== false, temperatures: config.temperatures !== false,
+      controller_light: config.controller_light !== false, health: { ...HEALTH, ...(config.controller_health || {}) } };
     this._e = { ...DEFAULT_ENTITIES, ...(config.entities || {}) };
     this.setAttribute("variant", variant);
     this._built = false;
@@ -723,6 +765,7 @@ class PiscineCard extends HTMLElement {
     this._range = this._config.recorder ? "24h" : "7d";
     this._tHover = null;       // 24 h: minutes before now; 7 j / 30 j: day index
     this._stats = null;        // 30 j: { "YYYY-MM-DD": {lo, hi} } from the statistics
+    this._beatSeen = null; this._beatAt = -1e9; // the light's last heartbeat: the message it was for, when (performance.now)
     this._statsAt = 0; this._statsLoading = false; this._statsErr = false;
     this._tVer = 0; this._tDrawn = "";
     this._tab = "pump";        // panel: « Pompe », « Remplissage » (water) or « Réglages » (settings)
@@ -848,6 +891,64 @@ class PiscineCard extends HTMLElement {
   /* ---------- derived state ---------- */
   _override() { const s = this._s("override"); return ["Auto", "Off", "Low", "Medium", "High"].includes(s) ? s : "Auto"; }
   _online() { return this._s("online") === "on"; }
+  /**
+   * When the controller was last heard, in ms (0 = never): the newest update of any of its entities. The Device Clock
+   * (wifi-setup.yaml) changes every minute, so a healthy controller is never quiet for long. HA's own `unavailable` (the
+   * link is down) is not a message.
+   */
+  _lastSeen() {
+    let t = 0;
+    for (const k in this._e) {
+      const o = !NOT_CONTROLLER.has(k) && this._hass.states[this._e[k]];
+      if (o && o.state !== "unavailable") t = Math.max(t, Date.parse(o.last_updated) || 0);
+    }
+    return t;
+  }
+  /**
+   * The light: {h, seen (ms), quiet (min since seen), off (min offline, null online)}. h: live = a message within
+   * `warn` min; late = quiet for longer, or offline for less than `alert` min (a restart, an OTA, a Wi-Fi drop end on
+   * their own); lost = beyond. Without the Device Clock nothing changes every minute (a still night can leave every
+   * value as it was), so quiet means nothing there and only the link counts.
+   */
+  _light() {
+    const H = this._config.health, now = Date.now(), seen = this._lastSeen(), quiet = seen ? (now - seen) / M_MS : Infinity;
+    const o = this._st("online"), off = this._online() ? null : o ? (now - Date.parse(o.last_changed)) / M_MS : Infinity;
+    const beats = !!this._st("clock");
+    const h = off !== null ? (off >= H.alert ? "lost" : "late") : beats && quiet >= H.alert ? "lost" : beats && quiet >= H.warn ? "late" : "live";
+    return { h, seen, quiet, off };
+  }
+  /** « Hors ligne depuis 6 min », « Contrôleur muet depuis 5 min », else `live`. */
+  _lightText(L, live = `Contrôleur · ${agoTxt(L.quiet)}`, mute = "Contrôleur muet") {
+    if (L.off !== null) return Number.isFinite(L.off) ? `Hors ligne depuis ${fmtD(L.off)}` : "Hors ligne";
+    return L.h === "live" ? live : `${mute} depuis ${fmtD(L.quiet)}`;
+  }
+  /** The light on the tile and in the panel's header. A message newer than the last one drawn: one heartbeat. */
+  _renderLight() {
+    const on = this._config.controller_light, btn = this._$("ctlLink"), leds = [this._$("led"), this._$("ctlLed")].filter(Boolean);
+    if (btn) btn.hidden = !on;
+    if (this._$("led")) this._$("led").hidden = !on;
+    if (!on) return;
+    const L = this._light();
+    const tip = L.off !== null ? `Contrôleur hors ligne${L.seen ? ` : dernier message à ${stampMs(L.seen)}` : ""}`
+      : `Dernier message du contrôleur à ${stampMs(L.seen)}, ${agoTxt(L.quiet)}`;
+    for (const el of leds) {
+      const cls = `led ${L.h}${el.classList.contains("ping") ? " ping" : ""}`; // a redraw must not cut a heartbeat short
+      if (el.className !== cls) el.className = cls;
+      if (el.title !== tip) { el.title = tip; el.setAttribute("aria-label", tip); }
+    }
+    if (btn) {
+      const txt = this._lightText(L);
+      if (btn.className !== `clink ${L.h}`) btn.className = `clink ${L.h}`;
+      if (this._$("ctlTxt").textContent !== txt) this._$("ctlTxt").textContent = txt;
+      if (btn.title !== tip) btn.title = tip;
+    }
+    if (this._beatSeen === null || L.seen <= this._beatSeen) { if (this._beatSeen === null || L.seen < this._beatSeen) this._beatSeen = L.seen; return; }
+    this._beatSeen = L.seen;
+    const now = performance.now();
+    if (L.h !== "live" || now - this._beatAt < this._config.health.beat * 1000) return;
+    this._beatAt = now;
+    for (const el of leds) { el.classList.remove("ping"); void el.offsetWidth; el.classList.add("ping"); }
+  }
   /** Below this the firmware forces Low, whatever the override (Freeze Protection Temperature). */
   _freezeC() { return this._n("freezeAt", FREEZE_DEFAULT_C); }
   _freeze() { const w = this._n("water"); return Number.isFinite(w) && w < this._freezeC(); }
@@ -892,7 +993,7 @@ class PiscineCard extends HTMLElement {
   }
 
   _phase() {
-    if (!this._online()) return { label: "Hors ligne", cls: "danger" };
+    if (!this._online()) return { label: "Hors ligne", cls: this._light().h === "lost" ? "danger" : "amber" };
     if (this._freeze()) return { label: "Hors gel · Low", cls: "cool" };
     if (this._stuck()) return { label: `Override depuis ${fmtD(this._ovrAgeMin())}`, cls: "danger" };
     if (this._inOvr()) return { label: `Manuel · ${SPEEDS[this._override()]}`, cls: "amber" };
@@ -1342,7 +1443,8 @@ class PiscineCard extends HTMLElement {
       r.sub.textContent = sub; r.sub.hidden = !sub;
       if (r.btn) { r.btn.disabled = !this._online(); continue; }
       r.val.textContent = r.def.val(this);
-      r.val.classList.toggle("bad", !!(r.def.bad && r.def.bad(this)));
+      const tone = r.def.tone ? r.def.tone(this) : "";
+      r.val.classList.toggle("bad", tone === "bad"); r.val.classList.toggle("warn", tone === "warn");
     }
     for (const r of this._paneRows) if (r.sect) r.sect.hidden = this._paneRows.every((x) => x.sect !== r.sect || x.row.hidden);
     this._renderDays();
@@ -1399,13 +1501,16 @@ class PiscineCard extends HTMLElement {
 
   _wirePanel() {
     this._$("close").addEventListener("click", () => this._navigate(location.pathname + location.search, true));
-    // « Planning et réglages »: the « Réglages » tab, or more_path without it (the device's page: its Avancé tab)
-    this._$("more").addEventListener("click", () => {
+    // « Planning et réglages » and the light: the « Réglages » tab (the light: at « Contrôleur »), or more_path
+    // without it (the device's page: its Avancé tab)
+    const openSettings = (at) => {
       if (!this._config.settings_tab) { this._navigate(this._config.more_path); return; }
       this._tab = "settings"; this._update();
       const t = this.shadowRoot.querySelector('#tabs [data-tab="settings"]');
-      this._$("tabs").scrollIntoView({ block: "nearest" }); t.focus({ preventScroll: true });
-    });
+      (at ? this._$(at).closest("section") : this._$("tabs")).scrollIntoView({ block: "nearest" }); t.focus({ preventScroll: true });
+    };
+    this._$("more").addEventListener("click", () => openSettings());
+    this._$("ctlLink").addEventListener("click", () => openSettings("ctlRows"));
     this.shadowRoot.querySelectorAll(".ptile").forEach((b) => b.addEventListener("click", () => {
       this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: this._e[b.dataset.key] } }));
     }));
@@ -1546,7 +1651,7 @@ class PiscineCard extends HTMLElement {
     const P = this._pending();
     const hrs = `${fmt1(this._n("hoursToday"))} h / ${fmt1(this._n("hoursPlanned"))} h`;
     if (P) return ["Envoi au contrôleur…", "s"];
-    if (!this._online()) { const o = this._st("online"); return [`Hors ligne depuis ${o ? fmtD((Date.now() - Date.parse(o.last_changed)) / 60000) : "?"}`, "s bad"]; }
+    if (!this._online()) { const L = this._light(); return [this._lightText(L), L.h === "lost" ? "s bad" : "s warn"]; }
     if (this._freeze()) return [`Hors gel · Low · ${hrs}`, "s"];
     if (this._stuck()) return [`Override ${SPEEDS[this._override()]} depuis ${fmtD(this._ovrAgeMin())}`, "s bad"];
     if (this._inOvr()) { const u = this._ovrUntil(); return [`Manuel ${SPEEDS[this._override()]} · ${u ? "Auto à " + fmtT(u) : "sans limite"}`, "s warn"]; }
@@ -1558,10 +1663,11 @@ class PiscineCard extends HTMLElement {
     ico.className = this._icoClass("ico");
     ico.style.setProperty("--spd", this._spinSpeed());
     ico.querySelector(".dot")?.remove();
-    if (this._stuck() || !this._online()) { const d = document.createElement("span"); d.className = "dot"; ico.appendChild(d); }
+    if (this._stuck()) { const d = document.createElement("span"); d.className = "dot"; ico.appendChild(d); }
     const [sec, cls] = this._tileSecondary();
     this._$("sec").textContent = sec; this._$("sec").className = cls;
-    this._$("val").textContent = `${fmt1(this._n("water"))} °C`;
+    this._$("val").textContent = `${fmt1(this._n("water"))} °C`;
+    this._renderLight();
   }
 
   _drawTimeline() {
@@ -1637,6 +1743,8 @@ class PiscineCard extends HTMLElement {
     this._$("ico").className = this._icoClass("ico big");
     this._$("ico").style.setProperty("--spd", this._spinSpeed());
     const st = this._$("status"); st.className = `status ${ph.cls}`; st.textContent = ph.label;
+    st.hidden = this._config.controller_light && !online; // offline, the light says it
+    this._renderLight();
     this._$("water").innerHTML = `${fmt1(this._n("water"))}<small>°C</small>`;
     this._$("outdoor").innerHTML = `${fmt1(this._n("outdoor"))}<small>°C</small>`;
     const hT = this._n("hoursToday"), hP = this._n("hoursPlanned");
@@ -1647,6 +1755,7 @@ class PiscineCard extends HTMLElement {
 
     // alerts
     this._$("offAlert").hidden = online;
+    this._$("offAlert").className = this._light().h === "lost" ? "alert" : "alert amber";
     const onl = this._st("online");
     this._$("offTxt").textContent = `Contrôleur hors ligne depuis ${onl ? fmtD((Date.now() - Date.parse(onl.last_changed)) / 60000) : "?"}. Le plan continue sur l'ESP32, mais aucune commande ne lui parviendra.`;
     this._$("freezeAlert").hidden = !freeze;
@@ -1715,9 +1824,7 @@ class PiscineCard extends HTMLElement {
     // footer
     const sy = this._$("sync");
     const rc = /(\d{2}:\d{2})(:\d{2})?$/.exec(this._s("recomputed") || "");
-    sy.textContent = online ? `Contrôleur en ligne${rc ? " · plan calculé à " + rc[1] : ""}`
-      : `Contrôleur injoignable depuis ${onl ? fmtD((Date.now() - Date.parse(onl.last_changed)) / 60000) : "?"}`;
-    sy.className = "num" + (online ? "" : " stale");
+    sy.textContent = rc ? `Plan calculé à ${rc[1]}` : ""; // the link: the light, the alert
     this._$("plannedTxt").textContent = `Plan seul : ${SPEEDS[planned]}`;
 
     this._renderTemp();

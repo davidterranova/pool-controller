@@ -87,6 +87,7 @@ card.setConfig({
   more_path: "#avance", // its « Planning et réglages » link opens the Avancé tab
   settings_tab: false, // the Avancé tab is this page's « Réglages »
   temperatures: false, // the Températures tiles next to the card show them
+  controller_light: false, // its header's « Connecté au contrôleur » chip is this page's link to the controller
   entities: {
     override: E.override, commanded: E.commanded, planned: E.planned, nextAt: E.nextAt, nextTo: E.nextTo,
     b1s: E.b1s, b1e: E.b1e, b2s: E.b2s, b2e: E.b2e, hoursToday: E.hoursToday, hoursPlanned: E.hoursPlanned,

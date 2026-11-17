@@ -15,12 +15,12 @@ views:
     max_columns: 3
     sections:
       # ── Component: the pump ────────────────────────────────────────────────────────────────────────
-      # piscine-card's panel, three tabs. « Pompe »: state, today's plan, the pool's temperature (24 h / 7 j
-      # / 30 j), Auto/Manuel, and the outdoor and equipment-pad temperatures. « Remplissage »: fill water per
-      # day, week or month. « Réglages »: every setting, today's plan in detail with « Recalculer », the last
-      # 7 days, the controller's link, Wi-Fi and probes. Its defaults are one particular install's entity
-      # ids, so every entity is given here, once (&pool, reused by the settings below). It calls the two
-      # scripts of scripts.yaml.
+      # piscine-card's panel, three tabs, and a light in its header for the controller's link. « Pompe »:
+      # state, today's plan, the pool's temperature (24 h / 7 j / 30 j), Auto/Manuel, and the outdoor and
+      # equipment-pad temperatures. « Remplissage »: fill water per day, week or month. « Réglages »: every
+      # setting, today's plan in detail with « Recalculer », the last 7 days, the controller's link, Wi-Fi
+      # and probes. Its defaults are one particular install's entity ids, so every entity is given here,
+      # once (&pool, reused by the settings below). It calls the two scripts of scripts.yaml.
       - type: grid
         cards:
           - type: heading
@@ -73,6 +73,7 @@ views:
               wifiSignal: sensor.pool_controller_wifi_signal       # these three: wifi-setup.yaml; rows hide without them
               wifiSsid: sensor.pool_controller_wifi_ssid
               wifiDisc: sensor.pool_controller_wifi_disconnects
+              clock: datetime.pool_controller_device_clock    # wifi-setup.yaml too: the light's heartbeat, every minute
               sForce: script.piscine_forcer_vitesse
               sAuto: script.piscine_retour_auto
 
