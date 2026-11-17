@@ -132,9 +132,11 @@ programmed hour *plus your UTC offset*, not local wall-clock time. Setting
 
 Re-evaluated every 30 seconds, highest priority wins:
 
-1. **Freeze protection** — if `Pool Return Temperature` drops below 3°C,
-   force `Low` speed. This overrides everything else, including manual
-   override, unconditionally.
+1. **Freeze protection** — if `Pool Return Temperature` drops below
+   **Freeze Protection Temperature** (number, HA- and page-editable,
+   default 3 °C, 0–10 in steps of 0.5, applied at once), force `Low` speed.
+   This overrides everything else, including manual override,
+   unconditionally.
 2. **Manual Override** (select, HA-editable) — if set to anything other
    than `Auto`, forces that speed. It **ends on its own** after **Manual
    Override Timeout** minutes (number, HA-editable, default 60, step 5, up
@@ -618,16 +620,29 @@ From [wifi-setup.yaml](wifi-setup.yaml), a package of the firmware:
 
 ## Changing the freeze-protection threshold
 
-The 3°C cutoff is a literal constant inside the schedule lambda (the
-`interval:` block near the bottom of `pool-controller.yaml`), not a
-substitution — edit it directly there if you need a different threshold.
+**Freeze Protection Temperature** (number, default 3 °C, kept across
+reboots) is the cutoff: set it from Home Assistant's `dashboard-piscine`
+(Configuration view), from the device's own page (Avancé › Réglages ›
+Hors gel), or as any HA number. It applies on the spot, no Apply needed:
+it only moves a comparison the controller makes on every tick. The pool
+card draws it on its temperature graph.
+
+Mind what it is compared with. `Pool Return Temperature` is on the return
+pipe: with the pump running it reads the pool; stopped, it drifts toward
+the equipment pad's air. In winter the pad is the warmer of the two
+(14.5 °C in the pipe for a 13.1 °C pool on a November night), so with the
+pump off the protection reacts to the pipe, which cools after the pool.
+There is no hysteresis either: a reading hovering on the threshold can
+switch Low on and off at each new reading (every 5 minutes, median
+filtered).
 
 ## Changing the hot-night keep-alive threshold
 
-Same deal as the freeze-protection threshold above: the 28°C cutoff for the
+Unlike the freeze-protection threshold above, the 28°C cutoff for the
 hot-night keep-alive tier (see Control logic) is a literal constant in the
-same schedule lambda, not a substitution — edit it directly there if your
-climate calls for a different value.
+schedule lambda (the `interval:` block near the bottom of
+`pool-controller.yaml`), not a substitution — edit it directly there if
+your climate calls for a different value.
 
 ## Manual Override timeout and alert
 

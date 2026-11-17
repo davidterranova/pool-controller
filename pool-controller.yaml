@@ -583,6 +583,29 @@ number:
     optimistic: true
     on_value:
       - script.execute: evaluate_speed
+  # Below this Pool Return Temperature the pump is forced to Low, whatever
+  # the plan or a Manual Override says (evaluate_speed, tier 1). It was a
+  # literal 3 °C; a setting since 2026-11-17 so it can be tuned from HA's
+  # dashboard or the device's own page without a reflash. Applies at once,
+  # like the boost tunables above: it only moves a comparison evaluate_speed
+  # already makes every tick. Caveat that comes with the probe: pump stopped,
+  # it reads the return pipe in the equipment pad, not the pool, and the pad
+  # is warmer than the water in winter -- see POOL-CONTROLLER.md.
+  - platform: template
+    name: "Freeze Protection Temperature"
+    web_server: {sorting_group_id: grp_config, sorting_weight: 100}
+    id: freeze_protection_c
+    icon: mdi:snowflake-thermometer
+    unit_of_measurement: "°C"
+    device_class: temperature
+    min_value: 0
+    max_value: 10
+    step: 0.5
+    initial_value: 3
+    restore_value: true
+    optimistic: true
+    on_value:
+      - script.execute: evaluate_speed
   # How long a Manual Override stays in force before the controller puts
   # itself back to Auto, in minutes; 0 disables the expiry, and the override
   # then only ends when someone clears it or the device reboots. Lives on the
@@ -1508,8 +1531,11 @@ script:
           // ===== Part 3: priority chain, highest wins. =====
           std::string desired = "Off";
 
-          // 1. Freeze protection always wins, Home Assistant or not.
-          if (id(pool_return_temp).state < 3.0) {
+          // 1. Freeze protection always wins, Home Assistant or not. The
+          // threshold is the Freeze Protection Temperature number (3 °C by
+          // default); a NaN reading compares false, so a dead probe never
+          // forces Low on its own.
+          if (id(pool_return_temp).state < id(freeze_protection_c).state) {
             desired = "Low";
           }
           // 2. Manual override (set from the HA dashboard) wins over the

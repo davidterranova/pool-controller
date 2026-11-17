@@ -240,6 +240,7 @@ N = {
     "boost_dur": "Boost Pulse Duration",
     "boost_int": "Boost Pulse Interval",
     "boost_high": "High Boost Frequency",
+    "freeze_at": "Freeze Protection Temperature",
     "pool_temp": "Pool Return Temperature",
     "pad_temp": "Equipment Pad Temperature",
     "outdoor_temp": "Outdoor Temperature",
@@ -502,7 +503,7 @@ class PoolSim:
 
     def desired(self, now: int) -> str:
         temp = self.temps["pool_temp"]
-        if temp < 3.0:
+        if temp < self.num("freeze_at", 3.0):  # Freeze Protection Temperature, as evaluate_speed
             return "Low"
         if self.override != "Auto":
             return self.override
