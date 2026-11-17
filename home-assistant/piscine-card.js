@@ -25,11 +25,24 @@
  * loaded when the panel is shown and every 15 min, extended live from state changes), the running one up
  * to the controller's deadline (24 h without one).
  *
+ * Pool temperature (« Température du bassin », right under the day plan, above Pilotage; mock-up approved
+ * 2026-11-17). The probe is on the return pipe: it reads the pool only while water flows, and with the pump
+ * stopped it drifts toward the equipment pad's air (warmer than the water in winter). So the card draws what
+ * the firmware trusts — readings after 10 min of pumping — apart from the rest:
+ *   24 h   the water sensor and the commanded speed from the recorder (same call and reload as the
+ *          overrides): solid line for the pool, dashed for the pipe, filtration periods shaded;
+ *   7 j    each day's min–max from the device's Daily History, today from Pool Water Min/Max Today;
+ *   30 j   the same two sensors' long-term statistics (state_class since firmware 2026-11-17), each day read
+ *          from its 23:00 hourly row: Min Today only falls and Max Today only rises within a day, so that row
+ *          holds the day's final values, while HA's 00:00 hour still carries yesterday's until the reset.
+ * `recorder: false` (the device's own page) leaves only 7 j, which the device keeps itself.
+ *
  * Layout: one column on a phone (Bubble bottom sheet). From 680 px of container width (the Bubble
- * adaptive-dialog on a screen, width_desktop 760px) the panel is two columns with the day plan across the
- * full width under the header — layout « B » approved on the mock-up (« Screen » view) on 2026-11-11.
+ * adaptive-dialog on a screen, width_desktop 760px) the panel is two columns with the day plan and the
+ * temperature across the full width under the header — layout « B » approved on the mock-up (« Screen »
+ * view) on 2026-11-11.
  */
-const VERSION = "1.2.1";
+const VERSION = "1.3.0";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",
@@ -44,6 +57,9 @@ const DEFAULT_ENTITIES = {
   hoursToday: "sensor.piscine_pool_controller_filtration_hours_today",
   hoursPlanned: "sensor.piscine_pool_controller_planned_filtration_hours",
   water: "sensor.pool_controller_pool_return_temperature",
+  waterMin: "sensor.piscine_pool_controller_pool_water_min_today",
+  waterMax: "sensor.piscine_pool_controller_pool_water_max_today",
+  history: "sensor.piscine_pool_controller_daily_history",
   outdoor: "sensor.piscine_pool_controller_outdoor_temperature",
   online: "binary_sensor.piscine_pool_controller_status",
   stuck: "binary_sensor.piscine_pool_controller_manual_override_active",
@@ -64,6 +80,12 @@ const FREEZE_C = 3;       // firmware: below this the pump is forced to Low, wha
 const STUCK_MIN = 30;     // firmware: Manual Override Active after this long off Auto
 const CMD_TIMEOUT = 15000;
 const MORE_PATH = "/dashboard-piscine/0";
+const H_MS = 3600000, M_MS = 60000;
+const POOL_AFTER_MIN = 10; // firmware: a reading counts as the pool after this long pumping (Pool Water Min/Max Today)
+const T_STEP_MIN = 5;      // 24 h curve: one point per 5 min, the sensor's own pace
+const T_RANGES = { "24h": "24 h", "7d": "7 j", "30d": "30 j" };
+const WD = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
+const MO = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 
 const ICONS = {
   pump: "M12 2L9.5 6H14.5L12 2M12 22L14.5 18H9.5L12 22M2 12L6 14.5V9.5L2 12M22 12L18 9.5V14.5L22 12M12 8A4 4 0 0 0 8 12A4 4 0 0 0 12 16A4 4 0 0 0 16 12A4 4 0 0 0 12 8M12 10A2 2 0 0 1 14 12A2 2 0 0 1 12 14A2 2 0 0 1 10 12A2 2 0 0 1 12 10Z",
@@ -88,6 +110,15 @@ const hhmm = (s) => {
   return m ? +m[1] * 60 + +m[2] : null;
 };
 const minOfDay = (d) => d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
+const midnight = (ms = Date.now()) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); };
+const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/** The date `ago` days before today, at local midnight (DST-safe). */
+const dayAgo = (ago) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ago); return d; };
+const num = (s) => { const v = parseFloat(s); return Number.isFinite(v) ? v : NaN; };
+/** Daily History "2026-11-13: 6.42 h 25.9/26.6 °C, 2026-11-12: 6.70 h" -> { "2026-11-13": {hours, lo, hi}, … }. */
+const parseDays = (text) => Object.fromEntries([...String(text || "").matchAll(
+  /(\d{4}-\d{2}-\d{2}): ([\d.]+) h(?: (-?[\d.]+)\/(-?[\d.]+) °C)?/g)]
+  .map((m) => [m[1], { hours: +m[2], lo: m[3] === undefined ? NaN : +m[3], hi: m[4] === undefined ? NaN : +m[4] }]));
 
 const STYLE = `
 :host {
@@ -271,13 +302,48 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .toast.show { opacity:1; transform:translate(-50%,0); }
 .toast.err { background:var(--danger); color:#fff; }
 
-/* Wide panel (Bubble popup_mode: adaptive-dialog on a screen, width_desktop 760px): day plan across the full
-   width under the header (24 h on ~700 px), then readings/alerts/Auto on the left, Pilotage and the manual
-   controls on the right. Phones never reach 680 px. */
+/* pool temperature: right after the day plan in the DOM, so it follows it on a phone and in the wide layout */
+.temp { display:flex; flex-direction:column; gap:6px; }
+.temp-h { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.temp-h .lbl { margin:0; }
+.seg.mini { display:inline-grid; grid-template-columns:repeat(3,auto); border-radius:10px; padding:3px; gap:2px; }
+.seg.mini button { height:26px; padding:0 11px; font-size:12px; border-radius:7px; }
+.temp-sum { font-size:12px; color:var(--muted); margin:0; }
+.temp-sum b { color:var(--fg); font-weight:500; }
+.temp-sum span { display:block; }
+.chart { position:relative; height:136px; background:var(--raised); border-radius:12px; touch-action:pan-y; cursor:crosshair; outline-offset:2px; }
+.chart:focus-visible { outline:2px solid var(--acc); }
+.chart svg { position:absolute; inset:0; width:100%; height:100%; overflow:visible; fill:none; }
+.chart .gl { stroke:var(--line); stroke-width:1; }
+.chart text { font-size:10px; font-family:inherit; fill:var(--muted); }
+.chart text.vl { font-weight:500; fill:var(--fg); }
+.chart .band { fill:var(--acc); opacity:.09; }
+.chart .pool { stroke:var(--acc); stroke-width:2; stroke-linejoin:round; stroke-linecap:round; }
+.chart .pipe { stroke:var(--muted); stroke-width:1.5; stroke-dasharray:3 3; stroke-linecap:round; opacity:.85; }
+.chart .xh { stroke:var(--fg); stroke-width:1; opacity:.45; }
+.chart .pt { stroke:var(--raised); stroke-width:2; }
+.chart .pt.ok { fill:var(--acc); } .chart .pt.no { fill:var(--muted); }
+.chart .rng { fill:var(--acc); opacity:.5; }
+.chart .rng.today { opacity:1; } .chart .rng.hov { opacity:.8; }
+.chart .empty { position:absolute; inset:0; display:grid; place-items:center; text-align:center; padding:0 20px; font-size:12px; color:var(--muted); cursor:default; }
+.ttip { position:absolute; top:6px; pointer-events:none; background:var(--card); color:var(--muted); box-shadow:0 2px 10px rgba(0,0,0,.18);
+  border-radius:8px; padding:5px 9px; font-size:11px; line-height:1.35; white-space:nowrap; z-index:2; }
+.ttip b { display:block; font-size:14px; font-weight:500; color:var(--fg); }
+.ttip i { display:inline-block; width:12px; height:0; border-top:2px solid var(--acc); vertical-align:3px; margin-right:5px; }
+.ttip i.no { border-top-style:dashed; border-top-color:var(--muted); }
+.tl-leg i.k-pool, .tl-leg i.k-pipe { width:14px; height:0; border-radius:0; border-top:2px solid var(--acc); vertical-align:3px; }
+.tl-leg i.k-pipe { border-top:2px dashed var(--muted); }
+.tl-leg i.k-band { background:var(--acc); opacity:.2; }
+.tl-leg i.k-rng { width:6px; height:11px; background:var(--acc); border-radius:2px; }
+
+/* Wide panel (Bubble popup_mode: adaptive-dialog on a screen, width_desktop 760px): day plan and pool
+   temperature across the full width under the header (24 h on ~700 px), then readings/alerts/Auto on the left,
+   Pilotage and the manual controls on the right. Phones never reach 680 px. */
 @container (min-width: 680px) {
   .panel { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 28px; align-items:start; padding:6px 6px 4px; }
-  .sh-head, .foot, .plan { grid-column:1 / -1; }
-  .plan { padding-bottom:20px; border-bottom:1px solid var(--line); }
+  .sh-head, .foot, .plan, .temp { grid-column:1 / -1; }
+  .temp { padding-bottom:20px; border-bottom:1px solid var(--line); }
+  .temp .chart { height:150px; }
   .plan .tl { height:34px; }
   .col { display:flex; flex-direction:column; gap:16px; min-width:0; }
   .col-state { align-self:stretch; border-right:1px solid var(--line); padding-right:14px; margin-right:-14px; }
@@ -298,6 +364,17 @@ const PANEL_HTML = `
     <div class="tl" id="tl"></div>
     <div class="tl-scale num"><span>0 h</span><span>6 h</span><span>12 h</span><span>18 h</span><span>24 h</span></div>
     <div class="tl-leg"><span><i style="background:var(--acc-soft)"></i>Low</span><span><i style="background:var(--acc);opacity:.45"></i>Impulsion Medium</span><span><i style="background:var(--acc);opacity:.8"></i>High</span><span id="legOvr" class="leg-ovr"></span></div>
+  </div>
+  <div class="temp">
+    <div class="temp-h">
+      <p class="lbl">Température du bassin</p>
+      <div class="seg mini" role="radiogroup" aria-label="Période du graphique" id="tRange">
+        ${Object.entries(T_RANGES).map(([r, l]) => `<button role="radio" data-r="${r}">${l}</button>`).join("")}
+      </div>
+    </div>
+    <p class="temp-sum num" id="tSum"></p>
+    <div class="chart" id="tChart" tabindex="0" role="img" aria-label="Température du bassin"><svg id="tSvg" aria-hidden="true"></svg><div class="ttip" id="tTip" hidden></div><div class="empty" id="tEmpty" hidden></div></div>
+    <div class="tl-leg" id="tLeg"></div>
   </div>
   <div class="col col-state">
   <div class="readings">
@@ -371,15 +448,23 @@ class PiscineCard extends HTMLElement {
   setConfig(config) {
     const variant = config.variant || "tile";
     if (!["tile", "panel"].includes(variant)) throw new Error("variant must be tile or panel");
-    this._config = { variant, layout: config.layout || "horizontal", popup_hash: config.popup_hash || "#piscine", more_path: config.more_path || MORE_PATH };
+    this._config = { variant, layout: config.layout || "horizontal", popup_hash: config.popup_hash || "#piscine", more_path: config.more_path || MORE_PATH,
+      recorder: config.recorder !== false };
     this._e = { ...DEFAULT_ENTITIES, ...(config.entities || {}) };
     this.setAttribute("variant", variant);
     this._built = false;
     this._confirm = false;
     this._manual = false;      // « Manuel » tapped while still on Auto: show the speed block
     this._local = null;        // command started from this card: {value, label, t0, echoed}
-    this._hist = null;         // today's Manual Override states [{s, t (ms)}], recorder + live changes
+    this._hist = null;         // Manual Override states of the last 24 h [{s, t (ms)}], recorder + live changes
+    this._wHist = null;        // the same for the water sensor and the commanded speed (24 h curve)
+    this._cHist = null;
     this._histDay = null; this._histAt = 0; this._histLoading = false;
+    this._range = this._config.recorder ? "24h" : "7d";
+    this._tHover = null;       // 24 h: minutes before now; 7 j / 30 j: day index
+    this._stats = null;        // 30 j: { "YYYY-MM-DD": {lo, hi} } from the statistics
+    this._statsAt = 0; this._statsLoading = false; this._statsErr = false;
+    this._tVer = 0; this._tDrawn = "";
   }
 
   set hass(hass) {
@@ -388,39 +473,77 @@ class PiscineCard extends HTMLElement {
     this.toggleAttribute("dark", !!(hass.themes && hass.themes.darkMode));
     this._update();
   }
-  connectedCallback() { this._timer = setInterval(() => this._hass && this._update(), 1000); }
-  disconnectedCallback() { clearInterval(this._timer); clearTimeout(this._toastTimer); }
+  connectedCallback() {
+    this._timer = setInterval(() => this._hass && this._update(), 1000);
+    if (this._ro && this._built) this._ro.observe(this._$("tChart"));
+  }
+  disconnectedCallback() { clearInterval(this._timer); clearTimeout(this._toastTimer); this._ro?.disconnect(); }
 
-  getCardSize() { return this._config.variant === "panel" ? 12 : 1; }
+  getCardSize() { return this._config.variant === "panel" ? 15 : 1; }
   getGridOptions() {
     if (this._config.variant === "panel") return { columns: "full", rows: "auto" };
     return this._config.layout === "vertical" ? { columns: 4, rows: "auto", min_columns: 3 } : { columns: 12, rows: "auto", min_columns: 6 };
   }
 
-  /* ---------- today's override history ---------- */
-  /** Loads the select's states since local midnight from the recorder (panel only); reloads on a new day or after 15 min. */
+  /* ---------- recorder: today's overrides, the last 24 h of water and pump speed ---------- */
+  /**
+   * One call for the last 24 h (panel only), reloaded on a new day or after 15 min and extended live in between:
+   * the select's states for the overrides on the timeline (it clamps them to today), and, with a recorder, the
+   * water sensor and the commanded speed for the temperature curve.
+   */
   _loadHistory() {
     if (this._config.variant !== "panel" || !this._hass || this._histLoading) return;
-    const mid = new Date(); mid.setHours(0, 0, 0, 0);
-    const day = mid.toDateString();
-    if (this._histDay === day && Date.now() - this._histAt < 15 * 60000) return;
+    const day = new Date().toDateString();
+    if (this._histDay === day && Date.now() - this._histAt < 15 * M_MS) return;
     this._histLoading = true;
-    const id = this._e.override;
-    this._hass.callWS({ type: "history/history_during_period", start_time: mid.toISOString(), entity_ids: [id],
+    const { override, water, commanded } = this._e;
+    const ids = this._config.recorder ? [override, water, commanded] : [override];
+    const rows = (r, id) => ((r && r[id]) || []).map((x) => ({ s: x.s, t: (x.lc ?? x.lu) * 1000 })).filter((x) => Number.isFinite(x.t));
+    this._hass.callWS({ type: "history/history_during_period", start_time: new Date(Date.now() - 24 * H_MS).toISOString(), entity_ids: ids,
       minimal_response: true, no_attributes: true, significant_changes_only: false })
       .then((r) => {
-        this._hist = ((r && r[id]) || []).map((x) => ({ s: x.s, t: (x.lc ?? x.lu) * 1000 })).filter((x) => Number.isFinite(x.t));
-        this._histDay = day; this._histAt = Date.now();
+        this._hist = rows(r, override);
+        if (this._config.recorder) { this._wHist = rows(r, water); this._cHist = rows(r, commanded); }
       })
-      .catch((err) => { console.warn("piscine-card: override history unavailable", err); this._histDay = day; this._histAt = Date.now(); })
-      .finally(() => { this._histLoading = false; this._update(); });
+      .catch((err) => { console.warn("piscine-card: history unavailable", err); if (this._config.recorder) { this._wHist = []; this._cHist = []; } })
+      .finally(() => { this._histDay = day; this._histAt = Date.now(); this._histLoading = false; this._tVer++; this._update(); });
   }
-  /** Appends a live change of the select that the loaded history does not have yet. */
-  _trackOverride() {
-    const o = this._st("override");
-    if (!o || !this._hist) return;
-    const t = Date.parse(o.last_changed), last = this._hist[this._hist.length - 1];
-    if (!last || (last.s !== o.state && t >= last.t)) this._hist.push({ s: o.state, t });
+  /** Appends live changes the loaded history does not have yet. */
+  _trackLive() {
+    const track = (list, key) => {
+      const o = this._st(key);
+      if (!o || !list) return;
+      const t = Date.parse(o.last_changed), last = list[list.length - 1];
+      if (!last || (last.s !== o.state && t >= last.t)) { list.push({ s: o.state, t }); this._tVer++; }
+    };
+    track(this._hist, "override");
+    track(this._wHist, "water");
+    track(this._cHist, "commanded");
+  }
+  /** 30 j: hourly statistics of Pool Water Min/Max Today, at most once an hour, only while that range is shown. */
+  _loadStats() {
+    if (!this._config.recorder || this._statsLoading || Date.now() - this._statsAt < H_MS) return;
+    this._statsLoading = true;
+    const { waterMin, waterMax } = this._e;
+    this._hass.callWS({ type: "recorder/statistics_during_period", start_time: dayAgo(30).toISOString(),
+      statistic_ids: [waterMin, waterMax], period: "hour", types: ["min", "max"] })
+      .then((r) => {
+        // Only the 23:00 row of each day: Min Today only falls and Max Today only rises within a day, so it holds
+        // the day's final values. HA's daily min/max would not do: its 00:00 hour still has yesterday's value.
+        const out = {};
+        const take = (id, type, field) => {
+          for (const row of (r && r[id]) || []) {
+            const d = new Date(typeof row.start === "number" ? row.start : Date.parse(row.start));
+            if (d.getHours() !== 23 || !Number.isFinite(row[type])) continue;
+            (out[dayKey(d)] ||= { lo: NaN, hi: NaN })[field] = row[type];
+          }
+        };
+        take(waterMin, "min", "lo");
+        take(waterMax, "max", "hi");
+        this._stats = out; this._statsErr = false;
+      })
+      .catch((err) => { console.warn("piscine-card: temperature statistics unavailable", err); this._stats = {}; this._statsErr = true; })
+      .finally(() => { this._statsAt = Date.now(); this._statsLoading = false; this._tVer++; this._update(); });
   }
   /** Ended overrides of today as [{speed, from, to}] in minutes of the day; the running one is drawn apart. */
   _pastOverrides(midMs, nowMs) {
@@ -512,6 +635,177 @@ class PiscineCard extends HTMLElement {
   }
   _spinSpeed() { return { Low: "3s", Medium: "1.6s", High: "0.9s" }[this._commanded()] || "0s"; }
 
+  /* ---------- pool temperature ---------- */
+  /**
+   * The last 24 h of the water sensor, one point per 5 min: {t, v (NaN while unavailable), on (pump running),
+   * ok (a pool reading: pumping for POOL_AFTER_MIN, the firmware's rule)}. Both histories are step functions.
+   */
+  _tempSeries(now) {
+    const W = this._wHist || [], C = this._cHist || [], out = [];
+    let wi = -1, ci = -1, v = NaN, on = false, seen = false, onSince = -Infinity;
+    const at = (t) => {
+      while (wi + 1 < W.length && W[wi + 1].t <= t) v = num(W[++wi].s);
+      while (ci + 1 < C.length && C[ci + 1].t <= t) {
+        const s = C[++ci].s;
+        if (!SPEEDS[s]) continue; // unavailable while HA restarted: the ESP32 kept pumping, keep its last speed
+        const isOn = s !== "Off";
+        if (isOn && !on) onSince = seen ? C[ci].t : -Infinity; // the window's first state may have started long before
+        on = isOn; seen = true;
+      }
+      out.push({ t, v, on, ok: on && Number.isFinite(v) && t - onSince >= POOL_AFTER_MIN * M_MS });
+    };
+    for (let t = now - 24 * H_MS; t < now; t += T_STEP_MIN * M_MS) at(t);
+    at(now);
+    return out;
+  }
+  /** n days, oldest first, today last: Daily History, else (30 j) the statistics; today from Min/Max Today. */
+  _tempDays(n) {
+    const hist = parseDays(this._s("history")), stats = this._stats || {}, out = [];
+    for (let ago = n - 1; ago >= 1; ago--) {
+      const date = dayAgo(ago), k = dayKey(date), h = hist[k], s = stats[k];
+      const src = h && Number.isFinite(h.lo) && Number.isFinite(h.hi) ? h : s;
+      out.push({ ago, date, lo: src ? src.lo : NaN, hi: src ? src.hi : NaN, hours: h ? h.hours : NaN });
+    }
+    out.push({ ago: 0, date: dayAgo(0), lo: this._n("waterMin"), hi: this._n("waterMax"), hours: this._n("hoursToday") });
+    return out.map((d) => ({ ...d, known: Number.isFinite(d.lo) && Number.isFinite(d.hi) }));
+  }
+
+  _renderTemp() {
+    const box = this._$("tChart");
+    if (!box) return;
+    const range = this._range, rec = this._config.recorder;
+    this.shadowRoot.querySelectorAll("#tRange button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.r === range)));
+    if (range === "30d") this._loadStats();
+    const W = box.clientWidth, H = box.clientHeight;
+    if (!W) return; // not laid out: the pop-up is closed
+    const now = Date.now();
+    const key = [range, this._tHover, W, H, this._tVer, Math.floor(now / M_MS),
+      ...["water", "waterMin", "waterMax", "history", "hoursToday"].map((k) => this._s(k))].join("|");
+    if (key === this._tDrawn) return;
+    this._tDrawn = key;
+
+    const svg = this._$("tSvg"), tip = this._$("tTip"), empty = this._$("tEmpty"), sum = this._$("tSum"), leg = this._$("tLeg");
+    const showEmpty = (msg, summary = "") => {
+      empty.hidden = false; empty.textContent = msg; svg.innerHTML = ""; tip.hidden = true;
+      sum.innerHTML = summary; leg.innerHTML = ""; box.setAttribute("aria-label", msg);
+    };
+    const nowTxt = `<b>${fmt1(this._n("water"))} °C</b> maintenant`;
+    if (!rec && range !== "7d") {
+      return showEmpty(`Pas d'historique sur le contrôleur : ${range === "24h" ? "la courbe des 24 h est" : "les 30 jours sont"} dans Home Assistant. Les 7 derniers jours, eux, sont gardés par le contrôleur.`, nowTxt);
+    }
+    if (range === "24h" && !this._wHist) return showEmpty("Chargement de l'historique…", nowTxt);
+    if (range === "30d" && !this._stats) return showEmpty("Chargement des statistiques…", nowTxt);
+    empty.hidden = true;
+
+    const L = 8, R = W - 34, TOP = 10, BOT = H - 20;
+    const yScale = (vals, top, bot) => {
+      let lo = Math.floor((Math.min(...vals) - 0.1) * 2) / 2, hi = Math.ceil((Math.max(...vals) + 0.1) * 2) / 2;
+      if (hi - lo < 1) { const m = (hi + lo) / 2; lo = Math.floor((m - 0.5) * 2) / 2; hi = lo + 1; } // a flat day isn't a storm
+      const step = hi - lo > 2.5 ? 1 : 0.5, y = (v) => bot - ((v - lo) / (hi - lo)) * (bot - top);
+      let g = "";
+      for (let v = lo; v <= hi + 1e-9; v += step)
+        g += `<line class="gl" x1="${L}" x2="${R}" y1="${y(v)}" y2="${y(v)}"/><text x="${R + 5}" y="${y(v) + 3.5}">${fmt1(v)}°</text>`;
+      return { y, grid: g };
+    };
+    let g = "", hovX = null;
+
+    if (range === "24h") {
+      const pts = this._tempSeries(now), vals = pts.filter((p) => Number.isFinite(p.v)).map((p) => p.v);
+      if (!vals.length) return showEmpty("Pas de mesure de la température ces dernières 24 h.", nowTxt);
+      const from = now - 24 * H_MS, x = (t) => L + ((t - from) / (24 * H_MS)) * (R - L), mid = midnight(now);
+      const sc = yScale(vals, TOP, BOT);
+      g += sc.grid;
+      let s0 = null; // filtration periods behind the curve
+      pts.forEach((p, i) => {
+        if (p.on && s0 === null) s0 = p.t;
+        if ((!p.on || i === pts.length - 1) && s0 !== null) {
+          g += `<rect class="band" x="${x(s0)}" y="${TOP - 4}" width="${Math.max(1, x(p.t) - x(s0))}" height="${BOT - TOP + 4}"/>`;
+          s0 = null;
+        }
+      });
+      const tick = new Date(from); tick.setMinutes(0, 0, 0);
+      do tick.setHours(tick.getHours() + 1); while (tick.getHours() % 6);
+      for (; tick.getTime() <= now; tick.setHours(tick.getHours() + 6))
+        g += `<text x="${x(tick.getTime())}" y="${H - 6}" text-anchor="middle">${tick.getHours()} h</text>`;
+      // runs of pool / pipe readings, each joined to the point before so the line only breaks where HA has no value
+      const runs = [];
+      let prev = null;
+      for (const p of pts) {
+        if (!Number.isFinite(p.v)) { prev = null; continue; }
+        const cur = runs[runs.length - 1];
+        if (prev && cur && cur.ok === p.ok) cur.pts.push(p);
+        else runs.push({ ok: p.ok, pts: prev ? [prev, p] : [p] });
+        prev = p;
+      }
+      for (const r of runs)
+        g += `<path class="${r.ok ? "pool" : "pipe"}" d="${r.pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${sc.y(p.v).toFixed(1)}`).join("")}"/>`;
+      const known = pts.filter((p) => Number.isFinite(p.v)), last = known[known.length - 1];
+      let hov = null;
+      if (this._tHover !== null) {
+        const target = now - this._tHover * M_MS;
+        hov = known.reduce((a, p) => (Math.abs(p.t - target) < Math.abs(a.t - target) ? p : a), known[0]);
+        g += `<line class="xh" x1="${x(hov.t)}" x2="${x(hov.t)}" y1="${TOP - 4}" y2="${BOT}"/>`;
+        tip.innerHTML = "<b></b><span><i></i><span></span></span>";
+        tip.querySelector("b").textContent = `${fmt1(hov.v)} °C`;
+        tip.querySelector("i").className = hov.ok ? "" : "no";
+        tip.querySelector("span span").textContent = `${hov.t < mid ? "hier " : ""}${fmtT(new Date(hov.t))} · ${
+          hov.ok ? "bassin, pompe en marche" : hov.on ? `pompe en marche depuis moins de ${POOL_AFTER_MIN} min` : "tuyau, pompe arrêtée"}`;
+        hovX = x(hov.t);
+      }
+      const dot = hov || last;
+      g += `<circle class="pt ${dot.ok ? "ok" : "no"}" cx="${x(dot.t)}" cy="${sc.y(dot.v)}" r="4"/>`;
+      // today's pool min/max as the firmware keeps them; pump stopped, the last real pool reading too
+      const lo = this._n("waterMin"), hi = this._n("waterMax");
+      let s = Number.isFinite(lo) && Number.isFinite(hi) ? `<b>${fmt1(lo)} – ${fmt1(hi)} °C</b> aujourd'hui, pompe en marche`
+        : "Pas encore de mesure du bassin aujourd'hui";
+      if (!last.ok) {
+        const lastOk = [...known].reverse().find((p) => p.ok);
+        s += `<span>Pompe ${last.on ? `en marche depuis moins de ${POOL_AFTER_MIN} min` : "arrêtée"} : ${fmt1(last.v)} °C est la température du tuyau.${
+          lastOk ? ` Bassin : ${fmt1(lastOk.v)} °C à ${fmtT(new Date(lastOk.t))}${lastOk.t < mid ? " hier" : ""}.` : ""}</span>`;
+      }
+      sum.innerHTML = s;
+      leg.innerHTML = `<span><i class="k-pool"></i>Bassin (pompe en marche depuis ${POOL_AFTER_MIN} min)</span><span><i class="k-pipe"></i>Tuyau, pompe arrêtée</span><span><i class="k-band"></i>Filtration</span>`;
+      box.setAttribute("aria-label", `Température du bassin sur 24 h, de ${fmt1(Math.min(...vals))} à ${fmt1(Math.max(...vals))} °C`);
+    } else {
+      const n = range === "30d" ? 30 : 7, days = this._tempDays(n), cw = (R - L) / n, cx = (i) => L + cw * (i + 0.5);
+      const bw = Math.min(12, cw - 3), rx = Math.min(4, bw / 2); // 30 bars on a phone: ~7 px each, 3 px apart
+      const known = days.filter((d) => d.known), vals = known.flatMap((d) => [d.lo, d.hi]);
+      const sc = yScale(vals.length ? vals : [Number.isFinite(this._n("water")) ? this._n("water") : 20], TOP + 6, BOT - 6);
+      g += sc.grid;
+      const label = (d) => (d.ago === 0 ? "auj." : n <= 7 ? WD[d.date.getDay()] : d.ago % 7 ? "" : `${d.date.getDate()} ${MO[d.date.getMonth()]}`);
+      const long = (d) => `${d.ago === 0 ? "aujourd'hui" : WD[d.date.getDay()]} ${d.date.getDate()} ${MO[d.date.getMonth()]}`;
+      days.forEach((d, i) => {
+        g += `<text x="${cx(i)}" y="${H - 6}" text-anchor="middle">${label(d)}</text>`;
+        if (!d.known) { // a dash on 7 days; on 30, a row of them before the statistics start would be noise
+          if (n <= 7) g += `<text x="${cx(i)}" y="${(TOP + BOT) / 2}" text-anchor="middle">–</text>`;
+          return;
+        }
+        const y1 = sc.y(d.hi), y2 = Math.max(sc.y(d.lo), y1 + 4);
+        g += `<rect class="rng${d.ago === 0 ? " today" : ""}${this._tHover === i ? " hov" : ""}" x="${cx(i) - bw / 2}" y="${y1}" width="${bw}" height="${y2 - y1}" rx="${rx}"/>`;
+        if (d.ago === 0) g += `<text class="vl" x="${cx(i)}" y="${y1 - 4}" text-anchor="middle">${fmt1(d.hi)}</text><text class="vl" x="${cx(i)}" y="${y2 + 11}" text-anchor="middle">${fmt1(d.lo)}</text>`;
+      });
+      const hd = this._tHover !== null ? days[this._tHover] : null;
+      if (hd) {
+        tip.innerHTML = "<b></b><span></span>";
+        tip.querySelector("b").textContent = hd.known ? `${fmt1(hd.lo)} – ${fmt1(hd.hi)} °C` : "Pas de mesure";
+        tip.querySelector("span").textContent = long(hd) + (Number.isFinite(hd.hours) ? ` · ${fmt1(hd.hours)} h de filtration` : "");
+        hovX = cx(this._tHover);
+      }
+      let s = known.length ? `<b>${fmt1(Math.min(...known.map((d) => d.lo)))} – ${fmt1(Math.max(...known.map((d) => d.hi)))} °C</b> sur ${n} jours, pompe en marche`
+        : "Pas encore de mesure";
+      if (range === "30d" && this._statsErr) s += "<span>Statistiques de Home Assistant indisponibles : seuls les 7 derniers jours sont connus.</span>";
+      else if (range === "30d" && known.length < n) s += `<span>${known.length} jour${known.length > 1 ? "s" : ""} mesuré${known.length > 1 ? "s" : ""} sur ${n}.</span>`;
+      sum.innerHTML = s;
+      leg.innerHTML = `<span><i class="k-rng"></i>Min – max du jour, pompe en marche depuis ${POOL_AFTER_MIN} min</span>`;
+      box.setAttribute("aria-label", `Température du bassin, min et max des ${n} derniers jours : ${days.map((d) => `${long(d)} ${d.known ? `${fmt1(d.lo)} à ${fmt1(d.hi)} °C` : "pas de mesure"}`).join(", ")}`);
+    }
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.innerHTML = g;
+    tip.hidden = hovX === null;
+    // Beside the crosshair, on the side with room, so it never hides the point being read nor the y labels.
+    if (hovX !== null) { const tw = tip.offsetWidth; tip.style.left = `${Math.min(Math.max(4, hovX > W / 2 ? hovX - tw - 10 : hovX + 10), W - tw - 4)}px`; }
+  }
+
   /* ---------- build ---------- */
   _build() {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
@@ -588,12 +882,45 @@ class PiscineCard extends HTMLElement {
       if (this._inOvr()) this._toast(m ? `Retour en Auto à ${fmtT(new Date(Date.now() + m * 60000))}` : "Plus de retour automatique");
       this._update();
     }));
+
+    // pool temperature: range, crosshair (pointer or arrows; Maj+flèche = 1 h on 24 h)
+    this.shadowRoot.querySelectorAll("#tRange button").forEach((b) => b.addEventListener("click", () => {
+      this._range = b.dataset.r; this._tHover = null; this._renderTemp();
+    }));
+    const box = this._$("tChart");
+    const days = () => (this._range === "30d" ? 30 : 7);
+    const hoverAt = (clientX) => {
+      const r = box.getBoundingClientRect(), f = Math.min(1, Math.max(0, (clientX - r.left - 8) / (r.width - 42)));
+      this._tHover = this._range === "24h" ? Math.round(((1 - f) * 1440) / T_STEP_MIN) * T_STEP_MIN : Math.min(days() - 1, Math.floor(f * days()));
+      this._renderTemp();
+    };
+    const leave = () => { if (this._tHover !== null) { this._tHover = null; this._renderTemp(); } };
+    box.addEventListener("pointermove", (e) => hoverAt(e.clientX));
+    box.addEventListener("pointerdown", (e) => hoverAt(e.clientX));
+    box.addEventListener("pointerleave", leave);
+    box.addEventListener("blur", leave);
+    box.addEventListener("keydown", (e) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+      e.preventDefault();
+      const back = e.key === "ArrowLeft";
+      if (this._range === "24h") {
+        const step = e.shiftKey ? 60 : T_STEP_MIN, h = this._tHover ?? 0;
+        this._tHover = e.key === "Home" ? 1440 : e.key === "End" ? 0 : Math.min(1440, Math.max(0, h + (back ? step : -step)));
+      } else {
+        const last = days() - 1, h = this._tHover ?? last;
+        this._tHover = e.key === "Home" ? 0 : e.key === "End" ? last : Math.min(last, Math.max(0, h + (back ? -1 : 1)));
+      }
+      this._renderTemp();
+    });
+    this._ro?.disconnect(); // a new setConfig rebuilds the panel
+    this._ro = new ResizeObserver(() => this._renderTemp());
+    this._ro.observe(box);
   }
 
   /* ---------- update ---------- */
   _update() {
     if (!this._built || !this._hass) return;
-    if (this._config.variant === "panel") { this._loadHistory(); this._trackOverride(); }
+    if (this._config.variant === "panel") { this._loadHistory(); this._trackLive(); }
     if (this._config.variant === "panel") this._updatePanel(); else this._updateTile();
   }
 
@@ -755,6 +1082,8 @@ class PiscineCard extends HTMLElement {
       : `Contrôleur injoignable depuis ${onl ? fmtD((Date.now() - Date.parse(onl.last_changed)) / 60000) : "?"}`;
     sy.className = "num" + (online ? "" : " stale");
     this._$("plannedTxt").textContent = `Plan seul : ${SPEEDS[planned]}`;
+
+    this._renderTemp();
   }
 }
 

@@ -129,8 +129,9 @@ you set `local: true` back).
 [home-assistant/piscine-card.js](home-assistant/piscine-card.js) is
 `custom:piscine-card`, the pool card of the Home Assistant dashboard: a tile,
 and a panel shown in a pop-up with the pump's state, today's plan timeline,
-Auto/Manuel, the forced speed and its duration. It's a plain custom element,
-no framework and no build step, in French.
+the pool's temperature (24 h, 7 days, 30 days), Auto/Manuel, the forced speed
+and its duration. It's a plain custom element, no framework and no build
+step, in French.
 
 It lives here because it's written against this firmware's entities, and
 because it now has two users that must change together:
@@ -146,8 +147,24 @@ What it needs from Home Assistant, besides the entities:
 - two scripts, which only set the Manual Override select and its timeout:
   `script.piscine_forcer_vitesse` (`vitesse`, optional `duree` in minutes)
   and `script.piscine_retour_auto`;
-- the recorder's history of the Manual Override select since midnight, for
-  the overrides already ended today on the timeline.
+- the recorder's history of the last 24 h: the Manual Override select, for
+  the overrides already ended today on the timeline, and Pool Return
+  Temperature with Pump Commanded Speed, for the temperature curve;
+- the long-term statistics of Pool Water Min/Max Today, for the 30-day view
+  (they have a `state_class` since 2026-11-17, so that view fills up from the
+  day the firmware was flashed; before that, only Daily History's 7 days).
+
+The temperature graph exists because the probe is on the return pipe: it
+reads the pool only while water flows, and with the pump stopped it drifts
+toward the equipment pad's air, warmer than the water in winter (14.5 °C in
+the pipe for a 13.1 °C pool on a November night). So, like the firmware's
+min/max, the graph only trusts readings taken after 10 minutes of pumping:
+solid line for those, dashed for the pipe. The 7- and 30-day views show each
+day's min–max from those readings: Daily History for the last 7 days, the
+statistics' 23:00 hourly row before that (Min Today only falls and Max Today
+only rises within a day, so that row holds its final values; HA's own daily
+min/max would also count the 00:00 hour, which still has the day before's
+value until the device resets it).
 
 Those scripts, the dashboard and the push alert are Home Assistant config,
 edited in its UI; they aren't in this repo.
