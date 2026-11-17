@@ -22,6 +22,7 @@
   </header>
   <nav class="tabs" role="tablist">
     <a role="tab" href="#controle" data-tab="controle" data-icon="pump">Contrôle</a>
+    <a role="tab" href="#remplissage" data-tab="remplissage" data-icon="water">Remplissage</a>
     <a role="tab" href="#avance" data-tab="avance" data-icon="tune-vertical">Avancé</a>
     <!-- From wifi-setup.yaml: app.js hides this tab on a firmware without those entities. -->
     <a role="tab" href="#wifi" data-tab="wifi" data-icon="wifi" hidden>Wi-Fi</a>
@@ -38,8 +39,14 @@
       <div class="stack">
         <h2 class="heading" data-icon="thermometer-water">Températures</h2>
         <div class="tiles" id="tilesTemps"></div>
-        <h2 class="heading sub" data-icon="water">Eau</h2>
-        <div class="tiles" id="tilesWater"></div>
+      </div>
+    </section>
+
+    <!-- ============================================================ Remplissage -->
+    <section id="tab-remplissage" class="cols water" role="tabpanel" hidden>
+      <div class="stack">
+        <!-- piscine-card's water variant (app.js) on the controller's own record: today, 30 days, 12 months -->
+        <div id="waterHost"></div>
       </div>
     </section>
 

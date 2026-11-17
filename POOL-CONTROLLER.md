@@ -567,11 +567,12 @@ no Home Assistant involved. Log in as `admin` with
 
 The page is our own, not ESPHome's stock one: it has the look of the Home
 Assistant dashboard and runs HA's pool card unchanged (see the README, "The
-device's page"). Three tabs:
+device's page"). Four tabs:
 
 | Tab | What's in it |
 |---|---|
-| **Contrôle** | The pool card's panel (pump state, today's plan timeline, the pool's temperature over the last 7 days, Auto/Manuel, forced speed and duration), the temperatures with today's pool min/max, the fill-water meter |
+| **Contrôle** | The pool card's panel (pump state, today's plan timeline, the pool's temperature over the last 7 days, Auto/Manuel, forced speed and duration), the temperatures with today's pool min/max |
+| **Remplissage** | The fill water from the device's own record (Fill Water Today, Days, Months): today, this month, the flow, litres by day over 30 days or by month over 12 (the pool card's water variant) |
 | **Avancé** | Filtration settings with their Apply gate, boost pulses, freeze-protection threshold and override timeout (the pool card's settings variant, as in Home Assistant), today's plan in detail, the last 7 days (Daily History), the device's sensors, its live log |
 | **Wi-Fi** | The connection and its statistics, joining another network, the device's clock (see "Wi-Fi and the fallback hotspot" below) |
 

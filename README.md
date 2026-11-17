@@ -133,11 +133,11 @@ and a panel shown in a pop-up with four tabs. « Pompe » has the pump's state,
 today's plan timeline, the pool's temperature (24 h, 7, 30 and 90 days, a
 year), Auto/Manuel, the forced speed and its duration, and the outdoor and
 equipment-pad temperatures; « Remplissage » the fill water today, this month
-and by day, week or month with the period's total; « Avancé » today's plan with « Recalculer »,
-the last 7 days, the controller (its link, Wi-Fi and firmware) and its
-probes; « Réglages » every setting the controller has. A third variant,
-`settings`, draws the settings alone, with a line under each saying what it
-does.
+and by day, week or month with the period's total; « Avancé » today's plan
+with « Recalculer », the last 7 days, the controller (its link, Wi-Fi and
+firmware) and its probes; « Réglages » every setting the controller has. Two
+more variants draw a part alone: `settings` the settings, with a line under
+each saying what it does, and `water` the fill water.
 A light on the tile and in the panel's header says when the controller was
 last heard: green while it talks, amber when it goes quiet or has just gone
 offline, red after 15 min; each new message sends a ring out of it.
@@ -228,12 +228,15 @@ was first written (`bridges/homeassistant/config/www/piscine/`).
 ## The device's page (`webui/`)
 
 The device serves a page of our own instead of ESPHome's stock one, with the
-look of the Home Assistant dashboard. It has three tabs:
+look of the Home Assistant dashboard. It has four tabs:
 
 - **Contrôle**, for daily use: Home Assistant's `piscine-card` panel (the
-  pump's state, today's plan timeline, Auto/Manuel, forced speed and its
-  duration), with tiles for the temperatures (the pool's with today's
-  min/max) and the filling meter.
+  pump's state, today's plan timeline, the pool's last 7 days, Auto/Manuel,
+  forced speed and its duration), with tiles for the temperatures (the
+  pool's with today's min/max).
+- **Remplissage**: the card's `water` variant on the controller's own record
+  (Fill Water Today, Days and Months): today, this month, the flow, and the
+  litres by day over 30 days or by month over 12.
 - **Avancé**: the filtration settings with their Apply gate, the boost
   pulses, the freeze-protection threshold and the override timeout (the
   card's settings variant, the rows of its « Réglages » tab in Home Assistant), today's plan in
@@ -258,11 +261,13 @@ How it fits together:
 - **Only what the device records.** The device keeps no history of its
   sensors, so a curve would only show the time a page happened to be open.
   What the page shows over time, the device records itself: today's pool
-  min/max (Pool Water Min/Max Today) and, for each of the last 7 days, the
-  hours filtered and the pool's min/max (Daily History). So the card's
-  temperature graph runs with `recorder: false` here: 7 days, with no range
-  to pick, and it has no tabs: no « Remplissage » (that history is Home Assistant's
-  statistics), and its « Avancé » and « Réglages » are the page's Avancé tab. Nor the card's
+  min/max (Pool Water Min/Max Today), each of the last 7 days' hours
+  filtered and pool min/max (Daily History), and the fill water of today,
+  the last 30 days and the last 12 months (Fill Water Today, Days, Months).
+  So the card's temperature graph runs with `recorder: false` here: 7 days,
+  with no range to pick; its fill water is the `water` variant on that
+  record, in the page's « Remplissage » tab. The panel has no tabs: its
+  « Avancé » and « Réglages » are the page's Avancé tab. Nor the card's
   light: the page's own « Connecté au contrôleur » chip is its link to the
   device. The page only keeps the Manual Override's changes in memory from
   the moment it opens (gone on reload), for the card's record of today's

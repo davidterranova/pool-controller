@@ -62,7 +62,7 @@ const run = (p, ok) => p.then(() => ok && toast(ok)).catch((e) => toast(`Refusé
 
 /* ================================================================ tabs */
 
-const TABS = ["controle", "avance", "wifi"];
+const TABS = ["controle", "remplissage", "avance", "wifi"];
 let tab = "controle";
 function route() {
   const want = location.hash.slice(1);
@@ -113,15 +113,13 @@ const TILES = [
     subTitle: "Minimum et maximum depuis minuit, mesurés pompe en marche (la sonde est sur le retour)" },
   { id: E.outdoor, name: "Extérieure", icon: "weather-partly-cloudy", group: "temps" },
   { id: E.pad, name: "Local technique", icon: "home-thermometer-outline", group: "temps" },
-  { id: E.flow, name: "Débit de remplissage", icon: "water-pump", group: "water" },
-  { id: E.volume, name: "Volume total rempli", icon: "water", group: "water" },
 ];
 for (const t of TILES) {
   t.el = h(`<div class="card tile${t.full ? " full" : ""}">
     <div class="row"><span class="ic">${icon(t.icon)}</span>
       <span class="txt"><div class="name">${t.name}</div><div class="state num"></div>
         ${t.sub ? `<div class="sub num" title="${t.subTitle}"></div>` : ""}</span></div></div>`);
-  $(t.group === "temps" ? "tilesTemps" : "tilesWater").appendChild(t.el);
+  $("tilesTemps").appendChild(t.el);
 }
 
 function updateControl() {
@@ -254,6 +252,19 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
   settings.classList.add("o1");
   $("settingsHost").replaceWith(settings);
   updaters.push(() => { if (st(E.min)) settings.hass = hass; });
+}
+
+/* ---- Remplissage: piscine-card's water variant, from the controller's own record (Fill Water Today, Days, Months)
+   rather than Home Assistant's statistics: the same readings and chart, 30 days and 12 months */
+{
+  const water = document.createElement("piscine-card");
+  water.setConfig({
+    variant: "water",
+    recorder: false,
+    entities: { flow: E.flow, volume: E.volume, fillToday: E.fillToday, fillDays: E.fillDays, fillMonths: E.fillMonths },
+  });
+  $("waterHost").replaceWith(water);
+  updaters.push(() => { if (st(E.flow)) water.hass = hass; });
 }
 
 /* ---- Plan du jour */

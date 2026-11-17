@@ -64,6 +64,11 @@
  * today, this month so far and the flow. A tab rather than one more block: the pop-up stays a pump control, and the
  * water history is one tap away.
  *
+ *   type: custom:piscine-card
+ *   variant: water       # the same, alone. With `recorder: false` (the device's page) from the controller's own
+ *                        # record instead: entities fillToday, fillDays, fillMonths (Fill Water Today / Days /
+ *                        # Months), 30 j and 12 mois.
+ *
  * « Avancé » and « Réglages » (mock-up 2026-11-17): between them, every control the controller has, as on its
  * own page's Avancé tab, so the pop-up needs no dashboard behind it. « Avancé »: today's plan with « Recalculer »,
  * the last 7 days of filtration against the plan (Daily History), the controller (its link, Wi-Fi, and its
@@ -523,6 +528,8 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .tabs button { padding:10px 10px; }
 .water { display:flex; flex-direction:column; gap:6px; }
 .water .readings { margin-bottom:12px; grid-template-columns:repeat(3,minmax(0,1fr)); }
+ha-card.water-card { display:block; color:var(--fg); padding:16px; container-type:inline-size; }
+ha-card.water-card.plain { background:var(--card); border:1px solid var(--ha-card-border-color,var(--line)); border-radius:var(--ha-card-border-radius,12px); }
 .reading.live .v { color:var(--acc); }
 .chart .bar { fill:var(--acc); }
 .chart .bar.cur { opacity:.55; } .chart .bar.hov { opacity:.8; } .chart .bar.cur.hov { opacity:.45; }
@@ -618,6 +625,23 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; } }
 `;
 
+/** The fill water: in the panel's « Remplissage » tab, and alone as `variant: water`. */
+const WATER_PANE = `
+    <div class="readings">
+      <div class="reading"><span class="l">Rempli aujourd'hui</span><span class="v num" id="wToday"></span></div>
+      <div class="reading"><span class="l">Ce mois-ci</span><span class="v num" id="wMonth"></span></div>
+      <div class="reading" id="wFlowBox"><span class="l">Débit</span><span class="v num" id="wFlow"></span></div>
+    </div>
+    <div class="temp-h">
+      <p class="lbl">Eau de remplissage</p>
+      <div class="seg mini" role="radiogroup" aria-label="Période du graphique" id="wRange">
+        ${Object.entries(W_RANGES).map(([r, l]) => `<button role="radio" data-r="${r}">${l}</button>`).join("")}
+      </div>
+    </div>
+    <p class="temp-sum num" id="wSum"></p>
+    <div class="chart" id="wChart" tabindex="0" role="img" aria-label="Eau de remplissage"><svg id="wSvg" aria-hidden="true"></svg><div class="ttip" id="wTip" hidden></div><div class="empty" id="wEmpty" hidden></div></div>
+    <div class="tl-leg" id="wLeg"></div>`;
+
 const PANEL_HTML = `
 <div class="panel">
   <div class="sh-head">
@@ -632,22 +656,7 @@ const PANEL_HTML = `
     <button role="tab" data-tab="adv" aria-selected="false">Avancé</button>
     <button role="tab" data-tab="settings" aria-selected="false">Réglages</button>
   </div>
-  <div class="water" role="tabpanel">
-    <div class="readings">
-      <div class="reading"><span class="l">Rempli aujourd'hui</span><span class="v num" id="wToday"></span></div>
-      <div class="reading"><span class="l">Ce mois-ci</span><span class="v num" id="wMonth"></span></div>
-      <div class="reading" id="wFlowBox"><span class="l">Débit</span><span class="v num" id="wFlow"></span></div>
-    </div>
-    <div class="temp-h">
-      <p class="lbl">Eau de remplissage</p>
-      <div class="seg mini" role="radiogroup" aria-label="Période du graphique" id="wRange">
-        ${Object.entries(W_RANGES).map(([r, l]) => `<button role="radio" data-r="${r}">${l}</button>`).join("")}
-      </div>
-    </div>
-    <p class="temp-sum num" id="wSum"></p>
-    <div class="chart" id="wChart" tabindex="0" role="img" aria-label="Eau de remplissage"><svg id="wSvg" aria-hidden="true"></svg><div class="ttip" id="wTip" hidden></div><div class="empty" id="wEmpty" hidden></div></div>
-    <div class="tl-leg" id="wLeg"></div>
-  </div>
+  <div class="water" role="tabpanel">${WATER_PANE}</div>
   <div class="advpane" role="tabpanel">
     <div class="sp-col">
       <section><h4 class="sp-h">Plan du jour</h4><div id="planRows"></div></section>
@@ -757,6 +766,9 @@ const SETTINGS_HTML = `
   <div class="toast" id="toast" role="status"></div>
 </ha-card>`;
 
+const WATER_HTML = `
+<ha-card class="water-card" id="waterCard"><div class="water">${WATER_PANE}</div><div class="toast" id="toast" role="status"></div></ha-card>`;
+
 const TILE_HTML = `
 <ha-card class="tile" id="tile" role="button" tabindex="0" aria-haspopup="dialog">
   <span class="ico" id="ico">${svg("pump")}</span>
@@ -769,7 +781,7 @@ const TILE_HTML = `
 class PiscineCard extends HTMLElement {
   setConfig(config) {
     const variant = config.variant || "tile";
-    if (!["tile", "panel", "settings"].includes(variant)) throw new Error("variant must be tile, panel or settings");
+    if (!["tile", "panel", "settings", "water"].includes(variant)) throw new Error("variant must be tile, panel, settings or water");
     this._config = { variant, layout: config.layout || "horizontal", popup_hash: config.popup_hash || "#piscine", more_path: config.more_path || MORE_PATH,
       recorder: config.recorder !== false, title: config.title ?? "Réglages", icons: config.icons || null,
       settings_tab: config.settings_tab !== false, temperatures: config.temperatures !== false,
@@ -791,7 +803,7 @@ class PiscineCard extends HTMLElement {
     this._beatSeen = null; this._beatAt = -1e9; // the light's last heartbeat: the message it was for, when (performance.now)
     this._statsAt = 0; this._statsLoading = false; this._statsErr = false;
     this._tVer = 0; this._tDrawn = "";
-    this._tab = "pump";        // panel: « Pompe », « Remplissage » (water), « Avancé » (adv), « Réglages » (settings)
+    this._tab = variant === "water" ? "water" : "pump"; // panel: « Pompe », « Remplissage » (water), « Avancé » (adv), « Réglages » (settings)
     this._wRange = "30d"; this._wHover = null;
     this._wStats = {};         // range -> {start (ms), rows [{t, change, state}]}, from the statistics
     this._wAt = {}; this._wDay = {}; this._wLoading = {}; this._wErr = {};
@@ -809,11 +821,11 @@ class PiscineCard extends HTMLElement {
   }
   connectedCallback() {
     this._timer = setInterval(() => this._hass && this._update(), 1000);
-    if (this._ro && this._built) { this._ro.observe(this._$("tChart")); this._ro.observe(this._$("wChart")); }
+    if (this._ro && this._built) for (const el of [this._$("tChart"), this._$("wChart")]) if (el) this._ro.observe(el);
   }
   disconnectedCallback() { clearInterval(this._timer); clearTimeout(this._toastTimer); this._ro?.disconnect(); }
 
-  getCardSize() { return { panel: 15, settings: 9 }[this._config.variant] || 1; }
+  getCardSize() { return { panel: 15, settings: 9, water: 6 }[this._config.variant] || 1; }
   getGridOptions() {
     if (this._config.variant !== "tile") return { columns: "full", rows: "auto" };
     return this._config.layout === "vertical" ? { columns: 4, rows: "auto", min_columns: 3 } : { columns: 12, rows: "auto", min_columns: 6 };
@@ -1320,6 +1332,7 @@ class PiscineCard extends HTMLElement {
    * its live state against that hour's, or the whole live state when it is lower (the ESP32 rebooted, it restarted at 0).
    */
   _waterBuckets(range) {
+    if (!this._config.recorder) return this._deviceBuckets(range);
     const st = this._wStats[range];
     if (!st) return null;
     const now = new Date();
@@ -1340,6 +1353,33 @@ class PiscineCard extends HTMLElement {
     return out;
   }
 
+  /**
+   * Without the recorder (the device's own page): the controller's own record. 30 j: Fill Water Days (the 30 closed
+   * days, newest first, from the newest's date) and Fill Water Today; 12 mois: Fill Water Months (this month's closed
+   * days, then the 11 before) plus today. NaN where it has no record (it was off, or had no clock). null without them.
+   */
+  _deviceBuckets(range) {
+    const m = (range === "12m" ? /^(\d{4})-(\d{2}): (.*)$/ : /^(\d{4})-(\d{2})-(\d{2}): (.*)$/).exec(this._s(range === "12m" ? "fillMonths" : "fillDays") || "");
+    const today = this._n("fillToday", 0), now = new Date(), vals = new Map(), out = [];
+    if (!m && !this._st("fillToday")) return null;
+    const key = (x) => (range === "12m" ? `${x.getFullYear()}-${x.getMonth()}` : dayKey(x));
+    if (m) {
+      const head = range === "12m" ? new Date(+m[1], +m[2] - 1, 1) : new Date(+m[1], +m[2] - 1, +m[3]);
+      m[m.length - 1].trim().split(/\s+/).forEach((v, i) => {
+        const x = new Date(head); if (range === "12m") x.setMonth(x.getMonth() - i); else x.setDate(x.getDate() - i);
+        vals.set(key(x), v === "-" ? NaN : +v);
+      });
+    }
+    for (let x = this._wStart(range, now); x <= now;) {
+      const next = new Date(x); if (range === "12m") next.setMonth(next.getMonth() + 1); else next.setDate(next.getDate() + 1);
+      const cur = now < next, v = vals.has(key(x)) ? vals.get(key(x)) : NaN;
+      // today is Fill Water Today; this month, its closed days so far plus today
+      out.push({ t: x.getTime(), value: cur ? (range === "12m" ? (Number.isFinite(v) ? v : 0) + today : today) : v, cur });
+      x = next;
+    }
+    return out;
+  }
+
   _renderWater() {
     const box = this._$("wChart");
     if (!box || this._tab !== "water") return;
@@ -1347,26 +1387,24 @@ class PiscineCard extends HTMLElement {
     this._loadWater("30d"); // today's reading
     this._loadWater("12m"); // this month's
     if (range === "90d") this._loadWater(range);
-
     this.shadowRoot.querySelectorAll("#wRange button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.r === range)));
     const unit = (txt) => txt.replace(/ (\S+)$/, "<small>$1</small>");
     const days = this._waterBuckets("30d"), flow = this._n("flow");
     const months = this._waterBuckets("12m");
     this._$("wToday").innerHTML = days ? unit(fmtL(days[days.length - 1].value)) : "…";
     this._$("wMonth").innerHTML = months ? unit(fmtL(months[months.length - 1].value)) : "…";
-
     this._$("wFlow").innerHTML = `${fmt1(flow)}<small>L/min</small>`;
     this._$("wFlowBox").classList.toggle("live", flow > 0);
 
     const W = box.clientWidth, H = box.clientHeight;
     if (!W) return;
-    const key = [range, this._wHover, W, H, this._wVer, Math.floor(Date.now() / M_MS), this._s("volume")].join("|");
+    const key = [range, this._wHover, W, H, this._wVer, Math.floor(Date.now() / M_MS), ...["volume", "fillToday", "fillDays", "fillMonths"].map((k) => this._s(k))].join("|");
     if (key === this._wDrawn) return;
     this._wDrawn = key;
     const svg = this._$("wSvg"), tip = this._$("wTip"), empty = this._$("wEmpty"), sum = this._$("wSum"), leg = this._$("wLeg");
     const showEmpty = (msg) => { empty.hidden = false; empty.textContent = msg; svg.innerHTML = ""; tip.hidden = true; sum.innerHTML = ""; leg.innerHTML = ""; box.setAttribute("aria-label", msg); };
     const b = this._waterBuckets(range);
-    if (!b) return showEmpty("Chargement des statistiques…");
+    if (!b) return showEmpty(this._config.recorder ? "Chargement des statistiques…" : "Le contrôleur ne garde pas d'historique de remplissage : son firmware est antérieur.");
     const known = b.filter((x) => Number.isFinite(x.value));
     if (!known.length) return showEmpty(this._wErr[range] ? "Statistiques de Home Assistant indisponibles."
       : "Pas encore de statistiques pour ce compteur : Home Assistant les calcule chaque heure.");
@@ -1578,9 +1616,9 @@ class PiscineCard extends HTMLElement {
   _build() {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     const v = this._config.variant;
-    this.shadowRoot.innerHTML = `<style>${STYLE}</style>${{ panel: PANEL_HTML, settings: SETTINGS_HTML, tile: TILE_HTML }[v]}`;
+    this.shadowRoot.innerHTML = `<style>${STYLE}</style>${{ panel: PANEL_HTML, settings: SETTINGS_HTML, water: WATER_HTML, tile: TILE_HTML }[v]}`;
     this._built = true;
-    if (v === "panel") this._wirePanel(); else if (v === "settings") this._wireSettings(); else this._wireTile();
+    if (v === "panel") this._wirePanel(); else if (v === "settings") this._wireSettings(); else if (v === "water") this._wireWater(); else this._wireTile();
   }
 
   _navigate(path, replace = false) {
@@ -1706,7 +1744,14 @@ class PiscineCard extends HTMLElement {
         t.focus(); t.click();
       });
     });
-    // fill water: range and bar under the pointer or the arrows
+    this._wireWater();
+    this._ro.observe(box);
+  }
+
+  /** Fill water, in the panel or alone: range, and the bar under the pointer or the arrows. */
+  _wireWater() {
+    if (!this._config.recorder) this.shadowRoot.querySelector('#wRange [data-r="90d"]').hidden = true; // the controller keeps days and months
+    if (this._config.variant === "water" && !customElements.get("ha-card")) this._$("waterCard").classList.add("plain"); // the device's page
     this.shadowRoot.querySelectorAll("#wRange button").forEach((b) => b.addEventListener("click", () => {
       this._wRange = b.dataset.r; this._wHover = null; this._renderWater();
     }));
@@ -1730,9 +1775,8 @@ class PiscineCard extends HTMLElement {
       this._renderWater();
     });
 
-    this._ro?.disconnect(); // a new setConfig rebuilds the panel
-    this._ro = new ResizeObserver(() => { this._renderTemp(); this._renderWater(); });
-    this._ro.observe(box);
+    this._ro?.disconnect(); // a new setConfig rebuilds the card
+    this._ro = new ResizeObserver(() => { if (this._$("tChart")) this._renderTemp(); this._renderWater(); });
     this._ro.observe(wbox);
   }
 
@@ -1742,6 +1786,7 @@ class PiscineCard extends HTMLElement {
     const v = this._config.variant;
     if (v === "panel") { this._loadHistory(); this._trackLive(); this._updatePanel(); }
     else if (v === "settings") this._updateSettings();
+    else if (v === "water") this._renderWater();
     else this._updateTile();
   }
 

@@ -72,6 +72,8 @@ svg { display: block; fill: currentColor; }
 .tabs a { position: relative; display: flex; align-items: center; gap: 8px; padding: 12px 14px; color: var(--secondary-text-color);
   text-decoration: none; font-weight: 500; font-size: 14px; }
 .tabs a svg { width: 20px; height: 20px; }
+/* four tabs on a phone: the words alone, tighter, and a scroll rather than a cut if a font runs wider */
+@media (max-width: 479px) { .tabs { overflow-x: auto; scrollbar-width: none; gap: 0; } .tabs a { padding: 12px 10px; } .tabs a svg { display: none; } }
 .tabs a[aria-selected="true"] { color: var(--acc); }
 .tabs a[aria-selected="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px 2px 0 0; background: var(--acc); }
 
@@ -86,6 +88,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 16px 16px 40px; }
 }
 .stack { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .cols.advanced > .stack { gap: 16px; }
+.cols.water { max-width: 880px; } /* one chart: a dialog's width reads better than the whole page */
 @media (max-width: 999px) {
   /* One column: the two stacks dissolve into the grid, which orders the cards for reading. */
   .cols.advanced > .stack { display: contents; }
