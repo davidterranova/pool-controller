@@ -15,6 +15,7 @@
  *   temperatures: false  # optional: no outdoor / equipment-pad block at the foot of « Pompe »
  *   controller_light: false                            # optional: no light for the controller (tile, header)
  *   controller_health: { warn: 3, alert: 15, beat: 4 }  # optional: its minutes before amber, before red; seconds between beats
+ *   firmware_repo: owner/repo  # optional: where « Vérifier » compares the firmware (default: this repo on GitHub)
  *
  * The card never writes the controller's Manual Override select itself:
  *   force a speed   script.piscine_forcer_vitesse (vitesse: Off|Low|Medium|High)
@@ -71,9 +72,11 @@
  *
  * « Avancé » and « Réglages » (mock-up 2026-11-17): between them, every control the controller has, as on its
  * own page's Avancé tab, so the pop-up needs no dashboard behind it. « Avancé »: today's plan with « Recalculer »,
- * the last 7 days of filtration against the plan (Daily History), the controller (its link, Wi-Fi, and its
- * firmware: ESPHome's version and build time, from Home Assistant's device registry) and the probes with
- * « Relire ». « Réglages »: the settings, the same rows as `variant: settings`. « Planning et réglages » at the
+ * the last 7 days of filtration against the plan (Daily History), the controller (its link, its Wi-Fi signal in
+ * dBm, % and words), the probes with « Relire », and the firmware: Firmware Version (the commit `make` compiled,
+ * git describe), ESPHome's version and build time (its entity, else Home Assistant's device registry), and
+ * « Vérifier », which asks GitHub (`firmware_repo`) whether main has changed a file the firmware is built from since
+ * that commit. It can't install: the firmware carries its owner's secrets, so `make ota` stays the way. « Réglages »: the settings, the same rows as `variant: settings`. « Planning et réglages » at the
  * foot of « Pompe » opens « Avancé ». `settings_tab: false` drops both (the device's page has its own Avancé);
  * the link then goes to `more_path`.
  *
@@ -138,6 +141,8 @@ const DEFAULT_ENTITIES = {
   wifiSsid: "sensor.piscine_pool_controller_wifi_ssid",
   wifiDisc: "sensor.piscine_pool_controller_wifi_disconnects",
   clock: "datetime.piscine_pool_controller_device_clock",
+  fwVersion: "sensor.piscine_pool_controller_firmware_version",
+  esphomeVersion: "sensor.piscine_pool_controller_esphome_version",
   sForce: "script.piscine_forcer_vitesse",
   sAuto: "script.piscine_retour_auto",
 };
@@ -157,6 +162,9 @@ const T_SPAN = { "30d": "30 jours", "90d": "90 jours", "1y": "12 mois" };
 const PROBE_GLITCH_C = 12; // a day the probe spans more than this had a bad reading (0 °C, 110 °C): its mean is dropped
 /** The controller's light (`controller_health`): minutes before amber, before red; seconds between two heartbeats. */
 const HEALTH = { warn: 3, alert: 15, beat: 4 };
+/** Where the firmware comes from, for « Vérifier » (`firmware_repo`), and the files it is built from. */
+const FIRMWARE_REPO = "davidterranova/pool-controller";
+const FIRMWARE_FILES = ["pool-controller.yaml", "wifi-setup.yaml", "webui/", "home-assistant/piscine-card.js"];
 /** Never keys: the sun and the two scripts are Home Assistant's, not the controller's. */
 const NOT_CONTROLLER = new Set(["sun", "sForce", "sAuto"]);
 const WD = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
@@ -211,7 +219,13 @@ const CTL_ROWS = [
     val: (c) => `${Math.round(c._n("wifiSignal"))} dBm · ${Math.max(0, Math.min(100, 2 * (c._n("wifiSignal") + 100)))} % · ${wifiQuality(c._n("wifiSignal")).word}`, // HA's dBm -> % rule of thumb
     sub: (c) => (c._s("wifiSsid") && c._s("wifiSsid") !== "unknown" ? `Réseau « ${c._s("wifiSsid")} »` : "") },
   { key: "wifiDisc", label: "Déconnexions Wi-Fi", sub: () => "Depuis le démarrage", icon: "wifi-alert", val: (c) => String(Math.round(c._n("wifiDisc"))) },
-  { key: "fw", label: "Firmware", icon: "chip", has: (c) => !!c._firmware(), val: (c) => c._firmware().version, sub: (c) => c._firmware().built },
+];
+/** Panel, tab « Avancé »: the firmware, and whether main has changed it since (the device page's Contrôleur › Firmware). */
+const FW_ROWS = [
+  { key: "fwVersion", label: "Version", icon: "tag-outline", has: (c) => !!c._fw().version, val: (c) => c._fw().version.label, sub: (c) => c._fw().version.sub },
+  { key: "esphomeVersion", label: "ESPHome", icon: "chip", has: (c) => !!c._fw().esphome, val: (c) => c._fw().esphome.version, sub: (c) => c._fw().esphome.built },
+  { key: "fwCheck", label: "Mise à jour", icon: "cloud-sync-outline", has: () => true, button: "Vérifier",
+    action: (c) => c._checkFirmware(), disabled: (c) => c._fwCheck.busy || !c._fw().version?.ref, sub: (c) => c._fwCheckSub() },
 ];
 /** Panel, tab « Avancé »: the probes, as the device page's Capteurs. */
 const PROBE_ROWS = [
@@ -596,6 +610,9 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
 .erow .name { flex:1; min-width:0; overflow-wrap:anywhere; }
 .erow .name span { display:block; }
 .erow .name small { display:block; font-size:12px; line-height:1.35; color:var(--muted); margin-top:1px; }
+.erow .name small.fw-up { color:var(--acc); }
+.erow .name small.fw-ok { color:var(--good); }
+.erow .name small a { color:var(--acc); font-weight:500; text-decoration:none; }
 .erow .ctl { display:flex; align-items:center; gap:10px; flex:0 1 260px; min-width:150px; }
 .erow .ctl input { flex:1; min-width:0; accent-color:var(--acc); margin:0; }
 .erow .ctl .v { min-width:64px; text-align:right; white-space:nowrap; }
@@ -667,6 +684,7 @@ const PANEL_HTML = `
     <div class="sp-col">
       <section><h4 class="sp-h">Contrôleur</h4><div id="ctlRows"></div></section>
       <section><h4 class="sp-h">Sondes</h4><div id="probeRows"></div></section>
+      <section><h4 class="sp-h">Firmware</h4><div id="fwRows"></div></section>
     </div>
   </div>
   <div class="setpane" role="tabpanel">
@@ -787,7 +805,8 @@ class PiscineCard extends HTMLElement {
     this._config = { variant, layout: config.layout || "horizontal", popup_hash: config.popup_hash || "#piscine", more_path: config.more_path || MORE_PATH,
       recorder: config.recorder !== false, title: config.title ?? "Réglages", icons: config.icons || null,
       settings_tab: config.settings_tab !== false, temperatures: config.temperatures !== false,
-      controller_light: config.controller_light !== false, health: { ...HEALTH, ...(config.controller_health || {}) } };
+      controller_light: config.controller_light !== false, health: { ...HEALTH, ...(config.controller_health || {}) },
+      firmware_repo: config.firmware_repo || FIRMWARE_REPO };
     this._e = { ...DEFAULT_ENTITIES, ...(config.entities || {}) };
     this.setAttribute("variant", variant);
     this._built = false;
@@ -802,6 +821,7 @@ class PiscineCard extends HTMLElement {
     this._tHover = null;       // 24 h: minutes before now; 7 j / 30 j: day index
     this._stats = null;        // 30 / 90 j: { "YYYY-MM-DD": {lo, hi} }, the 23:00 rows of the hourly statistics
     this._daily = null;        // 30 j – 1 an: { "YYYY-MM-DD": {mean (the probe), lo, hi (HA's day of Min/Max Today)} }
+    this._fwCheck = { busy: false, result: null }; // « Vérifier »: GitHub's answer, {text, cls, href}
     this._beatSeen = null; this._beatAt = -1e9; // the light's last heartbeat: the message it was for, when (performance.now)
     this._statsAt = 0; this._statsLoading = false; this._statsErr = false;
     this._tVer = 0; this._tDrawn = "";
@@ -970,18 +990,68 @@ class PiscineCard extends HTMLElement {
     const h = off !== null ? (off >= H.alert ? "lost" : "late") : beats && quiet >= H.alert ? "lost" : beats && quiet >= H.warn ? "late" : "live";
     return { h, seen, quiet, off };
   }
-  /**
-   * The controller's firmware, from Home Assistant's device registry (its Status entity's device): ESPHome's
-   * version and when it was compiled, « 2026.7.2 (2026-11-14 11:25:41 +0000) ». null on the device's page.
-   */
-  _firmware() {
+  /** The firmware's version (Firmware Version) and ESPHome's (its entity, else Home Assistant's device registry). */
+  _fw() {
     const reg = this._hass.entities && this._hass.entities[this._e.online];
     const dev = reg && this._hass.devices && this._hass.devices[reg.device_id];
-    const m = dev && /^(\S+)(?: \((.+)\))?$/.exec(String(dev.sw_version || ""));
-    if (!m) return null;
-    const t = m[2] ? new Date(Date.parse(m[2].replace(/^(\d{4}-\d{2}-\d{2}) /, "$1T").replace(/ ([+-]\d{2})(\d{2})$/, "$1:$2"))) : null;
+    return { version: PiscineCard.parseVersion(this._s("fwVersion")),
+      esphome: PiscineCard.parseEsphome(this._s("esphomeVersion")) || PiscineCard.parseEsphome(dev && dev.sw_version) };
+  }
+  async _checkFirmware() {
+    const v = this._fw().version;
+    if (!v || !v.ref || this._fwCheck.busy) return;
+    this._fwCheck = { busy: true, result: null }; this._update();
+    const result = await PiscineCard.checkFirmware(this._config.firmware_repo, v.ref);
+    this._fwCheck = { busy: false, result }; this._update();
+  }
+  _fwCheckSub() {
+    const { busy, result } = this._fwCheck, v = this._fw().version;
+    if (busy) return "Vérification auprès de GitHub…";
+    if (result) return result;
+    if (!v) return "Ce firmware ne dit pas de quel commit il vient : il faut l'installer avec make ota.";
+    if (!v.ref) return "Compilé hors de make : pas de commit à comparer.";
+    return "Compare cette version avec la branche main du dépôt sur GitHub.";
+  }
+  /**
+   * Firmware Version, « v1.3.0-4-g1a2b3c4-dirty » (git describe, as make compiles it) -> {label, sub, ref: what to
+   * compare on GitHub (the commit, or the tag), dirty}. Also used by the device's page.
+   */
+  static parseVersion(text) {
+    const t = String(text || "").trim();
+    if (!t || t === "unknown" || t === "unavailable") return null;
+    const m = /^(?:(v\d[\w.]*?)(?:-(\d+)-g([0-9a-f]{7,40}))?|([0-9a-f]{7,40}))(-dirty)?$/.exec(t);
+    if (!m) return { label: t, sub: "Compilé hors de make : on ne sait pas de quel commit", ref: null, dirty: false };
+    const [, tag, n, hash, bare, dirty] = m, local = dirty ? " · avec des modifications locales" : "";
+    if (bare) return { label: bare.slice(0, 7), sub: `Commit ${bare.slice(0, 7)}${local}`, ref: bare, dirty: !!dirty };
+    return { label: n ? `${tag} +${n}` : tag, sub: (hash ? `Commit ${hash.slice(0, 7)}, ${n} commit${+n > 1 ? "s" : ""} après ${tag}` : "Version publiée") + local, ref: hash || tag, dirty: !!dirty };
+  }
+  /** ESPHome's version and build time: « 2026.7.2 2026-11-17 18:05:00 +0000 » (ESPHome Version) or « 2026.7.2
+      (2026-11-14 11:25:41 +0000) » (Home Assistant's device registry) -> {version, built}. */
+  static parseEsphome(text) {
+    const m = /^(\S+)(?:\s+\(?(.+?)\)?)?$/.exec(String(text || "").trim());
+    if (!m || m[1] === "unknown" || m[1] === "unavailable") return null;
+    const t = m[2] ? new Date(Date.parse(m[2].replace(/^(\d{4}-\d{2}-\d{2}) /, "$1T").replace(/ ?([+-]\d{2}):?(\d{2})$/, "$1:$2"))) : null;
     const built = t && !isNaN(t) ? `Compilé le ${pad(t.getDate())}/${pad(t.getMonth() + 1)}/${t.getFullYear()} à ${fmtT(t)}` : m[2] ? `Compilé ${m[2]}` : "";
-    return { version: `ESPHome ${m[1]}`, built };
+    return { version: m[1], built };
+  }
+  /**
+   * Has main changed the firmware since `ref` (a commit or a tag)? GitHub's compare API, three dots: a branch not
+   * merged yet compares from where it left main. A change to a file the firmware is built from (FIRMWARE_FILES) is an
+   * update; installing it stays `make ota`, since the firmware carries its owner's secrets. -> {text, cls, href}.
+   */
+  static async checkFirmware(repo, ref) {
+    let r;
+    try { r = await fetch(`https://api.github.com/repos/${repo}/compare/${encodeURIComponent(ref)}...main`, { headers: { Accept: "application/vnd.github+json" } }); }
+    catch (err) { return { text: "GitHub injoignable : vérifiez l'accès à Internet de cet appareil.", cls: "" }; }
+    if (r.status === 404) return { text: "Version introuvable sur GitHub : compilée depuis des modifications non publiées, rien à comparer.", cls: "" };
+    if (!r.ok) return { text: `GitHub n'a pas répondu (${r.status}${r.status === 403 || r.status === 429 ? " : trop de demandes, réessayez dans une heure" : ""}).`, cls: "" };
+    const d = await r.json(), n = d.ahead_by || 0, commits = `${n} commit${n > 1 ? "s" : ""}`;
+    const branch = d.behind_by > 0 ? " Elle vient d'une branche pas encore fusionnée." : "";
+    const files = (d.files || []).map((f) => f.filename).filter((f) => FIRMWARE_FILES.some((p) => (p.endsWith("/") ? f.startsWith(p) : f === p)));
+    if (!n) return { text: d.behind_by ? "À jour : plus récente que main (une branche pas encore fusionnée)." : "À jour : c'est la version de main.", cls: "fw-ok" };
+    if (!files.length) return { text: `À jour : ${commits} sur main depuis, aucun ne touche au firmware.${branch}`, cls: "fw-ok", href: d.html_url };
+    return { text: `Mise à jour disponible : ${commits} sur main depuis, qui changent le firmware (${files.slice(0, 3).join(", ")}${files.length > 3 ? "…" : ""}). Pour l'installer : make ota depuis le dépôt.${branch}`,
+      cls: "fw-up", href: d.html_url };
   }
   /** « Hors ligne depuis 6 min », « Contrôleur muet depuis 5 min », else `live`. */
   _lightText(L, live = `Contrôleur · ${agoTxt(L.quiet)}`, mute = "Contrôleur muet") {
@@ -1553,7 +1623,7 @@ class PiscineCard extends HTMLElement {
   /* ---------- panel, tab « Avancé »: Plan du jour, 7 derniers jours, Contrôleur, Sondes (and « Réglages »' rows) ---------- */
   _wireSetPane() {
     this._wireSettingRows();
-    for (const [host, defs] of [[this._$("planRows"), PLAN_ROWS], [this._$("ctlRows"), CTL_ROWS], [this._$("probeRows"), PROBE_ROWS]]) {
+    for (const [host, defs] of [[this._$("planRows"), PLAN_ROWS], [this._$("ctlRows"), CTL_ROWS], [this._$("probeRows"), PROBE_ROWS], [this._$("fwRows"), FW_ROWS]]) {
       let sect = null;
       for (const def of defs) {
         if (def.sect) { sect = document.createElement("div"); sect.className = "esect"; sect.textContent = def.sect; host.appendChild(sect); continue; }
@@ -1562,7 +1632,7 @@ class PiscineCard extends HTMLElement {
           + (def.button ? `<button class="btn"></button>` : `<span class="val num"></span>`);
         row.querySelector(".name span").textContent = def.label;
         const r = { def, row, sect, val: row.querySelector(".val"), sub: row.querySelector("small"), btn: row.querySelector("button"), icon: null };
-        if (r.btn) { r.btn.textContent = def.button; r.btn.addEventListener("click", () => this._press(r.btn, def.key, def.ok)); }
+        if (r.btn) { r.btn.textContent = def.button; r.btn.addEventListener("click", () => (def.action ? def.action(this) : this._press(r.btn, def.key, def.ok))); }
         host.appendChild(row);
         this._paneRows.push(r);
       }
@@ -1575,9 +1645,13 @@ class PiscineCard extends HTMLElement {
       if (r.row.hidden) continue;
       const ic = (e && e.attributes.icon) || r.def.icon;
       if (r.icon !== ic) { r.row.querySelector(".ic").innerHTML = this._icon(ic); r.icon = ic; }
-      const sub = r.def.sub ? r.def.sub(this) : "";
-      r.sub.textContent = sub; r.sub.hidden = !sub;
-      if (r.btn) { r.btn.disabled = !this._online(); continue; }
+      const sub = r.def.sub ? r.def.sub(this) : "", sx = typeof sub === "object" ? sub : { text: sub };
+      const subKey = [sx.text, sx.cls, sx.href].join("|");
+      if (r.subKey !== subKey) { // only when it changes: a link rebuilt every second would lose its hover
+        r.subKey = subKey; r.sub.textContent = sx.text || ""; r.sub.className = sx.cls || ""; r.sub.hidden = !sx.text;
+        if (sx.href) { const a = document.createElement("a"); a.href = sx.href; a.target = "_blank"; a.rel = "noopener"; a.textContent = "Voir les changements"; r.sub.append(" ", a); }
+      }
+      if (r.btn) { r.btn.disabled = r.def.disabled ? r.def.disabled(this) : !this._online(); continue; }
       r.val.textContent = r.def.val(this);
       const tone = r.def.tone ? r.def.tone(this) : "";
       r.val.classList.toggle("bad", tone === "bad"); r.val.classList.toggle("warn", tone === "warn");

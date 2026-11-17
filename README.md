@@ -134,8 +134,9 @@ today's plan timeline, the pool's temperature (24 h, 7, 30 and 90 days, a
 year), Auto/Manuel, the forced speed and its duration, and the outdoor and
 equipment-pad temperatures; « Remplissage » the fill water today, this month
 and by day, week or month with the period's total; « Avancé » today's plan
-with « Recalculer », the last 7 days, the controller (its link, Wi-Fi and
-firmware) and its probes; « Réglages » every setting the controller has. Two
+with « Recalculer », the last 7 days, the controller (its link and Wi-Fi),
+its probes and its firmware, with « Vérifier » to ask GitHub whether main has
+changed it since; « Réglages » every setting the controller has. Two
 more variants draw a part alone: `settings` the settings, with a line under
 each saying what it does, and `water` the fill water.
 A light on the tile and in the panel's header says when the controller was
@@ -168,7 +169,11 @@ What it needs from Home Assistant, besides the entities:
   remplissage, `total_increasing`), for the « Remplissage » tab. Without the
   meter or the recorder, that tab isn't there;
 - the Device Clock ([wifi-setup.yaml](wifi-setup.yaml)), which changes every
-  minute: the light's heartbeat. Without it, the light only follows the link.
+  minute: the light's heartbeat. Without it, the light only follows the link;
+- Firmware Version and ESPHome Version, for « Avancé » › Firmware (before a
+  firmware that has them, ESPHome's version comes from the device registry),
+  and, for « Vérifier », a browser that reaches api.github.com. It only tells:
+  installing stays `make ota`, since the firmware carries your secrets.
 
 The temperature graph exists because the probe is on the return pipe: it
 reads the pool only while water flows, and with the pump stopped it drifts

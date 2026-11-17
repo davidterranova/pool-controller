@@ -75,6 +75,8 @@ views:
               wifiSsid: sensor.pool_controller_wifi_ssid
               wifiDisc: sensor.pool_controller_wifi_disconnects
               clock: datetime.pool_controller_device_clock    # wifi-setup.yaml too: the light's heartbeat, every minute
+              fwVersion: sensor.pool_controller_firmware_version
+              esphomeVersion: sensor.pool_controller_esphome_version
               sForce: script.piscine_forcer_vitesse
               sAuto: script.piscine_retour_auto
 
