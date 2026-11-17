@@ -51,8 +51,8 @@ The panel has four tabs, so the pop-up needs no dashboard behind it:
 
 - « Pompe »: state, today's plan, the pool's temperature (24 h to a year), Auto/Manuel, and at its foot
   the outdoor and equipment-pad temperatures (a tap opens Home Assistant's more-info, with their history);
-- « Remplissage »: the fill water. It needs the `volume` entity and the recorder; without them the tab
-  isn't there;
+- « Remplissage »: the fill water today, this month, and by day, week or month. It needs the `volume`
+  entity and the recorder; without them the tab isn't there;
 - « Avancé »: today's plan in detail with « Recalculer », the last 7 days of filtration against the
   plan, the controller's link, Wi-Fi and firmware (from the device registry), and the probes with
   « Relire ». The card's « Planning et réglages » link opens it;

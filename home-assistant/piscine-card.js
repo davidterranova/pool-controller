@@ -60,8 +60,9 @@
  * 2026-11-17). The water meter on the fill line (Piscine - Volume total remplissage, total_increasing) as HA's
  * statistics `change`: 30 j one bar a day, 90 j one a week (13 weeks from a Monday, HA's weeks), 12 mois one a
  * month, the period's total above. The running day/week/month adds what the meter counted since the last
- * compiled hour (the live state against that hour's `state`; after a reboot the meter restarts from 0). A tab
- * rather than one more block: the pop-up stays a pump control, and the water history is one tap away.
+ * compiled hour (the live state against that hour's `state`; after a reboot the meter restarts from 0). Above it,
+ * today, this month so far and the flow. A tab rather than one more block: the pop-up stays a pump control, and the
+ * water history is one tap away.
  *
  * « Avancé » and « Réglages » (mock-up 2026-11-17): between them, every control the controller has, as on its
  * own page's Avancé tab, so the pop-up needs no dashboard behind it. « Avancé »: today's plan with « Recalculer »,
@@ -521,7 +522,7 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .panel:not([data-tab="water"]) > .water, .panel:not([data-tab="adv"]) > .advpane, .panel:not([data-tab="settings"]) > .setpane { display:none; }
 .tabs button { padding:10px 10px; }
 .water { display:flex; flex-direction:column; gap:6px; }
-.water .readings { margin-bottom:12px; }
+.water .readings { margin-bottom:12px; grid-template-columns:repeat(3,minmax(0,1fr)); }
 .reading.live .v { color:var(--acc); }
 .chart .bar { fill:var(--acc); }
 .chart .bar.cur { opacity:.55; } .chart .bar.hov { opacity:.8; } .chart .bar.cur.hov { opacity:.45; }
@@ -634,6 +635,7 @@ const PANEL_HTML = `
   <div class="water" role="tabpanel">
     <div class="readings">
       <div class="reading"><span class="l">Rempli aujourd'hui</span><span class="v num" id="wToday"></span></div>
+      <div class="reading"><span class="l">Ce mois-ci</span><span class="v num" id="wMonth"></span></div>
       <div class="reading" id="wFlowBox"><span class="l">Débit</span><span class="v num" id="wFlow"></span></div>
     </div>
     <div class="temp-h">
@@ -1343,11 +1345,16 @@ class PiscineCard extends HTMLElement {
     if (!box || this._tab !== "water") return;
     const range = this._wRange;
     this._loadWater("30d"); // today's reading
-    if (range !== "30d") this._loadWater(range);
+    this._loadWater("12m"); // this month's
+    if (range === "90d") this._loadWater(range);
+
     this.shadowRoot.querySelectorAll("#wRange button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.r === range)));
     const unit = (txt) => txt.replace(/ (\S+)$/, "<small>$1</small>");
     const days = this._waterBuckets("30d"), flow = this._n("flow");
+    const months = this._waterBuckets("12m");
     this._$("wToday").innerHTML = days ? unit(fmtL(days[days.length - 1].value)) : "…";
+    this._$("wMonth").innerHTML = months ? unit(fmtL(months[months.length - 1].value)) : "…";
+
     this._$("wFlow").innerHTML = `${fmt1(flow)}<small>L/min</small>`;
     this._$("wFlowBox").classList.toggle("live", flow > 0);
 

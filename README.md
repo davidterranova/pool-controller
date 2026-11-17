@@ -132,8 +132,8 @@ you set `local: true` back).
 and a panel shown in a pop-up with four tabs. « Pompe » has the pump's state,
 today's plan timeline, the pool's temperature (24 h, 7, 30 and 90 days, a
 year), Auto/Manuel, the forced speed and its duration, and the outdoor and
-equipment-pad temperatures; « Remplissage » the fill water, by day, week or
-month with the period's total; « Avancé » today's plan with « Recalculer »,
+equipment-pad temperatures; « Remplissage » the fill water today, this month
+and by day, week or month with the period's total; « Avancé » today's plan with « Recalculer »,
 the last 7 days, the controller (its link, Wi-Fi and firmware) and its
 probes; « Réglages » every setting the controller has. A third variant,
 `settings`, draws the settings alone, with a line under each saying what it
