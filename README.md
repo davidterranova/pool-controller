@@ -132,8 +132,9 @@ you set `local: true` back).
 and a panel shown in a pop-up with two tabs. « Pompe » has the pump's state,
 today's plan timeline, the pool's temperature (24 h, 7 days, 30 days),
 Auto/Manuel, the forced speed and its duration; « Remplissage » the fill water,
-by day, week or month with the period's total. It's a plain custom element,
-no framework and no build step, in French.
+by day, week or month with the period's total. A third variant, `settings`,
+draws the controller's settings with a line under each saying what it does.
+It's a plain custom element, no framework and no build step, in French.
 
 It lives here because it's written against this firmware's entities, and
 because it now has two users that must change together:

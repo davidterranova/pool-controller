@@ -47,6 +47,12 @@
  * compiled hour (the live state against that hour's `state`; after a reboot the meter restarts from 0). A tab
  * rather than one more block: the pop-up stays a pump control, and the water history is one tap away.
  *
+ *   type: custom:piscine-card
+ *   variant: settings    # the controller's settings: the rows of its own page (Avancé › Réglages)
+ * Home Assistant's entities card cuts a long name short on a phone and has no line for a description; these
+ * rows wrap both. The device's page runs this same variant, with `icons` (name -> SVG path) where HA has
+ * <ha-icon>.
+ *
  * Layout: one column on a phone (Bubble bottom sheet). From 680 px of container width (the Bubble
  * adaptive-dialog on a screen, width_desktop 760px) the panel is two columns with the day plan and the
  * temperature across the full width under the header — layout « B » approved on the mock-up (« Screen »
@@ -84,6 +90,12 @@ const DEFAULT_ENTITIES = {
   endsAt: "sensor.piscine_pool_controller_manual_override_ends_at",
   flow: "sensor.piscine_pool_controller_piscine_debit_remplissage",
   volume: "sensor.piscine_pool_controller_piscine_volume_total_remplissage",
+  min: "number.piscine_pool_controller_min_filtration_hours",
+  max: "number.piscine_pool_controller_max_filtration_hours",
+  offset: "number.piscine_pool_controller_filtration_hour_offset",
+  warm: "number.piscine_pool_controller_warmest_part_of_day_offset",
+  pending: "binary_sensor.piscine_pool_controller_filtration_config_pending",
+  apply: "button.piscine_pool_controller_apply_filtration_config",
   sForce: "script.piscine_forcer_vitesse",
   sAuto: "script.piscine_retour_auto",
 };
@@ -103,6 +115,24 @@ const MO = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", 
 const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 const W_RANGES = { "30d": "30 j", "90d": "90 j", "12m": "12 mois" };
 const W_PERIOD = { "30d": "day", "90d": "week", "12m": "month" };
+/** variant: settings — the device page's « Réglages », in its order and words. `icon` when the entity has none. */
+const SETTINGS = [
+  { sect: "Durée de filtration · s'applique avec « Appliquer »" },
+  { key: "min", label: "Filtration minimale", sub: "Plancher, même par eau froide", icon: "timer-sand" },
+  { key: "max", label: "Filtration maximale", sub: "Plafond, même en pleine chaleur", icon: "timer-sand" },
+  { key: "offset", label: "Ajustement de durée", sub: "Ajouté à la durée calculée", icon: "timer-plus" },
+  { key: "warm", label: "Décalage du pic de chaleur", sub: "Centre du 2ᵉ bloc par rapport au midi solaire", icon: "sun-clock" },
+  { key: "apply", label: "Appliquer les réglages", sub: "Recalcule le plan du jour", icon: "check-bold", button: "Appliquer" },
+  { sect: "Impulsions · immédiat" },
+  { key: "boostDuration", label: "Durée d'une impulsion", icon: "flash" },
+  { key: "boostInterval", label: "Intervalle entre impulsions", sub: "0 = pas d'impulsion", icon: "flash-outline" },
+  { key: "highEvery", label: "Une impulsion High toutes les", sub: "Les autres sont en Medium", icon: "flash-triangle" },
+  { sect: "Hors gel · immédiat" },
+  { key: "freezeAt", label: "Low forcé sous", sub: "Quand l'eau descend sous ce seuil, quoi qu'on demande", icon: "snowflake-thermometer" },
+  { sect: "Override manuel · immédiat" },
+  { key: "timeout", label: "Retour automatique en Auto après", sub: "0 = jamais (alerte après 30 min)", icon: "timer-outline" },
+];
+const APPLIED = "Réglages appliqués : plan du jour recalculé";
 
 const ICONS = {
   pump: "M12 2L9.5 6H14.5L12 2M12 22L14.5 18H9.5L12 22M2 12L6 14.5V9.5L2 12M22 12L18 9.5V14.5L22 12M12 8A4 4 0 0 0 8 12A4 4 0 0 0 12 16A4 4 0 0 0 16 12A4 4 0 0 0 12 8M12 10A2 2 0 0 1 14 12A2 2 0 0 1 12 14A2 2 0 0 1 10 12A2 2 0 0 1 12 10Z",
@@ -137,6 +167,7 @@ const fmtL = (v) => (!Number.isFinite(v) ? "–" : v >= 10000 ? `${(v / 1000).to
   : `${Math.round(v).toLocaleString("fr-FR").replace(/\s/g, "\u00a0")} L`);
 /** Axis label: « 500 L », « 1,5 m³ ». */
 const axL = (v) => (v >= 1000 ? `${String(+(v / 1000).toFixed(2)).replace(".", ",")} m³` : `${Math.round(v)} L`);
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 /** Daily History "2026-11-13: 6.42 h 25.9/26.6 °C, 2026-11-12: 6.70 h" -> { "2026-11-13": {hours, lo, hi}, … }. */
 const parseDays = (text) => Object.fromEntries([...String(text || "").matchAll(
   /(\d{4}-\d{2}-\d{2}): ([\d.]+) h(?: (-?[\d.]+)\/(-?[\d.]+) °C)?/g)]
@@ -379,6 +410,41 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .tl-leg i.k-bar { width:8px; height:11px; background:var(--acc); border-radius:2px 2px 0 0; }
 .tl-leg i.k-cur { width:8px; height:11px; background:var(--acc); opacity:.55; border-radius:2px 2px 0 0; }
 
+/* variant: settings — the controller's settings, rows as on its own page; names and descriptions wrap */
+:host([variant=settings]) { container-type:inline-size; }
+ha-card.set-card { display:block; color:var(--fg); }
+ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-border-color,var(--line)); border-radius:var(--ha-card-border-radius,12px); }
+.set-h { display:flex; align-items:center; gap:10px; margin:0; padding:16px 16px 4px; font-size:20px; font-weight:400; }
+.set-h .hic { color:var(--muted); display:grid; }
+.set-h .hic svg, .set-h ha-icon { width:24px; height:24px; --mdc-icon-size:24px; }
+.chip { margin-left:auto; display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:500; padding:4px 10px 4px 8px;
+  border-radius:14px; background:var(--amber-soft); color:var(--amber); white-space:nowrap; }
+.chip::before { content:""; width:7px; height:7px; border-radius:50%; background:currentColor; }
+.set { padding:8px 16px 16px; }
+.banner { display:flex; gap:10px; align-items:center; flex-wrap:wrap; border-radius:12px; padding:10px 12px; font-size:13px; font-weight:500;
+  background:var(--amber-soft); color:var(--amber); margin:4px 0 8px; }
+.banner svg { width:20px; height:20px; flex:none; }
+.banner span { flex:1; min-width:180px; }
+.esect { margin:12px 0 2px; font-size:12px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.esect:first-child { margin-top:4px; }
+.erow { display:flex; align-items:center; gap:14px; min-height:48px; padding:4px 0; }
+.erow .ic { width:40px; height:40px; flex:none; display:grid; place-items:center; color:var(--state-icon-color,var(--muted)); }
+.erow .ic svg, .erow .ic ha-icon { width:24px; height:24px; --mdc-icon-size:24px; }
+.erow .name { flex:1; min-width:0; overflow-wrap:anywhere; }
+.erow .name span { display:block; }
+.erow .name small { display:block; font-size:12px; line-height:1.35; color:var(--muted); margin-top:1px; }
+.erow .ctl { display:flex; align-items:center; gap:10px; flex:0 1 260px; min-width:150px; }
+.erow .ctl input { flex:1; min-width:0; accent-color:var(--acc); margin:0; }
+.erow .ctl .v { min-width:64px; text-align:right; white-space:nowrap; }
+.erow.dirty .ctl .v { color:var(--amber); font-weight:500; }
+.btn { height:36px; padding:0 16px; border-radius:18px; border:0; cursor:pointer; font-weight:500; font-size:14px; white-space:nowrap;
+  background:var(--acc); color:var(--on-acc); flex:none; }
+.btn:disabled { background:var(--raised); color:var(--muted); cursor:not-allowed; }
+.btn.busy { opacity:.6; pointer-events:none; }
+@container (max-width: 520px) {
+  .erow { flex-wrap:wrap; }
+  .erow .ctl { flex:1 1 100%; margin-left:54px; min-width:0; }
+}
 
 /* Wide panel (Bubble popup_mode: adaptive-dialog on a screen, width_desktop 760px): day plan and pool
    temperature across the full width under the header (24 h on ~700 px), then readings/alerts/Auto on the left,
@@ -500,6 +566,16 @@ const PANEL_HTML = `
   <div class="toast" id="toast" role="status"></div>
 </div>`;
 
+const SETTINGS_HTML = `
+<ha-card class="set-card" id="setCard">
+  <h2 class="set-h"><span class="hic" id="setIcon"></span><span id="setTitle"></span><span class="chip" id="pendChip" hidden>En attente</span></h2>
+  <div class="set">
+    <div class="banner" id="pendBanner" hidden>${svg("alert")}<span>Durée de filtration modifiée : elle ne compte qu'une fois appliquée, ce qui recalcule le plan du jour.</span><button class="btn" id="applyNow">Appliquer</button></div>
+    <div id="rows"></div>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+</ha-card>`;
+
 const TILE_HTML = `
 <ha-card class="tile" id="tile" role="button" tabindex="0" aria-haspopup="dialog">
   <span class="ico" id="ico">${svg("pump")}</span>
@@ -511,9 +587,9 @@ const TILE_HTML = `
 class PiscineCard extends HTMLElement {
   setConfig(config) {
     const variant = config.variant || "tile";
-    if (!["tile", "panel"].includes(variant)) throw new Error("variant must be tile or panel");
+    if (!["tile", "panel", "settings"].includes(variant)) throw new Error("variant must be tile, panel or settings");
     this._config = { variant, layout: config.layout || "horizontal", popup_hash: config.popup_hash || "#piscine", more_path: config.more_path || MORE_PATH,
-      recorder: config.recorder !== false };
+      recorder: config.recorder !== false, title: config.title ?? "Réglages", icons: config.icons || null };
     this._e = { ...DEFAULT_ENTITIES, ...(config.entities || {}) };
     this.setAttribute("variant", variant);
     this._built = false;
@@ -534,6 +610,7 @@ class PiscineCard extends HTMLElement {
     this._wStats = {};         // range -> {start (ms), rows [{t, change, state}]}, from the statistics
     this._wAt = {}; this._wDay = {}; this._wLoading = {}; this._wErr = {};
     this._wVer = 0; this._wDrawn = "";
+    this._setRows = [];        // settings: [{def, row, input, out, editing (ms)}]
   }
 
   set hass(hass) {
@@ -548,9 +625,9 @@ class PiscineCard extends HTMLElement {
   }
   disconnectedCallback() { clearInterval(this._timer); clearTimeout(this._toastTimer); this._ro?.disconnect(); }
 
-  getCardSize() { return this._config.variant === "panel" ? 15 : 1; }
+  getCardSize() { return { panel: 15, settings: 9 }[this._config.variant] || 1; }
   getGridOptions() {
-    if (this._config.variant === "panel") return { columns: "full", rows: "auto" };
+    if (this._config.variant !== "tile") return { columns: "full", rows: "auto" };
     return this._config.layout === "vertical" ? { columns: 4, rows: "auto", min_columns: 3 } : { columns: 12, rows: "auto", min_columns: 6 };
   }
 
@@ -1032,13 +1109,87 @@ class PiscineCard extends HTMLElement {
     if (hovX !== null) { const tw = tip.offsetWidth; tip.style.left = `${Math.min(Math.max(4, hovX > W / 2 ? hovX - tw - 10 : hovX + 10), W - tw - 4)}px`; }
   }
 
+  /* ---------- variant: settings ---------- */
+  /** An mdi icon: <ha-icon> in Home Assistant, an SVG path from `icons` on the device's page. */
+  _icon(name) {
+    name = String(name || "").replace(/^mdi:/, "");
+    if (this._config.icons) { const p = this._config.icons[name]; return p ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${p}"/></svg>` : ""; }
+    return name ? `<ha-icon icon="mdi:${esc(name)}"></ha-icon>` : "";
+  }
+  _numTxt(key, v) {
+    const step = String(this._attr(key, "step") ?? 1), dec = step.includes(".") ? step.split(".")[1].length : 0;
+    return `${(+v).toFixed(dec).replace(".", ",")} ${this._attr(key, "unit_of_measurement") || ""}`.trim();
+  }
+  _wireSettings() {
+    if (!customElements.get("ha-card")) this._$("setCard").classList.add("plain"); // the device's page: no HA around
+    const head = this.shadowRoot.querySelector(".set-h");
+    head.hidden = !this._config.title;
+    this._$("setTitle").textContent = this._config.title;
+    this._$("setIcon").innerHTML = this._icon("tune-vertical");
+    const refused = (err) => { console.error("piscine-card:", err); this._toast(`Refusé : ${(err && err.message) || err}`, true); };
+    const apply = (btn) => {
+      btn.classList.add("busy");
+      this._hass.callService("button", "press", { entity_id: this._e.apply }).then(() => this._toast(APPLIED), refused)
+        .finally(() => btn.classList.remove("busy"));
+    };
+    this._$("applyNow").addEventListener("click", (ev) => apply(ev.currentTarget));
+    const host = this._$("rows");
+    let sect = null;
+    this._sects = [];
+    for (const def of SETTINGS) {
+      if (def.sect) {
+        const el = document.createElement("div"); el.className = "esect"; el.textContent = def.sect; host.appendChild(el);
+        this._sects.push(sect = { el, rows: [] });
+        continue;
+      }
+      const row = document.createElement("div"); row.className = "erow";
+      row.innerHTML = `<span class="ic"></span><span class="name"><span></span>${def.sub ? "<small></small>" : ""}</span>`
+        + (def.button ? `<button class="btn"></button>` : `<span class="ctl"><input type="range"><span class="v num"></span></span>`);
+      row.querySelector(".name span").textContent = def.label;
+      if (def.sub) row.querySelector("small").textContent = def.sub;
+      const r = { def, row, input: row.querySelector("input"), out: row.querySelector(".v"), btn: row.querySelector("button"), editing: 0, icon: null };
+      if (r.btn) { r.btn.textContent = def.button; r.btn.addEventListener("click", () => apply(r.btn)); }
+      else {
+        r.input.setAttribute("aria-label", def.label);
+        // the slider wins over pushed states while it is moved, then until the controller's echo
+        r.input.addEventListener("input", () => { r.editing = Date.now() + 60000; r.out.textContent = this._numTxt(def.key, r.input.value); row.classList.add("dirty"); });
+        r.input.addEventListener("change", () => {
+          r.editing = Date.now() + 4000;
+          this._hass.callService("number", "set_value", { entity_id: this._e[def.key], value: +r.input.value })
+            .catch((err) => { r.editing = 0; refused(err); })
+            .finally(() => { row.classList.remove("dirty"); this._update(); });
+        });
+      }
+      host.appendChild(row);
+      this._setRows.push(r);
+      if (sect) sect.rows.push(r);
+    }
+  }
+  _updateSettings() {
+    const pending = this._s("pending") === "on", now = Date.now();
+    this._$("pendChip").hidden = !pending;
+    this._$("pendBanner").hidden = !pending;
+    for (const r of this._setRows) {
+      const e = this._st(r.def.key);
+      r.row.hidden = !e; // a firmware without it (Freeze Protection Temperature before 2026-11-17)
+      if (!e) continue;
+      const ic = e.attributes.icon || r.def.icon;
+      if (r.icon !== ic) { r.row.querySelector(".ic").innerHTML = this._icon(ic); r.icon = ic; }
+      if (r.btn) { r.btn.disabled = !pending; continue; }
+      const a = e.attributes;
+      r.input.min = a.min; r.input.max = a.max; r.input.step = a.step;
+      if (now > r.editing) { r.input.value = e.state; r.out.textContent = this._numTxt(r.def.key, e.state); r.row.classList.remove("dirty"); }
+    }
+    for (const sc of this._sects) sc.el.hidden = sc.rows.every((r) => r.row.hidden);
+  }
+
   /* ---------- build ---------- */
   _build() {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
-    const panel = this._config.variant === "panel";
-    this.shadowRoot.innerHTML = `<style>${STYLE}</style>${panel ? PANEL_HTML : TILE_HTML}`;
+    const v = this._config.variant;
+    this.shadowRoot.innerHTML = `<style>${STYLE}</style>${{ panel: PANEL_HTML, settings: SETTINGS_HTML, tile: TILE_HTML }[v]}`;
     this._built = true;
-    if (panel) this._wirePanel(); else this._wireTile();
+    if (v === "panel") this._wirePanel(); else if (v === "settings") this._wireSettings(); else this._wireTile();
   }
 
   _navigate(path, replace = false) {
@@ -1182,7 +1333,9 @@ class PiscineCard extends HTMLElement {
   /* ---------- update ---------- */
   _update() {
     if (!this._built || !this._hass) return;
-    if (this._config.variant === "panel") { this._loadHistory(); this._trackLive(); this._updatePanel(); }
+    const v = this._config.variant;
+    if (v === "panel") { this._loadHistory(); this._trackLive(); this._updatePanel(); }
+    else if (v === "settings") this._updateSettings();
     else this._updateTile();
   }
 

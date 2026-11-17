@@ -4,11 +4,11 @@ Building blocks for a dashboard around this firmware, not anyone's dashboard in 
 
 | File | What it is |
 |---|---|
-| [dashboard.yaml](dashboard.yaml) | A two-view dashboard whose sections are the components: the pump (piscine-card), temperatures, plan against reality, fill water; then alerts, settings, today's plan and the controller. |
+| [dashboard.yaml](dashboard.yaml) | A two-view dashboard whose sections are the components: the pump (piscine-card), temperatures, plan against reality, fill water; then alerts, settings (piscine-card's settings variant), today's plan and the controller. |
 | [scripts.yaml](scripts.yaml) | The two scripts piscine-card calls to force a speed and to go back to Auto. |
 
-They use Home Assistant's own cards only, plus [piscine-card](../piscine-card.js) from this repo. No
-helper, no other custom card.
+They use Home Assistant's own cards only, plus [piscine-card](../piscine-card.js) from this repo (its
+panel and its settings variant). No helper, no other custom card.
 
 ## Building the dashboard
 
@@ -91,5 +91,7 @@ entity the dashboard relies on therefore can't land without the dashboard follow
   the Piscine view draws the same with Home Assistant's own cards.
 - **Settings.** Everything the controller lets you tune, grouped by when it applies: the four
   filtration-length settings wait for « Appliquer » because they reshape today's plan; freeze
-  protection, the boost pulses and the override timeout apply at once. The device's own page
-  (Avancé › Réglages) shows the same settings.
+  protection, the boost pulses and the override timeout apply at once. It is piscine-card's settings
+  variant, not Home Assistant's entities card: the latter cuts a long name short on a phone
+  (« Min filtration h… ») and has no line for what a setting does. The device's own page (Avancé ›
+  Réglages) runs the same variant, so both read alike.
