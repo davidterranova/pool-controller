@@ -129,6 +129,10 @@ main { max-width: 1240px; margin: 0 auto; padding: 16px 16px 40px; }
 .erow .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .erow .name span { display: block; }
 .erow .name small { display: block; font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); margin-top: 1px; }
+/* Firmware › Mise à jour: GitHub's verdict, and its link */
+.erow .name small.fw-up, .erow .name small a { color: var(--acc); }
+.erow .name small.fw-ok { color: var(--ok); }
+.erow .name small a { font-weight: 500; text-decoration: none; }
 .erow .val { text-align: right; white-space: nowrap; }
 .erow .val.bad { color: var(--danger); font-weight: 500; }
 .erow .val.good { color: var(--secondary-text-color); }

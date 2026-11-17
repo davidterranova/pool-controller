@@ -65,6 +65,8 @@ export const E = {
   fillToday: "sensor/Fill Water Today",
   fillDays: "text_sensor/Fill Water Days",
   fillMonths: "text_sensor/Fill Water Months",
+  fwVersion: "text_sensor/Firmware Version",
+  esphomeVersion: "text_sensor/ESPHome Version",
   // From wifi-setup.yaml: the page hides what a firmware without it doesn't have.
   wifiMode: "text_sensor/WiFi Mode",
   wifiSignal: "sensor/WiFi Signal",

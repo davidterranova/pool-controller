@@ -1,10 +1,11 @@
 /*
- * The controller's own page: « Contrôle » runs Home Assistant's piscine-card (unchanged, fed by
- * esphome-hass.js) next to HA-style tiles; « Avancé » has the settings, today's plan, the device's
- * sensors and its live log; « Wi-Fi » (wifi-setup.yaml) its connection, statistics and a way to
- * join a network. No charts: the device keeps no history of its sensors, only what it records
- * itself (today's water min/max, and each of the last 7 days). Everything talks to the ESP32 only,
- * so it keeps working while Home Assistant is down.
+ * The controller's own page: « Contrôle » runs Home Assistant's piscine-card (unchanged, fed by
+ * esphome-hass.js) next to HA-style tiles; « Remplissage » the card's water variant; « Avancé » the
+ * settings, today's plan, the device's sensors and its live log; « Contrôleur » its Wi-Fi
+ * (wifi-setup.yaml: connection, statistics, joining a network) and its firmware. The device keeps no
+ * history of its sensors, so the only charts are of what it records itself: the pool's min/max and
+ * filtration of the last 7 days, and the fill water of 30 days and 12 months. Everything talks to the
+ * ESP32 only (but « Vérifier », which asks GitHub), so it keeps working while Home Assistant is down.
  */
 import { EspHass, E } from "./esphome-hass.js";
 import { ICONS } from "./icons.js";
@@ -62,10 +63,10 @@ const run = (p, ok) => p.then(() => ok && toast(ok)).catch((e) => toast(`Refusé
 
 /* ================================================================ tabs */
 
-const TABS = ["controle", "remplissage", "avance", "wifi"];
+const TABS = ["controle", "remplissage", "avance", "controleur"];
 let tab = "controle";
 function route() {
-  const want = location.hash.slice(1);
+  const want = location.hash.slice(1) === "wifi" ? "controleur" : location.hash.slice(1); // the tab's old name
   tab = TABS.includes(want) ? want : "controle";
   for (const t of TABS) {
     $(`tab-${t}`).hidden = t !== tab;
@@ -368,8 +369,8 @@ const orDash = (id) => () => s(id) || "—";
 
   let joiningTo = null, lastMode = null, netsKey = "";
   updaters.push(() => {
-    // The tab only exists on a firmware with wifi-setup.yaml.
-    document.querySelector('.tabs a[data-tab="wifi"]').hidden = !st(E.wifiMode);
+    // The section only exists on a firmware with wifi-setup.yaml.
+    $("wifiStack").hidden = !st(E.wifiMode);
     if (!st(E.wifiMode)) return;
     const m = mode(), chip = $("wifiChip");
     chip.className = `chip ${m === "Connected" ? "ok" : m === "Hotspot" ? "warn" : ""}`;
@@ -442,6 +443,39 @@ const orDash = (id) => () => s(id) || "—";
   });
 }
 
+/* ---- Firmware: the commit `make` compiled (Firmware Version), ESPHome's version, and « Vérifier », which asks GitHub
+   whether main has changed the firmware since. The card's own parsing and check, so both hosts say the same. */
+{
+  const Card = customElements.get("piscine-card"), host = $("fwRows");
+  const version = () => Card.parseVersion(s(E.fwVersion)), esphome = () => Card.parseEsphome(s(E.esphomeVersion));
+  valueRow(host, { id: E.fwVersion, label: "Version", iconName: "tag-outline", value: () => version()?.label || "—", sub: () => version()?.sub || "" });
+  valueRow(host, { id: E.esphomeVersion, label: "ESPHome", iconName: "chip", value: () => esphome()?.version || "—", sub: () => esphome()?.built || "" });
+  const row = h(`<div class="erow"><span class="ic">${icon("cloud-sync-outline")}</span><span class="name"><span>Mise à jour</span><small></small></span>
+    <button class="btn">Vérifier</button></div>`);
+  host.appendChild(row);
+  const small = row.querySelector("small"), btn = row.querySelector("button");
+  let busy = false, result = null, drawn = "";
+  btn.addEventListener("click", async () => {
+    const v = version();
+    if (!v?.ref || busy) return;
+    busy = true; result = null; update();
+    result = await Card.checkFirmware("davidterranova/pool-controller", v.ref);
+    busy = false; update();
+  });
+  updaters.push(() => {
+    const v = version();
+    const r = busy ? { text: "Vérification auprès de GitHub…" } : result
+      || { text: !v ? "Ce firmware ne dit pas de quel commit il vient : il faut l'installer avec make ota."
+        : !v.ref ? "Compilé hors de make : pas de commit à comparer." : "Compare cette version avec la branche main du dépôt sur GitHub." };
+    btn.disabled = busy || !v?.ref;
+    const key = [r.text, r.cls, r.href].join("|");
+    if (key === drawn) return; // a link rebuilt every second would lose its hover
+    drawn = key;
+    small.className = r.cls || ""; small.textContent = r.text;
+    if (r.href) small.append(" ", h(`<a href="${esc(r.href)}" target="_blank" rel="noopener">Voir les changements</a>`));
+  });
+}
+
 /* ---- Alerts above both tabs: on the hotspot, and a clock that was never set */
 {
   const host = $("alerts");
@@ -452,7 +486,7 @@ const orDash = (id) => () => s(id) || "—";
     const d = new Date();
     return run(hass.setDateTime(E.clock, localStamp(d)), `Horloge du contrôleur réglée sur ce navigateur (${clock(d)})`);
   };
-  const goWifi = () => (location.hash = "#wifi");
+  const goWifi = () => (location.hash = "#controleur");
   updaters.push(() => {
     // No internet, no SNTP: the device can't place today's plan. This page has a clock; hand it over,
     // once per page load, and only when the device has none at all.

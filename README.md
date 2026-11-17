@@ -247,8 +247,10 @@ look of the Home Assistant dashboard. It has four tabs:
   card's settings variant, the rows of its « Réglages » tab in Home Assistant), today's plan in
   detail, the last 7 days (hours filtered, pool min/max), the device's
   sensors, and its live log.
-- **Wi-Fi** (see below): the connection and its statistics, and a way to
-  join a network. Only shown when the device has those entities.
+- **Contrôleur**: a Wi-Fi section (see below: the connection and its
+  statistics, and a way to join a network; only when the device has those
+  entities) and a Firmware one (the commit it was built from, ESPHome's
+  version, and « Vérifier », as in the card's « Avancé »).
 
 How it fits together:
 
@@ -324,7 +326,7 @@ same way:
   `pool-controller`; its page answers at http://192.168.4.1, still behind
   the web login. Not ESPHome's `captive_portal`: that answers every page
   request itself, without login, so the page would be unreachable.
-- **Join a network from the page** (Wi-Fi tab): pick one of the networks
+- **Join a network from the page** (Contrôleur tab, Wi-Fi): pick one of the networks
   nearby or type it, give the password, « Se connecter ». The device tries
   for 30 s and saves the network only if it connects; otherwise it keeps the
   current one. The password is held on the device and never sent back to a
