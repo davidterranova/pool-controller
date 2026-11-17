@@ -1,0 +1,278 @@
+# Pool Controller — a Home Assistant dashboard built from this firmware's entities (see README.md here).
+#
+# Each section is one component; take the whole file (dashboard ⋮ → Edit dashboard → ⋮ → Raw configuration
+# editor) or copy the sections you want into a dashboard of your own. Entity ids are a fresh install's
+# (`make ha-dashboard-check` checks them against pool-controller.yaml); on an install whose device was
+# renamed, replace the `pool_controller_` prefix (README.md, « Entity ids »).
+#
+# Only Home Assistant's own cards, plus piscine-card from this repo (Marketplace, « Piscine Card »).
+title: Piscine
+views:
+  - title: Piscine
+    path: piscine
+    icon: mdi:pool
+    type: sections
+    max_columns: 3
+    sections:
+      # ── Component: the pump ────────────────────────────────────────────────────────────────────────
+      # piscine-card's panel: state, today's plan, the pool's temperature (24 h / 7 j / 30 j), Auto/Manuel.
+      # Its defaults are one particular install's entity ids, so every entity is given here. It calls the
+      # two scripts of scripts.yaml.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Pompe
+            icon: mdi:pump
+          - type: custom:piscine-card
+            variant: panel
+            more_path: /dashboard-piscine/reglages   # « Planning, réglages » opens the Réglages view below
+            grid_options: {columns: full}
+            entities:
+              override: select.pool_controller_manual_override
+              commanded: sensor.pool_controller_pump_commanded_speed
+              planned: sensor.pool_controller_pump_planned_speed
+              nextAt: sensor.pool_controller_next_speed_change
+              nextTo: sensor.pool_controller_next_planned_speed
+              b1s: sensor.pool_controller_schedule_block_1_start
+              b1e: sensor.pool_controller_schedule_block_1_end
+              b2s: sensor.pool_controller_schedule_block_2_start
+              b2e: sensor.pool_controller_schedule_block_2_end
+              hoursToday: sensor.pool_controller_filtration_hours_today
+              hoursPlanned: sensor.pool_controller_planned_filtration_hours
+              water: sensor.pool_controller_pool_return_temperature
+              waterMin: sensor.pool_controller_pool_water_min_today
+              waterMax: sensor.pool_controller_pool_water_max_today
+              history: sensor.pool_controller_daily_history
+              outdoor: sensor.pool_controller_outdoor_temperature
+              online: binary_sensor.pool_controller_status
+              stuck: binary_sensor.pool_controller_manual_override_active
+              notComputed: binary_sensor.pool_controller_schedule_not_computed
+              recomputed: sensor.pool_controller_last_recomputed_at
+              boostInterval: number.pool_controller_boost_pulse_interval
+              boostDuration: number.pool_controller_boost_pulse_duration
+              highEvery: number.pool_controller_high_boost_frequency
+              sun: sun.sun
+              timeout: number.pool_controller_manual_override_timeout
+              freezeAt: number.pool_controller_freeze_protection_temperature
+              endsAt: sensor.pool_controller_manual_override_ends_at
+              sForce: script.piscine_forcer_vitesse
+              sAuto: script.piscine_retour_auto
+
+      # ── Component: temperatures ────────────────────────────────────────────────────────────────────
+      # The three probes as measured. The pool probe sits on the return pipe: pump stopped, it reads the
+      # pipe drifting toward the equipment pad, so its curve and its daily mean include the pipe. The
+      # pool's own range (pumping readings only) is the card's temperature graph.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Températures
+            icon: mdi:thermometer-water
+          - type: history-graph
+            title: Sondes, 24 h
+            hours_to_show: 24
+            grid_options: {columns: full}
+            entities:
+              - entity: sensor.pool_controller_pool_return_temperature
+                name: Retour filtre (bassin si pompe en marche)
+              - entity: sensor.pool_controller_equipment_pad_temperature
+                name: Local technique
+              - entity: sensor.pool_controller_outdoor_temperature
+                name: Extérieur
+          - type: statistics-graph
+            title: Sondes, moyenne du jour (90 jours)
+            period: day
+            days_to_show: 90
+            chart_type: line
+            stat_types: [mean]
+            grid_options: {columns: full}
+            entities:
+              - entity: sensor.pool_controller_pool_return_temperature
+                name: Retour filtre
+              - entity: sensor.pool_controller_equipment_pad_temperature
+                name: Local technique
+              - entity: sensor.pool_controller_outdoor_temperature
+                name: Extérieur
+
+      # ── Component: pump, plan against reality ──────────────────────────────────────────────────────
+      # What the plan alone would do, what the pump was told, and the override that made the difference.
+      # Raw history (a timeline per entity), so exact; the recorder keeps about 10 days of it.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Plan et réalité
+            icon: mdi:chart-timeline-variant
+          - type: history-graph
+            title: Vitesse de la pompe, 24 h
+            hours_to_show: 24
+            grid_options: {columns: full}
+            entities:
+              - entity: sensor.pool_controller_pump_planned_speed
+                name: Plan
+              - entity: sensor.pool_controller_pump_commanded_speed
+                name: Pompe
+              - entity: select.pool_controller_manual_override
+                name: Override
+          # Each day climbs to its total and falls back at midnight, against the day's planned hours.
+          # Raw history rather than daily statistics: Filtration Hours Today resets at midnight, and a
+          # statistics day also counts the value it starts with, so a short day would show the day before.
+          - type: history-graph
+            title: Filtration, 7 jours
+            hours_to_show: 168
+            grid_options: {columns: full}
+            entities:
+              - entity: sensor.pool_controller_filtration_hours_today
+                name: Réalisé
+              - entity: sensor.pool_controller_planned_filtration_hours
+                name: Planifié
+
+      # ── Component: fill water ──────────────────────────────────────────────────────────────────────
+      # The water meter on the fill line. Its total only grows, so its daily statistics (change) are exact.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Eau de remplissage
+            icon: mdi:water
+          - type: tile
+            entity: sensor.pool_controller_piscine_debit_remplissage
+            name: Débit
+            grid_options: {columns: 6}
+          - type: statistic
+            entity: sensor.pool_controller_piscine_volume_total_remplissage
+            name: Aujourd'hui
+            stat_type: change
+            period: {calendar: {period: day}}
+            grid_options: {columns: 6}
+          - type: statistics-graph
+            title: Remplissage par jour (30 jours)
+            period: day
+            days_to_show: 30
+            chart_type: bar
+            stat_types: [change]
+            grid_options: {columns: full}
+            entities:
+              - entity: sensor.pool_controller_piscine_volume_total_remplissage
+                name: Volume
+
+  - title: Réglages
+    path: reglages
+    icon: mdi:cog
+    type: sections
+    max_columns: 3
+    sections:
+      # ── Component: alerts ──────────────────────────────────────────────────────────────────────────
+      - type: grid
+        cards:
+          - type: markdown
+            visibility:
+              - condition: state
+                entity: binary_sensor.pool_controller_manual_override_active
+                state: "on"
+            grid_options: {columns: full}
+            content: >-
+              ## ⚠️ Filtration en pause
+
+              **Manual Override** est sur **{{ states('select.pool_controller_manual_override') }}** depuis
+              plus de 30 min, sans durée limite : la pompe ne suit plus son plan. Repasser sur **Auto**, ou
+              donner une durée à l'override (le contrôleur reviendra alors en Auto tout seul).
+          - type: markdown
+            visibility:
+              - condition: state
+                entity: binary_sensor.pool_controller_schedule_not_computed
+                state: "on"
+            grid_options: {columns: full}
+            content: >-
+              ## ⚠️ Plan du jour non calculé
+
+              Le contrôleur n'a pas pu lire la température ou l'heure du lever du soleil : la pompe peut
+              rester arrêtée. Vérifier les sondes, puis **Recalculer le plan**.
+
+      # ── Component: settings ────────────────────────────────────────────────────────────────────────
+      # Everything the controller lets you tune, in the same sections, order and words as the controller's
+      # own page (Avancé › Réglages, webui/app.js), so both screens read alike. The four filtration-length
+      # settings wait for « Appliquer » (they reshape today's plan); the others apply at once.
+      - type: grid
+        cards:
+          - type: entities
+            title: Réglages
+            grid_options: {columns: full}
+            entities:
+              - type: section
+                label: Durée de filtration · s'applique avec « Appliquer »
+              - entity: number.pool_controller_min_filtration_hours
+                name: Filtration minimale
+              - entity: number.pool_controller_max_filtration_hours
+                name: Filtration maximale
+              - entity: number.pool_controller_filtration_hour_offset
+                name: Ajustement de durée
+              - entity: number.pool_controller_warmest_part_of_day_offset
+                name: Décalage du pic de chaleur
+              - entity: binary_sensor.pool_controller_filtration_config_pending
+                name: Réglages en attente
+              - entity: button.pool_controller_apply_filtration_config
+                name: Appliquer les réglages
+              - type: section
+                label: Impulsions · immédiat
+              - entity: number.pool_controller_boost_pulse_duration
+                name: Durée d'une impulsion
+              - entity: number.pool_controller_boost_pulse_interval
+                name: Intervalle entre impulsions
+              - entity: number.pool_controller_high_boost_frequency
+                name: Une impulsion High toutes les
+              - type: section
+                label: Hors gel · immédiat
+              - entity: number.pool_controller_freeze_protection_temperature
+                name: Low forcé sous
+              - type: section
+                label: Override manuel · immédiat
+              - entity: number.pool_controller_manual_override_timeout
+                name: Retour automatique en Auto après
+
+      # ── Component: today's plan and the controller ─────────────────────────────────────────────────
+      - type: grid
+        cards:
+          - type: entities
+            title: Plan du jour
+            grid_options: {columns: full}
+            entities:
+              - entity: sensor.pool_controller_planned_filtration_hours
+                name: Filtration planifiée
+              - entity: sensor.pool_controller_filtration_hours_today
+                name: Filtration réalisée
+              - entity: sensor.pool_controller_schedule_block_1_start
+                name: Bloc 1, début
+              - entity: sensor.pool_controller_schedule_block_1_end
+                name: Bloc 1, fin
+              - entity: sensor.pool_controller_schedule_block_2_start
+                name: Bloc 2, début
+              - entity: sensor.pool_controller_schedule_block_2_end
+                name: Bloc 2, fin
+              - entity: sensor.pool_controller_next_speed_change
+                name: Prochain changement
+              - entity: sensor.pool_controller_next_planned_speed
+                name: Vers
+              - entity: sensor.pool_controller_last_recomputed_at
+                name: Plan calculé à
+              - entity: button.pool_controller_recompute_schedule_now
+                name: Recalculer le plan
+          - type: entities
+            title: Contrôleur
+            grid_options: {columns: full}
+            entities:
+              - entity: binary_sensor.pool_controller_status
+                name: Lien avec Home Assistant
+              - entity: sensor.pool_controller_pump_commanded_speed
+                name: Vitesse de la pompe
+              - entity: sensor.pool_controller_pump_planned_speed
+                name: Vitesse du plan
+              - entity: sensor.pool_controller_pool_return_temperature
+                name: Sonde retour filtre
+              - entity: sensor.pool_controller_equipment_pad_temperature
+                name: Local technique
+              - entity: sensor.pool_controller_outdoor_temperature
+                name: Extérieur
+              - entity: button.pool_controller_update_temperature_sensors_now
+                name: Relire les sondes
+              - entity: sensor.pool_controller_wifi_signal
+                name: Signal Wi-Fi
+              - entity: sensor.pool_controller_wifi_disconnects
+                name: Déconnexions Wi-Fi

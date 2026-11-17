@@ -2,3 +2,4 @@ secrets.yaml
 .esphome/
 .vscode/
 webui/dist/
+__pycache__/

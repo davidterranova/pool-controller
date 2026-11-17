@@ -19,7 +19,7 @@ repo itself — layout and tooling.
 | `wifi-setup.yaml` | Package included by `pool-controller.yaml`: fallback hotspot, joining a network from the page, Wi-Fi statistics, clock from the browser (see below). |
 | `secrets.yaml` | Wi-Fi credentials, API encryption key, OTA password. Gitignored — create your own (see below). |
 | `Makefile` | Validate / build / flash / OTA / status tooling. |
-| `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS). |
+| `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS). `dashboard/`: dashboard components for these entities and the scripts the card calls, with a guide ([home-assistant/dashboard/README.md](home-assistant/dashboard/README.md)). |
 | `hacs.json` | Tells the Marketplace (HACS) which file this repo publishes: the card above, from each GitHub release. |
 | `tools/webui-mock/` | Local mock of the device's web UI, for working on the page without flashing (see below). |
 | `webui/` | The device's own web page, built around the same `piscine-card` (see below). `make webui` bundles it into `webui/dist/` (gitignored), which the firmware embeds. |
@@ -87,6 +87,7 @@ repo itself — layout and tooling.
 | `make mock-ui` | Serve a local mock of the device's web UI at http://localhost:8080/ (see below). `MOCK_PORT=` to change the port, `MOCK_INDEX=path.html` to serve your own page. |
 | `make mock-webui` | `make mock-ui` serving the page from its sources in `webui/`, reloading on save (see below). `MOCK_HOTSPOT=1` starts the simulated device on its hotspot, with no clock. |
 | `make mock-ui-check` | Print the web UI layout (sections and order) and fail on any entity type the mock can't render. Runs in CI. |
+| `make ha-dashboard-check` | Fail when the Home Assistant dashboard components in `home-assistant/dashboard/` name an entity the firmware doesn't have, or leave one out of the pool card. Runs in CI. |
 | `make clean` | Remove the local build cache (`.esphome/`). |
 
 `PORT` (serial) and `HOST` (network) both auto-detect and can be overridden
@@ -166,8 +167,12 @@ only rises within a day, so that row holds its final values; HA's own daily
 min/max would also count the 00:00 hour, which still has the day before's
 value until the device resets it).
 
-Those scripts, the dashboard and the push alert are Home Assistant config,
-edited in its UI; they aren't in this repo.
+The two scripts, and a dashboard built from this firmware's entities, are in
+[home-assistant/dashboard/](home-assistant/dashboard/README.md) as generic
+building blocks (a fresh install's entity ids, Home Assistant's own cards),
+with a guide; `make ha-dashboard-check` keeps them in step with the firmware.
+Any particular install's own dashboards and alerts stay in that Home
+Assistant.
 
 ### Installing it in Home Assistant
 
