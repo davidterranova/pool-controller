@@ -224,12 +224,17 @@ sensor:
   # Temperature's pumping readings only (see its on_value above). Unknown
   # until the pump has run 10 min today. Closed into Daily History at
   # midnight.
+  # state_class makes HA keep their long-term statistics, which outlive
+  # Daily History's 7 days: the pool card's 30-day view reads each day from
+  # its 23:00 hourly row (min of Min Today, max of Max Today). Not HA's daily
+  # min/max: its 00:00 hour still holds yesterday's value until the reset.
   - platform: template
     name: "Pool Water Min Today"
     id: water_min_today_sensor
     web_server: {sorting_group_id: grp_sensors, sorting_weight: 12}
     unit_of_measurement: "°C"
     device_class: temperature
+    state_class: measurement
     icon: mdi:thermometer-chevron-down
     accuracy_decimals: 1
     update_interval: 5min
@@ -242,6 +247,7 @@ sensor:
     web_server: {sorting_group_id: grp_sensors, sorting_weight: 14}
     unit_of_measurement: "°C"
     device_class: temperature
+    state_class: measurement
     icon: mdi:thermometer-chevron-up
     accuracy_decimals: 1
     update_interval: 5min

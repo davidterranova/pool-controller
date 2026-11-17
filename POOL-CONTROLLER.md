@@ -265,7 +265,11 @@ Re-evaluated every 30 seconds, highest priority wins:
      so with the pump stopped it reads the pipe cooling or warming toward
      the equipment pad, not the pool. Unknown until the pump has run 10
      minutes today; kept across reboots; closed into Daily History at
-     midnight.
+     midnight. Both are `state_class: measurement`, so Home Assistant keeps
+     their long-term statistics beyond Daily History's 7 days; the pool
+     card's 30-day view reads each day's final values from the 23:00 hourly
+     row, since HA's 00:00 hour still holds the previous day's value until
+     the reset.
 4. **Hot-night keep-alive** — only reached when the autonomous schedule
    above says `Off` (i.e. outside both blocks) and only overnight, before
    today's sunrise or after today's sunset: if `Pool Return Temperature` is
