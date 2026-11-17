@@ -23,8 +23,8 @@ Target:
 
 | WP | What | Depends on | Branch | Status | PR |
 |---|---|---|---|---|---|
-| 0 | Card 1.3.1: parse ESPHome 2026.7's version string (« … (config hash …, built YYYY-MM-DD HH:MM:SS +0000) ») | — | fix/card-esphome-version-built | in progress | |
-| 1 | Spike: confirm the runtime hooks on hardware with ESPHome 2026.11 | — | | todo | |
+| 0 | Card 1.3.1: parse ESPHome 2026.7's version string (« … (config hash …, built YYYY-MM-DD HH:MM:SS +0000) ») | — | fix/card-esphome-version-built | done | #28 (merged) |
+| 1 | Spike: confirm the runtime hooks on hardware with ESPHome 2026.11 | — | spike/wp1-runtime-hooks | in progress | |
 | 2 | Firmware: settings package, no `!secret` left | 1 | | todo | |
 | 3 | Controller's page: setup wizard, « Contrôleur » sections | contract below (UI on the mock); 2 to finish | | todo | |
 | 4 | Card: Firmware section on the update entity, position/timezone from HA | contract below; 6 to finish | | todo | |
@@ -76,7 +76,7 @@ These are agreed up front, so 3, 4 and the mock can proceed before 2 and 6. Name
 ## Work packages
 
 ### WP0: card 1.3.1 hotfix
-- [ ] `PiscineCard.parseEsphome` (home-assistant/piscine-card.js) takes the date after `built `; harness case for the 2026.7 string; VERSION 1.3.1
+- [x] `PiscineCard.parseEsphome` (home-assistant/piscine-card.js) takes the date after `built `; harness case for the 2026.7 string; VERSION 1.3.1
 
 ### WP1: spike (findings in the log below)
 - [ ] ESPHome 2026.11 builds and runs this firmware (flash use with http_request + update + improv)
