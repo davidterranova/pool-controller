@@ -49,8 +49,8 @@ pop-up; the tile is the card's own:
 
 The panel has three tabs, so the pop-up needs no dashboard behind it:
 
-- « Pompe »: state, today's plan, the pool's temperature, Auto/Manuel, and at its foot the outdoor and
-  equipment-pad temperatures (a tap opens Home Assistant's more-info, with their history);
+- « Pompe »: state, today's plan, the pool's temperature (24 h to a year), Auto/Manuel, and at its foot
+  the outdoor and equipment-pad temperatures (a tap opens Home Assistant's more-info, with their history);
 - « Remplissage »: the fill water. It needs the `volume` entity and the recorder; without them the tab
   isn't there;
 - « Réglages »: every setting with its Apply gate, today's plan in detail with « Recalculer », the last

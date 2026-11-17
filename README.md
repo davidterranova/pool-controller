@@ -130,8 +130,8 @@ you set `local: true` back).
 [home-assistant/piscine-card.js](home-assistant/piscine-card.js) is
 `custom:piscine-card`, the pool card of the Home Assistant dashboard: a tile,
 and a panel shown in a pop-up with three tabs. « Pompe » has the pump's state,
-today's plan timeline, the pool's temperature (24 h, 7 days, 30 days),
-Auto/Manuel, the forced speed and its duration, and the outdoor and
+today's plan timeline, the pool's temperature (24 h, 7, 30 and 90 days, a
+year), Auto/Manuel, the forced speed and its duration, and the outdoor and
 equipment-pad temperatures; « Remplissage » the fill water, by day, week or
 month with the period's total; « Réglages » every control the controller has,
 as on its own page's Avancé tab: the settings, today's plan with
@@ -160,9 +160,10 @@ What it needs from Home Assistant, besides the entities:
 - the recorder's history of the last 24 h: the Manual Override select, for
   the overrides already ended today on the timeline, and Pool Return
   Temperature with Pump Commanded Speed, for the temperature curve;
-- the long-term statistics of Pool Water Min/Max Today, for the 30-day view
-  (they have a `state_class` since 2026-11-17, so that view fills up from the
-  day the firmware was flashed; before that, only Daily History's 7 days);
+- the long-term statistics of Pool Water Min/Max Today, for the 30-day,
+  90-day and year views (they have a `state_class` since 2026-11-17, so they
+  fill up from the day the firmware was flashed), and of Pool Return
+  Temperature, whose daily mean (pipe included) stands in for the days before;
 - the long-term statistics of the fill meter (Piscine - Volume total
   remplissage, `total_increasing`), for the « Remplissage » tab. Without the
   meter or the recorder, that tab isn't there;
@@ -260,8 +261,8 @@ How it fits together:
   min/max (Pool Water Min/Max Today) and, for each of the last 7 days, the
   hours filtered and the pool's min/max (Daily History). So the card's
   temperature graph runs with `recorder: false` here: its 7-day view works,
-  its 24 h and 30-day views say they're in Home Assistant, and it has no
-  tabs: no « Remplissage » (that history is Home Assistant's
+  its 24 h, 30-day, 90-day and year views say they're in Home Assistant,
+  and it has no tabs: no « Remplissage » (that history is Home Assistant's
   statistics), and its « Réglages » are the page's Avancé tab. Nor the card's
   light: the page's own « Connecté au contrôleur » chip is its link to the
   device. The page only keeps the Manual Override's changes in memory from

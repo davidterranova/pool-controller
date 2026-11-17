@@ -36,10 +36,15 @@
  *   24 h   the water sensor and the commanded speed from the recorder (same call and reload as the
  *          overrides): solid line for the pool, dashed for the pipe, filtration periods shaded;
  *   7 j    each day's min–max from the device's Daily History, today from Pool Water Min/Max Today;
- *   30 j   the same two sensors' long-term statistics (state_class since firmware 2026-11-17), each day read
- *          from its 23:00 hourly row: Min Today only falls and Max Today only rises within a day, so that row
- *          holds the day's final values, while HA's 00:00 hour still carries yesterday's until the reset.
- * All three draw the freeze-protection threshold (number Freeze Protection Temperature, 3 °C by default), in
+ *   30 j, 90 j   the same two sensors' long-term statistics (state_class since firmware 2026-11-17), each day
+ *          read from its 23:00 hourly row: Min Today only falls and Max Today only rises within a day, so that row
+ *          holds the day's final values, while HA's 00:00 hour still carries yesterday's until the reset;
+ *   1 an   a bar a week: the days above, and beyond 90 days HA's own daily statistics of the two sensors (a day
+ *          there may still hold the evening before: at most a day of lag on a 7-day bar).
+ * Days the pool's min–max isn't known (before those statistics start) get the probe's own daily mean instead,
+ * dashed like the pipe on 24 h since it includes it: HA keeps it as long as the sensor has existed. A day whose
+ * probe spans more than PROBE_GLITCH_C had a bad reading (0 °C, 110 °C) that skews its mean: it is left out.
+ * Every view draws the freeze-protection threshold (number Freeze Protection Temperature, 3 °C by default), in
  * red: a dotted line over the zone where Low is forced once the water comes within FREEZE_NEAR_C of it, else a
  * tag at the foot of the axis, so a 13 °C curve isn't squashed to show 3 °C.
  * `recorder: false` (the device's own page) leaves only 7 j, which the device keeps itself.
@@ -139,7 +144,10 @@ const MORE_PATH = "/dashboard-piscine/0";
 const H_MS = 3600000, M_MS = 60000;
 const POOL_AFTER_MIN = 10; // firmware: a reading counts as the pool after this long pumping (Pool Water Min/Max Today)
 const T_STEP_MIN = 5;      // 24 h curve: one point per 5 min, the sensor's own pace
-const T_RANGES = { "24h": "24 h", "7d": "7 j", "30d": "30 j" };
+const T_RANGES = { "24h": "24 h", "7d": "7 j", "30d": "30 j", "90d": "90 j", "1y": "1 an" };
+const T_N = { "7d": 7, "30d": 30, "90d": 90, "1y": 53 }; // bars: a day each, 1 an a week each (53 Mondays)
+const T_SPAN = { "30d": "30 jours", "90d": "90 jours", "1y": "12 mois" };
+const PROBE_GLITCH_C = 12; // a day the probe spans more than this had a bad reading (0 °C, 110 °C): its mean is dropped
 /** The controller's light (`controller_health`): minutes before amber, before red; seconds between two heartbeats. */
 const HEALTH = { warn: 3, alert: 15, beat: 4 };
 /** Never keys: the sun and the two scripts are Home Assistant's, not the controller's. */
@@ -460,9 +468,9 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 
 /* pool temperature: right after the day plan in the DOM, so it follows it on a phone and in the wide layout */
 .temp { display:flex; flex-direction:column; gap:6px; }
-.temp-h { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.temp-h { display:flex; align-items:center; justify-content:space-between; gap:6px 8px; flex-wrap:wrap; }
 .temp-h .lbl { margin:0; }
-.seg.mini { display:inline-grid; grid-template-columns:repeat(3,auto); border-radius:10px; padding:3px; gap:2px; }
+.seg.mini { display:inline-grid; grid-auto-flow:column; border-radius:10px; padding:3px; gap:2px; }
 .seg.mini button { height:26px; padding:0 11px; font-size:12px; border-radius:7px; }
 .temp-sum { font-size:12px; color:var(--muted); margin:0; }
 .temp-sum b { color:var(--fg); font-weight:500; }
@@ -480,6 +488,7 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .chart .pt { stroke:var(--raised); stroke-width:2; }
 .chart .pt.ok { fill:var(--acc); } .chart .pt.no { fill:var(--muted); }
 .chart .rng { fill:var(--acc); opacity:.5; }
+.chart .mdot { fill:var(--muted); opacity:.85; }
 .chart .rng.today { opacity:1; } .chart .rng.hov { opacity:.8; }
 /* freeze-protection threshold, in red: dotted line and the zone where Low is forced, or a tag at the foot of the axis */
 .chart .fz { stroke:var(--danger); stroke-width:1.5; stroke-dasharray:1 3; stroke-linecap:round; }
@@ -764,7 +773,8 @@ class PiscineCard extends HTMLElement {
     this._histDay = null; this._histAt = 0; this._histLoading = false;
     this._range = this._config.recorder ? "24h" : "7d";
     this._tHover = null;       // 24 h: minutes before now; 7 j / 30 j: day index
-    this._stats = null;        // 30 j: { "YYYY-MM-DD": {lo, hi} } from the statistics
+    this._stats = null;        // 30 / 90 j: { "YYYY-MM-DD": {lo, hi} }, the 23:00 rows of the hourly statistics
+    this._daily = null;        // 30 j – 1 an: { "YYYY-MM-DD": {mean (the probe), lo, hi (HA's day of Min/Max Today)} }
     this._beatSeen = null; this._beatAt = -1e9; // the light's last heartbeat: the message it was for, when (performance.now)
     this._statsAt = 0; this._statsLoading = false; this._statsErr = false;
     this._tVer = 0; this._tDrawn = "";
@@ -831,29 +841,45 @@ class PiscineCard extends HTMLElement {
     track(this._wHist, "water");
     track(this._cHist, "commanded");
   }
-  /** 30 j: hourly statistics of Pool Water Min/Max Today, at most once an hour, only while that range is shown. */
+  /** 1 an's first day: the Monday 52 weeks before this week's (HA's weeks start on Monday). */
+  _weekStart() { const d = dayAgo(0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - 52 * 7); return d; }
+  /**
+   * 30 j – 1 an: two statistics calls, at most once an hour, only while such a range is shown.
+   *   hourly, 90 days   Pool Water Min/Max Today, each day's 23:00 row: Min Today only falls and Max Today only rises
+   *                     within a day, so that row holds the day's final values (HA's 00:00 hour still has yesterday's);
+   *   daily, 53 weeks   the probe's mean, for the days before those two sensors had statistics (dropped when the probe
+   *                     spans more than PROBE_GLITCH_C that day: a bad reading skews it); and the two sensors' own day,
+   *                     for 1 an's weeks beyond 90 days: HA's day carries the evening before until the reset, so a
+   *                     week may hold the Sunday before it, at most a day of lag on a 7-day bar.
+   */
   _loadStats() {
     if (!this._config.recorder || this._statsLoading || Date.now() - this._statsAt < H_MS) return;
     this._statsLoading = true;
-    const { waterMin, waterMax } = this._e;
-    this._hass.callWS({ type: "recorder/statistics_during_period", start_time: dayAgo(30).toISOString(),
-      statistic_ids: [waterMin, waterMax], period: "hour", types: ["min", "max"] })
-      .then((r) => {
-        // Only the 23:00 row of each day: Min Today only falls and Max Today only rises within a day, so it holds
-        // the day's final values. HA's daily min/max would not do: its 00:00 hour still has yesterday's value.
-        const out = {};
-        const take = (id, type, field) => {
+    const { waterMin, waterMax, water } = this._e;
+    const ws = (o) => this._hass.callWS({ type: "recorder/statistics_during_period", ...o });
+    const at = (row) => new Date(typeof row.start === "number" ? row.start : Date.parse(row.start));
+    Promise.all([
+      ws({ start_time: dayAgo(90).toISOString(), statistic_ids: [waterMin, waterMax], period: "hour", types: ["min", "max"] }),
+      ws({ start_time: this._weekStart().toISOString(), statistic_ids: [waterMin, waterMax, water], period: "day", types: ["min", "max", "mean"] }),
+    ])
+      .then(([hr, dy]) => {
+        const stats = {}, daily = {};
+        const take = (r, id, type, field, out, at23) => {
           for (const row of (r && r[id]) || []) {
-            const d = new Date(typeof row.start === "number" ? row.start : Date.parse(row.start));
-            if (d.getHours() !== 23 || !Number.isFinite(row[type])) continue;
-            (out[dayKey(d)] ||= { lo: NaN, hi: NaN })[field] = row[type];
+            const d = at(row);
+            if ((at23 && d.getHours() !== 23) || !Number.isFinite(row[type])) continue;
+            (out[dayKey(d)] ||= {})[field] = row[type];
           }
         };
-        take(waterMin, "min", "lo");
-        take(waterMax, "max", "hi");
-        this._stats = out; this._statsErr = false;
+        take(hr, waterMin, "min", "lo", stats, true);
+        take(hr, waterMax, "max", "hi", stats, true);
+        take(dy, waterMin, "min", "lo", daily);
+        take(dy, waterMax, "max", "hi", daily);
+        for (const row of (dy && dy[water]) || [])
+          if (Number.isFinite(row.mean) && !(row.max - row.min > PROBE_GLITCH_C)) (daily[dayKey(at(row))] ||= {}).mean = row.mean;
+        this._stats = stats; this._daily = daily; this._statsErr = false;
       })
-      .catch((err) => { console.warn("piscine-card: temperature statistics unavailable", err); this._stats = {}; this._statsErr = true; })
+      .catch((err) => { console.warn("piscine-card: temperature statistics unavailable", err); this._stats = {}; this._daily = {}; this._statsErr = true; })
       .finally(() => { this._statsAt = Date.now(); this._statsLoading = false; this._tVer++; this._update(); });
   }
   /** Ended overrides of today as [{speed, from, to}] in minutes of the day; the running one is drawn apart. */
@@ -1032,16 +1058,31 @@ class PiscineCard extends HTMLElement {
     at(now);
     return out;
   }
-  /** n days, oldest first, today last: Daily History, else (30 j) the statistics; today from Min/Max Today. */
-  _tempDays(n) {
-    const hist = parseDays(this._s("history")), stats = this._stats || {}, out = [];
+  /**
+   * n days, oldest first, today last: {ago, date, lo, hi (the pool), hours, mean (the probe), known}. A day's pool is the
+   * device's Daily History, else the statistics' 23:00 row, else (`loose`: 1 an) HA's own day; today, Min/Max Today.
+   * `mean` is the probe's daily mean, drawn where the pool is unknown.
+   */
+  _tempDays(n, loose = false) {
+    const hist = parseDays(this._s("history")), stats = this._stats || {}, daily = this._daily || {}, out = [];
+    const ok = (x) => x && Number.isFinite(x.lo) && Number.isFinite(x.hi);
     for (let ago = n - 1; ago >= 1; ago--) {
-      const date = dayAgo(ago), k = dayKey(date), h = hist[k], s = stats[k];
-      const src = h && Number.isFinite(h.lo) && Number.isFinite(h.hi) ? h : s;
-      out.push({ ago, date, lo: src ? src.lo : NaN, hi: src ? src.hi : NaN, hours: h ? h.hours : NaN });
+      const date = dayAgo(ago), k = dayKey(date), h = hist[k], src = [h, stats[k], loose && daily[k]].find(ok);
+      out.push({ ago, date, lo: src ? src.lo : NaN, hi: src ? src.hi : NaN, hours: h ? h.hours : NaN, mean: daily[k]?.mean ?? NaN });
     }
-    out.push({ ago: 0, date: dayAgo(0), lo: this._n("waterMin"), hi: this._n("waterMax"), hours: this._n("hoursToday") });
+    out.push({ ago: 0, date: dayAgo(0), lo: this._n("waterMin"), hi: this._n("waterMax"), hours: this._n("hoursToday"), mean: NaN });
     return out.map((d) => ({ ...d, known: Number.isFinite(d.lo) && Number.isFinite(d.hi) }));
+  }
+  /** 1 an: 53 weeks from _weekStart(), the running one last: the pool's min–max over the week's days, else the probe's mean. */
+  _tempWeeks() {
+    const days = this._tempDays(Math.round((dayAgo(0) - this._weekStart()) / 864e5) + 1, true), out = [];
+    for (let i = 0; i < days.length; i += 7) {
+      const ds = days.slice(i, i + 7), pool = ds.filter((d) => d.known), m = ds.filter((d) => Number.isFinite(d.mean));
+      out.push({ date: ds[0].date, cur: i + 7 >= days.length, known: pool.length > 0,
+        lo: pool.length ? Math.min(...pool.map((d) => d.lo)) : NaN, hi: pool.length ? Math.max(...pool.map((d) => d.hi)) : NaN,
+        mean: !pool.length && m.length ? m.reduce((a, d) => a + d.mean, 0) / m.length : NaN });
+    }
+    return out;
   }
 
   _renderTemp() {
@@ -1049,7 +1090,7 @@ class PiscineCard extends HTMLElement {
     if (!box) return;
     const range = this._range, rec = this._config.recorder;
     this.shadowRoot.querySelectorAll("#tRange button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.r === range)));
-    if (range === "30d") this._loadStats();
+    if (T_SPAN[range]) this._loadStats();
     const W = box.clientWidth, H = box.clientHeight;
     if (!W) return; // not laid out: the pop-up is closed
     const now = Date.now();
@@ -1065,10 +1106,10 @@ class PiscineCard extends HTMLElement {
     };
     const nowTxt = `<b>${fmt1(this._n("water"))} °C</b> maintenant`;
     if (!rec && range !== "7d") {
-      return showEmpty(`Pas d'historique sur le contrôleur : ${range === "24h" ? "la courbe des 24 h est" : "les 30 jours sont"} dans Home Assistant. Les 7 derniers jours, eux, sont gardés par le contrôleur.`, nowTxt);
+      return showEmpty(`Pas d'historique sur le contrôleur : ${range === "24h" ? "la courbe des 24 h est" : `les ${T_SPAN[range]} sont`} dans Home Assistant. Les 7 derniers jours, eux, sont gardés par le contrôleur.`, nowTxt);
     }
     if (range === "24h" && !this._wHist) return showEmpty("Chargement de l'historique…", nowTxt);
-    if (range === "30d" && !this._stats) return showEmpty("Chargement des statistiques…", nowTxt);
+    if (T_SPAN[range] && !this._stats) return showEmpty("Chargement des statistiques…", nowTxt);
     empty.hidden = true;
 
     const L = 8, R = W - 34, TOP = 10, BOT = H - 20;
@@ -1082,7 +1123,9 @@ class PiscineCard extends HTMLElement {
       const near = Number.isFinite(fz) && Math.min(...vals) - fz <= FREEZE_NEAR_C, all = near ? [...vals, fz] : vals;
       let lo = Math.floor((Math.min(...all) - 0.1) * 2) / 2, hi = Math.ceil((Math.max(...all) + 0.1) * 2) / 2;
       if (hi - lo < 1) { const m = (hi + lo) / 2; lo = Math.floor((m - 0.5) * 2) / 2; hi = lo + 1; } // a flat day isn't a storm
-      const step = hi - lo > 2.5 ? 1 : 0.5, y = (v) => bot - ((v - lo) / (hi - lo)) * (bot - top);
+      let step = hi - lo > 2.5 ? 1 : 0.5;
+      for (const s of [2, 5, 10]) if ((hi - lo) / step > 7) { step = s; lo = Math.floor(lo / s) * s; hi = Math.ceil(hi / s) * s; } // seasons: round degrees
+      const y = (v) => bot - ((v - lo) / (hi - lo)) * (bot - top);
       let g = "";
       for (let v = lo; v <= hi + 1e-9; v += step)
         g += `<line class="gl" x1="${L}" x2="${R}" y1="${y(v)}" y2="${y(v)}"/><text x="${R + 5}" y="${y(v) + 3.5}">${fmt1(v)}°</text>`;
@@ -1157,37 +1200,63 @@ class PiscineCard extends HTMLElement {
       leg.innerHTML = `<span><i class="k-pool"></i>Bassin (pompe en marche depuis ${POOL_AFTER_MIN} min)</span><span><i class="k-pipe"></i>Tuyau, pompe arrêtée</span><span><i class="k-band"></i>Filtration</span>${sc.legend}`;
       box.setAttribute("aria-label", `Température du bassin sur 24 h, de ${fmt1(Math.min(...vals))} à ${fmt1(Math.max(...vals))} °C`);
     } else {
-      const n = range === "30d" ? 30 : 7, days = this._tempDays(n), cw = (R - L) / n, cx = (i) => L + cw * (i + 0.5);
-      const bw = Math.min(12, cw - 3), rx = Math.min(4, bw / 2); // 30 bars on a phone: ~7 px each, 3 px apart
-      const known = days.filter((d) => d.known), vals = known.flatMap((d) => [d.lo, d.hi]);
+      // 7 / 30 / 90 j: a bar a day; 1 an: a bar a week. The pool's min–max where it is known; elsewhere (before Min/Max
+      // Today had statistics) the probe's mean, dashed: the pipe is in it, as on the 24 h curve.
+      const wk = range === "1y", days = wk ? this._tempWeeks() : this._tempDays(T_N[range]), n = days.length;
+      const cw = (R - L) / n, cx = (i) => L + cw * (i + 0.5);
+      const bw = Math.max(1.5, Math.min(12, cw - (cw > 6 ? 3 : 1))), rx = Math.min(4, bw / 2); // 30 bars on a phone: ~7 px, 3 apart; 90: ~2 px, 1 apart
+      const isNow = (d) => (wk ? d.cur : d.ago === 0), unit = wk ? "de la semaine" : "du jour";
+      const pool = days.filter((d) => d.known), mean = days.filter((d) => !d.known && Number.isFinite(d.mean));
+      const vals = [...pool.flatMap((d) => [d.lo, d.hi]), ...mean.map((d) => d.mean)];
       const sc = yScale(vals.length ? vals : [Number.isFinite(this._n("water")) ? this._n("water") : 20], TOP + 6, BOT - 6);
       g += sc.grid;
-      const label = (d) => (d.ago === 0 ? "auj." : n <= 7 ? WD[d.date.getDay()] : d.ago % 7 ? "" : `${d.date.getDate()} ${MO[d.date.getMonth()]}`);
-      const long = (d) => `${d.ago === 0 ? "aujourd'hui" : WD[d.date.getDay()]} ${d.date.getDate()} ${MO[d.date.getMonth()]}`;
+      const label = (d, i) => {
+        if (wk) { const m = d.date.getMonth(); return i < 2 || m % 2 || days[i - 1].date.getMonth() === m ? "" : MO[m]; } // every other month's first Monday
+        if (d.ago === 0) return n > 30 ? "" : "auj."; // 90 j: the freeze tag sits there
+        return n <= 7 ? WD[d.date.getDay()] : d.ago % (n > 30 ? 14 : 7) ? "" : `${d.date.getDate()} ${MO[d.date.getMonth()]}`;
+      };
+      const long = (d) => (wk ? `semaine du ${d.date.getDate()} ${MO[d.date.getMonth()]}${d.cur ? ", en cours" : ""}`
+        : `${d.ago === 0 ? "aujourd'hui" : WD[d.date.getDay()]} ${d.date.getDate()} ${MO[d.date.getMonth()]}`);
+      let run = []; // the probe's mean: joined only between neighbours, a lone day a dot
+      const flush = () => {
+        if (run.length > 1) g += `<path class="pipe" d="${run.map(([x, y], k) => `${k ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join("")}"/>`;
+        else if (run.length) g += `<circle class="mdot" cx="${run[0][0].toFixed(1)}" cy="${run[0][1].toFixed(1)}" r="1.8"/>`;
+        run = [];
+      };
       days.forEach((d, i) => {
-        g += `<text x="${cx(i)}" y="${H - 6}" text-anchor="middle">${label(d)}</text>`;
-        if (!d.known) { // a dash on 7 days; on 30, a row of them before the statistics start would be noise
-          if (n <= 7) g += `<text x="${cx(i)}" y="${(TOP + BOT) / 2}" text-anchor="middle">–</text>`;
+        g += `<text x="${cx(i)}" y="${H - 6}" text-anchor="middle">${label(d, i)}</text>`;
+        if (!d.known) {
+          if (Number.isFinite(d.mean)) { run.push([cx(i), sc.y(d.mean)]); return; }
+          flush();
+          if (n <= 7) g += `<text x="${cx(i)}" y="${(TOP + BOT) / 2}" text-anchor="middle">–</text>`; // on 30 and more, a row of them would be noise
           return;
         }
+        flush();
         const y1 = sc.y(d.hi), y2 = Math.max(sc.y(d.lo), y1 + 4);
-        g += `<rect class="rng${d.ago === 0 ? " today" : ""}${this._tHover === i ? " hov" : ""}" x="${cx(i) - bw / 2}" y="${y1}" width="${bw}" height="${y2 - y1}" rx="${rx}"/>`;
-        if (d.ago === 0) g += `<text class="vl" x="${cx(i)}" y="${y1 - 4}" text-anchor="middle">${fmt1(d.hi)}</text><text class="vl" x="${cx(i)}" y="${y2 + 11}" text-anchor="middle">${fmt1(d.lo)}</text>`;
+        g += `<rect class="rng${isNow(d) ? " today" : ""}${this._tHover === i ? " hov" : ""}" x="${cx(i) - bw / 2}" y="${y1}" width="${bw}" height="${y2 - y1}" rx="${rx}"/>`;
+        if (isNow(d) && n <= 30) g += `<text class="vl" x="${cx(i)}" y="${y1 - 4}" text-anchor="middle">${fmt1(d.hi)}</text><text class="vl" x="${cx(i)}" y="${y2 + 11}" text-anchor="middle">${fmt1(d.lo)}</text>`;
       });
+      flush();
       const hd = this._tHover !== null ? days[this._tHover] : null;
       if (hd) {
+        if (!hd.known && Number.isFinite(hd.mean)) g += `<circle class="pt no" cx="${cx(this._tHover)}" cy="${sc.y(hd.mean)}" r="3.5"/>`;
         tip.innerHTML = "<b></b><span></span>";
-        tip.querySelector("b").textContent = hd.known ? `${fmt1(hd.lo)} – ${fmt1(hd.hi)} °C` : "Pas de mesure";
-        tip.querySelector("span").textContent = long(hd) + (Number.isFinite(hd.hours) ? ` · ${fmt1(hd.hours)} h de filtration` : "") + (hd.known ? belowFz(hd.lo) : "");
+        tip.querySelector("b").textContent = hd.known ? `${fmt1(hd.lo)} – ${fmt1(hd.hi)} °C` : Number.isFinite(hd.mean) ? `≈ ${fmt1(hd.mean)} °C` : "Pas de mesure";
+        tip.querySelector("span").textContent = long(hd) + (hd.known ? (Number.isFinite(hd.hours) ? ` · ${fmt1(hd.hours)} h de filtration` : "") + belowFz(hd.lo)
+          : Number.isFinite(hd.mean) ? ` · sonde, moyenne ${unit}, tuyau compris` : "");
         hovX = cx(this._tHover);
       }
-      let s = known.length ? `<b>${fmt1(Math.min(...known.map((d) => d.lo)))} – ${fmt1(Math.max(...known.map((d) => d.hi)))} °C</b> sur ${n} jours, pompe en marche`
-        : "Pas encore de mesure";
-      if (range === "30d" && this._statsErr) s += "<span>Statistiques de Home Assistant indisponibles : seuls les 7 derniers jours sont connus.</span>";
-      else if (range === "30d" && known.length < n) s += `<span>${known.length} jour${known.length > 1 ? "s" : ""} mesuré${known.length > 1 ? "s" : ""} sur ${n}.</span>`;
+      const k = pool.length + mean.length, span = wk ? "12 mois" : `${n} jours`;
+      let s = !k ? "Pas encore de mesure"
+        : `<b>${fmt1(Math.min(...vals))} – ${fmt1(Math.max(...vals))} °C</b> sur ${span}${mean.length ? (pool.length ? "" : `, moyenne ${unit} de la sonde`) : ", pompe en marche"}`;
+      if (mean.length) s += `<span>${pool.length ? `Pointillés : ${wk ? "les semaines" : "les jours"} sans min – max du bassin, la sonde en moyenne` : "La sonde en moyenne"}, tuyau compris (pompe arrêtée, elle lit le local technique).</span>`;
+      if (T_SPAN[range] && this._statsErr) s += "<span>Statistiques de Home Assistant indisponibles : seuls les 7 derniers jours sont connus.</span>";
+      else if (n > 7 && k < n) s += `<span>${k} ${wk ? "semaine" : "jour"}${k > 1 ? "s" : ""} mesuré${wk ? "e" : ""}${k > 1 ? "s" : ""} sur ${n}.</span>`;
       sum.innerHTML = s;
-      leg.innerHTML = `<span><i class="k-rng"></i>Min – max du jour, pompe en marche depuis ${POOL_AFTER_MIN} min</span>${sc.legend}`;
-      box.setAttribute("aria-label", `Température du bassin, min et max des ${n} derniers jours : ${days.map((d) => `${long(d)} ${d.known ? `${fmt1(d.lo)} à ${fmt1(d.hi)} °C` : "pas de mesure"}`).join(", ")}`);
+      leg.innerHTML = (pool.length || !mean.length ? `<span><i class="k-rng"></i>Min – max ${unit}, pompe en marche depuis ${POOL_AFTER_MIN} min</span>` : "")
+        + (mean.length ? `<span><i class="k-pipe"></i>Sonde, moyenne ${unit}, tuyau compris</span>` : "") + sc.legend;
+      box.setAttribute("aria-label", `Température du bassin, ${span} : ${days.map((d) => `${long(d)} ${d.known ? `${fmt1(d.lo)} à ${fmt1(d.hi)} °C`
+        : Number.isFinite(d.mean) ? `environ ${fmt1(d.mean)} °C (sonde)` : "pas de mesure"}`).join(", ")}`);
     }
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
     svg.innerHTML = g;
@@ -1573,7 +1642,7 @@ class PiscineCard extends HTMLElement {
       this._range = b.dataset.r; this._tHover = null; this._renderTemp();
     }));
     const box = this._$("tChart");
-    const days = () => (this._range === "30d" ? 30 : 7);
+    const days = () => T_N[this._range];
     const hoverAt = (clientX) => {
       const r = box.getBoundingClientRect(), f = Math.min(1, Math.max(0, (clientX - r.left - 8) / (r.width - 42)));
       this._tHover = this._range === "24h" ? Math.round(((1 - f) * 1440) / T_STEP_MIN) * T_STEP_MIN : Math.min(days() - 1, Math.floor(f * days()));
