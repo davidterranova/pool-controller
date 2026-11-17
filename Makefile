@@ -107,9 +107,11 @@ mock-ui: webui
 # and Wi-Fi tabs) against the same mock, rather than the bundle mock-ui
 # serves: its files are served and watched like the YAML, so saving one
 # reloads the page. MOCK_HOTSPOT=1 starts the device on its fallback
-# hotspot, with no clock, as a new install would.
+# hotspot, with no clock (a router outage). MOCK_FRESH=1 starts it as a new
+# install: not set up (Setup State lists everything), no network saved, on its
+# hotspot with no clock; once a Page Password is set, it asks for it.
 mock-webui:
-	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot)"
+	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh)"
 
 # Prints the page layout (sections, order, which entities the simulation
 # drives) and fails if $(CONFIG) has an entity type the mock can't render.

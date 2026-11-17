@@ -21,19 +21,27 @@ Usage (from the repo root; `make mock-ui` wraps this):
     python3 tools/webui-mock/mock_server.py --index my-page.html pool-controller.yaml
     python3 tools/webui-mock/mock_server.py --check pool-controller.yaml
     python3 tools/webui-mock/mock_server.py --extra my-package.yaml [--hotspot] pool-controller.yaml
+    python3 tools/webui-mock/mock_server.py --fresh pool-controller.yaml
 
 The config's own `packages:` (`name: !include file.yaml`) are loaded like ESPHome
 does, for their entities and sorting groups. --extra loads one more package the
 same way, for designing against entities the firmware doesn't have yet.
 --hotspot starts the simulated device on its fallback hotspot, with no clock.
+--fresh starts it as a controller straight out of the install: nothing set up
+(Setup State lists everything), no network saved, so on its hotspot with no
+clock. Once a Page Password is set, the mock asks for it (digest, user admin),
+as the device does; the configured mock (no --fresh) never asks.
 
 Needs PyYAML, and the `esphome` package for the device's index page -- both present in
 the ghcr.io/esphome/esphome image the Makefile runs this in.
 """
 
 import argparse
+import base64
+import binascii
 import functools
 import gzip
+import hashlib
 import json
 import math
 import os
@@ -70,7 +78,7 @@ SENSOR_DEFAULTS = {
 }
 
 # Mock sun times (seconds after local midnight). The real ones come from the
-# sun: component and the pool's coordinates, which stay in secrets.yaml.
+# sun: component and the pool's coordinates (Latitude, Longitude).
 MOCK_SUNRISE = 7 * 3600 + 45 * 60
 MOCK_SUNSET = 17 * 3600 + 15 * 60
 
@@ -271,7 +279,41 @@ W = {
     "clock": "Device Clock",
     "clock_source": "Clock Source",
 }
-SIMULATED = set(N.values()) | set(W.values())
+# The controller's settings (device-settings.yaml, a package of the config).
+S = {
+    "setup_state": "Setup State",
+    "page_password": "Page Password",
+    "ota_password": "OTA Password",
+    "api_key": "API Key",
+    "generate_key": "Generate API Key",
+    "forget_key": "Forget API Key",
+    "latitude": "Latitude",
+    "longitude": "Longitude",
+    "timezone": "Timezone",
+    "timezone_name": "Timezone Name",
+    "detected": "Detected Probes",
+    "pool_probe": "Pool Probe",
+    "pad_probe": "Pad Probe",
+    "outdoor_probe": "Outdoor Probe",
+    "rescan": "Rescan Probes",
+    "factory_reset": "Factory Reset",
+    "waiting_for": "Schedule Waiting For",
+}
+SIMULATED = set(N.values()) | set(W.values()) | set(S.values())
+
+# The simulated probe bus: made-up addresses, as ESPHome writes them (family
+# code 28 last), and what each probe measures. A fourth one hangs loose on the
+# bus, so the role selects have one more option than roles.
+PROBES = {
+    "8a00000012345628": "pool_temp",
+    "3f0000006789ab28": "pad_temp",
+    "c1000000abcdef28": "outdoor_temp",
+    "5e0000004242c028": "spare",
+}
+ROLES = {"pool_probe": "pool_temp", "pad_probe": "pad_temp", "outdoor_probe": "outdoor_temp"}
+NO_PROBE = "none"
+PAGE_USER = "admin"
+REALM = "Login Required"
 
 # What the simulated device "sees" around it: (ssid, rssi dBm, bssid). Joining
 # one of the last three fails, as it would with a wrong password.
@@ -289,10 +331,11 @@ JOIN_SECONDS = 5
 class WifiSim:
     """The proposed Wi-Fi setup: station or fallback hotspot, joining a network, and the clock."""
 
-    def __init__(self, log, hotspot: bool):
+    def __init__(self, log, hotspot: bool, saved: bool = True):
         self.log = log
         self.mode = "Hotspot" if hotspot else "Connected"
         self.network = None if hotspot else NEARBY[0]
+        self.saved = saved  # a network saved in NVS (Setup State's `wifi`)
         self.rssi = float(NEARBY[0][1])
         self.disconnects = 0
         self.join_ssid = ""
@@ -342,6 +385,7 @@ class WifiSim:
             match = next((n for n in NEARBY if n[0] == ssid), None)
             if match and ssid not in UNJOINABLE and len(password) >= 8:
                 self.mode, self.network, self.rssi = "Connected", match, float(match[1])
+                self.saved = True
                 self.log(f"Wi-Fi: joined '{ssid}' and saved it")
                 if self.clock_source != "SNTP":
                     self.clock_source, self.clock_offset = "SNTP", 0.0
@@ -352,6 +396,12 @@ class WifiSim:
         if self.mode == "Connected" and now - self.last_drift > 10:
             self.last_drift = now
             self.rssi = min(-45.0, max(-90.0, self.rssi + random.uniform(-2, 2)))
+
+    def forget(self):
+        """Factory Reset: no network saved, so the device reboots onto its hotspot, with no clock."""
+        self.saved = False
+        self.mode, self.network, self.joining = "Hotspot", None, None
+        self.clock_source, self.clock_offset = "None", 0.0
 
     def snapshot(self) -> dict:
         connected = self.mode == "Connected"
@@ -374,6 +424,121 @@ class WifiSim:
         }
 
 
+def _posix_of(zone: str) -> str:
+    """The POSIX TZ string of an IANA zone: the footer line of its TZif file."""
+    try:
+        with open(os.path.join("/usr/share/zoneinfo", zone), "rb") as f:
+            footer = f.read().rstrip(b"\n").rsplit(b"\n", 1)[-1].decode()
+        return footer if footer and not footer.startswith("TZif") else "UTC0"
+    except (OSError, UnicodeDecodeError):
+        return "UTC0"
+
+
+def _valid_posix(text: str) -> bool:
+    try:
+        from aioesphomeapi.posix_tz import parse_posix_tz  # noqa: PLC0415 -- in the ESPHome image
+
+        parse_posix_tz(text)
+        return True
+    except ImportError:
+        return bool(re.fullmatch(r"(<[^>]+>|[A-Za-z]{3,})[-+]?\d[\d:]*([A-Za-z<].*)?", text))
+    except ValueError:
+        return False
+
+
+def _api_key_ok(text: str) -> bool:
+    """Base64 of 32 bytes, not all zero: what the device's API Key accepts."""
+    if not re.fullmatch(r"[A-Za-z0-9+/]{43}=", text or ""):
+        return False
+    try:
+        raw = base64.b64decode(text, validate=True)
+    except binascii.Error:
+        return False
+    return len(raw) == 32 and any(raw)
+
+
+class SettingsSim:
+    """device-settings.yaml: the page login, API key, position, timezone, probe roles, Setup State."""
+
+    def __init__(self, log, fresh: bool):
+        self.log = log
+        # The login the mock asks for: only one set during this run (a configured mock never asks).
+        self.page_password: str | None = None
+        self.page_password_set = not fresh
+        self.api_key_set = not fresh
+        self.bus = list(PROBES)
+        if fresh:
+            self.latitude = self.longitude = None
+            self.timezone = self.timezone_name = ""
+            self.roles = {role: None for role in ROLES}
+        else:
+            # A public place, not anyone's pool: the mock's sun times are fixed anyway.
+            self.latitude, self.longitude = 48.85, 2.35
+            self.timezone_name = os.environ.get("TZ") or "Europe/Paris"
+            self.timezone = _posix_of(self.timezone_name)
+            self.roles = {role: next(a for a, what in PROBES.items() if what == measured)
+                          for role, measured in ROLES.items()}
+
+    @property
+    def position_ok(self) -> bool:
+        return self.latitude is not None and self.longitude is not None and bool(self.timezone)
+
+    def options(self) -> list[str]:
+        known = self.bus + [a for a in self.roles.values() if a and a not in self.bus]
+        return [NO_PROBE] + known
+
+    def set_role(self, name: str, option: str):
+        role = next(r for r in ROLES if S[r] == name)
+        address = None if option == NO_PROBE else option
+        for other in ROLES:  # one role per probe: taking it from another role clears that one
+            if other != role and address and self.roles[other] == address:
+                self.roles[other] = None
+                self.log(f"'{S[other]}' set to none (its probe went to '{name}')")
+        self.roles[role] = address
+
+    def set_position(self, name: str, value: float):
+        value = round(value, 2)
+        if name == S["latitude"]:
+            self.latitude = value
+        else:
+            self.longitude = value
+
+    def setup_state(self, wifi_saved: bool) -> str:
+        missing = [item for item, ok in (
+            ("page_password", self.page_password_set),
+            ("wifi", wifi_saved),
+            ("position", self.position_ok),
+            ("probes", bool(self.roles["pool_probe"])),
+            ("api_key", self.api_key_set),
+        ) if not ok]
+        return ",".join(missing) or "configured"
+
+    def detected(self, temps: dict) -> str:
+        known = self.options()[1:]
+        if not known:
+            return "--"
+        reading = lambda a: f"{temps[PROBES[a]]:.1f}" if a in self.bus and PROBES.get(a) in temps else "--"  # noqa: E731
+        return ", ".join(f"{a}: {reading(a)}" for a in known)
+
+    def factory_reset(self):
+        """Access and network go; roles, position and timezone stay."""
+        self.page_password, self.page_password_set, self.api_key_set = None, False, False
+
+    def snapshot(self, wifi_saved: bool, temps: dict) -> dict:
+        return {
+            S["setup_state"]: self.setup_state(wifi_saved),
+            S["page_password"]: "",  # write-only: never echoed, as on the device
+            S["ota_password"]: "",
+            S["api_key"]: "",
+            S["latitude"]: self.latitude,
+            S["longitude"]: self.longitude,
+            S["timezone"]: self.timezone,
+            S["timezone_name"]: self.timezone_name,
+            S["detected"]: self.detected(temps),
+            **{S[role]: address or NO_PROBE for role, address in self.roles.items()},
+        }
+
+
 def _hhmm(ts: int) -> str:
     return datetime.fromtimestamp(ts).strftime("%H:%M") if ts else "--:--"
 
@@ -385,20 +550,25 @@ def _stamp(ts: float) -> str:
 class PoolSim:
     """A pocket version of evaluate_speed and friends, driven by wall-clock time."""
 
-    def __init__(self, log, hotspot: bool = False):
+    def __init__(self, log, hotspot: bool = False, fresh: bool = False):
         self.log = log
-        self.wifi = WifiSim(log, hotspot)
+        # A fresh controller has no network saved: it starts on its hotspot.
+        self.wifi = WifiSim(log, hotspot or fresh, saved=not fresh)
+        self.settings = SettingsSim(log, fresh)
         self.started = time.time()
         self.numbers: dict[str, float] = {}
         self.selects: dict[str, str] = {}
         self.static: dict[str, object] = {}  # values for entities the sim doesn't model
-        self.temps = {"pool_temp": 26.4, "pad_temp": 21.8, "outdoor_temp": 17.5}
+        # What each probe on the simulated bus measures (PROBES); Pool Return Temperature & co. read
+        # the one their role holds (reading()).
+        self.temps = {"pool_temp": 26.4, "pad_temp": 21.8, "outdoor_temp": 17.5, "spare": 19.2}
         self.flow = 0.0
         self.volume = 18342.0
         self.active: dict[str, float] = {}
         self.blocks = (0, 0, 0, 0)
         self.sunset = 0
         self.computed_day = None
+        self.seeded = False  # Filtration Hours Today started where the first plan would have it
         self.last_recompute = 0.0
         self.override_since: float | None = None
         self.commanded = "Off"
@@ -427,6 +597,9 @@ class PoolSim:
         self.fill_days = days[:]
         self.fill_days[12] = None  # a day the device was off
         self.fill_months = [23, 30, 9538, 2913, None, None, None, None, None, None, None, None]  # this month's closed days first
+        if fresh:  # straight out of the install: no day closed yet
+            self.history = []
+            self.fill_days, self.fill_months = [None] * 30, [None] * 12
         self.fill_today = 0.0
         self.last_tick = time.time()
         self.last_drift = time.time()
@@ -436,6 +609,8 @@ class PoolSim:
     def adopt(self, entities):
         """Seed values for entities seen for the first time (keeps existing ones across reloads)."""
         for e in entities:
+            if e.name in SIMULATED and e.name in S.values():
+                continue  # SettingsSim holds them
             if e.domain == "number" and e.name not in self.numbers:
                 self.numbers[e.name] = float(e.get("initial_value", e.get("min_value", 0)))
             elif e.domain == "select" and e.name not in self.selects:
@@ -454,10 +629,31 @@ class PoolSim:
     def override(self) -> str:
         return self.selects.get(N["override"], "Auto")
 
+    def reading(self, key: str) -> float | None:
+        """A temperature sensor's value (pool_temp, ...): what the probe its role holds measures, so a
+        probe given the wrong role reads the wrong place; unknown while the role has none, as on the device."""
+        address = self.settings.roles[next(role for role, sensor in ROLES.items() if sensor == key)]
+        return self.temps.get(PROBES.get(address)) if address else None
+
+    def waiting_for(self) -> str | None:
+        """Schedule Waiting For: why today's plan isn't computed, None once it is."""
+        st = self.settings
+        if st.latitude is None or st.longitude is None:
+            return "position"
+        if not st.timezone:
+            return "timezone"
+        if not self.wifi.clock_ok:
+            return "clock"
+        if self.computed_day == datetime.fromtimestamp(time.time()).date():
+            return None
+        return "pool probe" if not st.roles["pool_probe"] else "pool temperature"
+
     # -- schedule
 
     def recompute(self, now: float):
-        temp = self.temps["pool_temp"]
+        temp = self.reading("pool_temp")
+        if temp is None or not self.settings.position_ok:
+            return  # as evaluate_speed: no plan without a pool reading, a position and a timezone
         hours = min(max(temp / 2.0, self.active["min"]), self.active["max"]) + self.active["offset"]
         midnight = int(datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
         sunrise, sunset = midnight + MOCK_SUNRISE, midnight + MOCK_SUNSET
@@ -515,13 +711,14 @@ class PoolSim:
         return nbs, nbe, nxt, (self.plan_at(nxt) if nxt else "Off")
 
     def desired(self, now: int) -> str:
-        temp = self.temps["pool_temp"]
-        if temp < self.num("freeze_at", 3.0):  # Freeze Protection Temperature, as evaluate_speed
+        temp = self.reading("pool_temp")
+        if temp is not None and temp < self.num("freeze_at", 3.0):  # Freeze Protection Temperature
             return "Low"
         if self.override != "Auto":
             return self.override
         speed = self.plan_at(now)
-        if speed == "Off" and self.sunset and (now < self.blocks[0] or now >= self.sunset) and temp > 28.0:
+        if (speed == "Off" and self.sunset and (now < self.blocks[0] or now >= self.sunset)
+                and temp is not None and temp > 28.0):
             return "Low"
         return speed
 
@@ -537,9 +734,10 @@ class PoolSim:
             self.evaluate()
             return
         if self.computed_day != today:
-            first = self.computed_day is None
-            self.recompute(now)
-            if first:
+            first = not self.seeded
+            self.recompute(now)  # a no-op until there's a pool reading, a position and a timezone
+            if first and self.computed_day == today:
+                self.seeded = True
                 # Start "Filtration Hours Today" where today's plan would have it.
                 midnight = int(datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0).timestamp())
                 self.filtration_s = sum(60 for t in range(midnight, int(now), 60) if self.plan_at(t) != "Off")
@@ -554,6 +752,8 @@ class PoolSim:
             self.log(f"Manual Override '{self.override}' expired after {timeout:.0f} min -- back to Auto")
             self.set_override("Auto")
         # Filtration runtime.
+        if self.counted_day is None:
+            self.counted_day = today
         if self.counted_day != today:
             self.history = [(self.counted_day, self.filtration_s, self.water_lo, self.water_hi)] + self.history[:6]
             self.fill_days = [round(self.fill_today)] + self.fill_days[:29]
@@ -609,6 +809,23 @@ class PoolSim:
         elif name == N["update_temps"]:
             for k in self.temps:
                 self.temps[k] += random.uniform(-0.1, 0.1)
+        elif name == S["generate_key"]:
+            if self.settings.api_key_set:
+                self.log("Generate API Key: a key is already set; Forget API Key first")
+            else:
+                self.settings.api_key_set = True
+                self.log("API key generated and saved")
+        elif name == S["forget_key"]:
+            self.settings.api_key_set = False
+            self.log("API key forgotten")
+        elif name == S["rescan"]:
+            self.log(f"Probe scan: {len(self.settings.bus)} on the bus")
+        elif name == S["factory_reset"]:
+            self.log("Factory reset: forgetting the page and OTA passwords, the API key and the saved Wi-Fi")
+            self.settings.factory_reset()
+            self.wifi.forget()
+            self.started = time.time()  # the reboot
+            self.log("Rebooted into setup mode, on the hotspot")
         self.evaluate()
 
     def set_number(self, name: str, value: float):
@@ -652,11 +869,12 @@ class PoolSim:
             N["next_boost_start"]: _hhmm(nbs),
             N["next_boost_end"]: _hhmm(nbe),
             N["last_recompute"]: _stamp(self.last_recompute) if self.last_recompute else "Never",
-            N["not_computed"]: b1s == 0 and b2s == 0 and now - self.started > 300,
+            N["not_computed"]: b1s == 0 and b2s == 0 and (now - self.started > 300
+                                                           or self.waiting_for() in ("position", "timezone")),
             N["pending"]: any(abs(self.num(k) - self.active[k]) > 0.01 for k in self.active),
-            N["pool_temp"]: round(self.temps["pool_temp"], 2),
-            N["pad_temp"]: round(self.temps["pad_temp"], 2),
-            N["outdoor_temp"]: round(self.temps["outdoor_temp"], 2),
+            N["pool_temp"]: _round(self.reading("pool_temp")),
+            N["pad_temp"]: _round(self.reading("pad_temp")),
+            N["outdoor_temp"]: _round(self.reading("outdoor_temp")),
             N["status"]: self.wifi.mode == "Connected",  # the API link to HA needs the home network
             N["flow"]: self.flow,
             N["volume"]: round(self.volume),
@@ -668,10 +886,16 @@ class PoolSim:
             N["esphome_version"]: "2026.7.2 2026-11-17 18:05:00 +0000",
         }
         values.update(self.wifi.snapshot())
+        values.update(self.settings.snapshot(self.wifi.saved, self.temps))
+        values[S["waiting_for"]] = self.waiting_for() or "--"
         values.update(self.static)
         values.update(self.numbers)
         values.update(self.selects)
         return values
+
+
+def _round(value: float | None) -> float | None:
+    return None if value is None else round(value, 2)
 
 
 def _fill_line(head, values) -> str:
@@ -699,8 +923,9 @@ def _step_decimals(step: float) -> int:
     return len(text.split(".")[1]) if "." in text else 0
 
 
-def entity_json(e: Entity, value, detail_all: bool) -> dict:
-    """The JSON the device sends for an entity -- see web_server.cpp's *_json_ methods."""
+def entity_json(e: Entity, value, detail_all: bool, options: list | None = None) -> dict:
+    """The JSON the device sends for an entity -- see web_server.cpp's *_json_ methods. `options`: a
+    select's options when they're set at run time (the probe roles), rather than the YAML's."""
     out = {"name_id": f"{e.domain}/{e.name}", "id": f"{e.domain}-{e.object_id}"}
     if detail_all:
         out.update(domain=e.domain, name=e.name, icon=e.get("icon", ""),
@@ -725,7 +950,10 @@ def entity_json(e: Entity, value, detail_all: bool) -> dict:
         step = float(e.get("step", 1))
         acc = _step_decimals(step)
         uom = e.get("unit_of_measurement", "")
-        out.update(value=_fmt(value, acc), state=f"{_fmt(value, acc)} {uom}".strip())
+        if value is None or (isinstance(value, float) and math.isnan(value)):
+            out.update(value="NaN", state="NA")
+        else:
+            out.update(value=_fmt(value, acc), state=f"{_fmt(value, acc)} {uom}".strip())
         if detail_all:
             out.update(min_value=_fmt(float(e.get("min_value", 0)), acc),
                        max_value=_fmt(float(e.get("max_value", 100)), acc),
@@ -735,7 +963,7 @@ def entity_json(e: Entity, value, detail_all: bool) -> dict:
     elif e.domain == "select":
         out.update(value=value, state=value)
         if detail_all:
-            out["option"] = list(e.get("options", []))
+            out["option"] = list(options if options is not None else e.get("options", []))
     elif e.domain == "text":
         mode = TEXT_MODES.get(str(e.get("mode", "text")).lower(), 0)
         # Password mode masks `state` only; `value` is sent as-is (hence the firmware never publishes one).
@@ -800,7 +1028,7 @@ def device_index(web: dict) -> str:
 
 class MockServer:
     def __init__(self, config_path: str, index_path: str | None, extras: list[str] | None = None,
-                 hotspot: bool = False):
+                 hotspot: bool = False, fresh: bool = False):
         self.config_path = config_path
         self.index_path = index_path
         self.extras = extras or []
@@ -808,7 +1036,7 @@ class MockServer:
         self.clients: list[queue.Queue] = []
         self.reload_clients: list[queue.Queue] = []
         self.event_id = 0
-        self.sim = PoolSim(self.log, hotspot)
+        self.sim = PoolSim(self.log, hotspot, fresh)
         self.layout = load_layout(config_path, self.extras)
         self.sim.adopt(self.layout.entities)
         self.sim.tick()
@@ -818,6 +1046,13 @@ class MockServer:
 
     def entity(self, domain: str, name: str) -> Entity | None:
         return next((e for e in self.layout.entities if e.domain == domain and e.name == name), None)
+
+    def options(self, e: Entity) -> list | None:
+        """A select's options when the device sets them at run time (the probe role selects)."""
+        return self.sim.settings.options() if e.domain == "select" and e.name in (S[r] for r in ROLES) else None
+
+    def json(self, e: Entity, value, detail_all: bool) -> dict:
+        return entity_json(e, value, detail_all, self.options(e))
 
     def next_id(self) -> int:
         self.event_id += 1
@@ -838,7 +1073,7 @@ class MockServer:
             for e in self.layout.entities:
                 value = snapshot.get(e.name)
                 if self.sent.get(e.name) != value:
-                    self.broadcast(sse("state", json.dumps(entity_json(e, value, False))))
+                    self.broadcast(sse("state", json.dumps(self.json(e, value, False))))
             self.sent = snapshot
 
     def assets(self) -> list[str]:
@@ -871,7 +1106,7 @@ class MockServer:
             events = [sse("ping", json.dumps(config), self.next_id(), retry=30000)]
             events += [sse("sorting_group", json.dumps({"name": n, "sorting_weight": w})) for n, w in self.layout.groups]
             snapshot = self.sim.snapshot()
-            events += [sse("state", json.dumps(entity_json(e, snapshot.get(e.name), True))) for e in self.layout.entities]
+            events += [sse("state", json.dumps(self.json(e, snapshot.get(e.name), True))) for e in self.layout.entities]
             return events
 
     # -- REST actions: (status, body)
@@ -887,12 +1122,15 @@ class MockServer:
                 self.sim.press(name)
             elif domain == "select" and action == "set":
                 option = arg("option")
-                if option not in e.get("options", []):
+                options = self.options(e)
+                if option not in (options if options is not None else e.get("options", [])):
                     self.log(f"'{name}': invalid option {option!r}")
                     return 200  # the device also answers 200 and rejects it in the call
                 self.log(f"'{name}' set to {option}")
                 if name == N["override"]:
                     self.sim.set_override(option)
+                elif options is not None:
+                    self.sim.settings.set_role(name, option)
                 else:
                     self.sim.selects[name] = option
             elif domain == "number" and action == "set":
@@ -905,7 +1143,11 @@ class MockServer:
                     self.log(f"'{name}': value {value} out of range [{lo}, {hi}] -- ignored")
                     return 200
                 self.log(f"'{name}' set to {value:g}")
-                self.sim.set_number(name, value)
+                if name in (S["latitude"], S["longitude"]):
+                    self.sim.settings.set_position(name, value)
+                    self.sim.computed_day = None  # recomputed with it, as plan_settings_changed
+                else:
+                    self.sim.set_number(name, value)
             elif domain == "fan" and action in ("turn_on", "turn_off", "toggle"):
                 self.log(f"'{name}' {action}")
                 if name == N["pump"]:
@@ -914,9 +1156,34 @@ class MockServer:
                     self.sim.static[name] = {"turn_on": True, "turn_off": False}.get(action, not self.sim.static.get(name))
             elif domain == "text" and action == "set":
                 value = arg("value") or ""
-                if len(value) > int(e.get("max_length", 255)):
+                if not int(e.get("min_length", 0)) <= len(value) <= int(e.get("max_length", 255)):
+                    self.log(f"'{name}': length {len(value)} out of range -- ignored")
                     return 200
-                if name == W["join_password"]:
+                settings = self.sim.settings
+                if name == S["page_password"]:
+                    settings.page_password, settings.page_password_set = value, True
+                    self.log(f"'{name}' set; the page now asks for it (user {PAGE_USER})")  # never echo it
+                elif name == S["ota_password"]:
+                    self.log(f"'{name}' set")
+                elif name == S["api_key"]:
+                    if _api_key_ok(value):
+                        settings.api_key_set = True
+                        self.log("API key saved")
+                    else:
+                        self.log("API key refused: not base64 of 32 bytes, or all zero")
+                elif name == S["timezone"]:
+                    if _valid_posix(value):
+                        settings.timezone = value
+                        self.sim.computed_day = None
+                        self.log(f"Timezone: {value}")
+                    else:
+                        self.log(f"Timezone refused, not a POSIX TZ string: {value!r}")
+                elif name == S["timezone_name"]:
+                    if re.fullmatch(r"[A-Za-z0-9/_+-]{1,64}", value):
+                        settings.timezone_name = value
+                    else:
+                        self.log(f"Timezone name refused: {value!r}")
+                elif name == W["join_password"]:
                     self.log(f"'{name}' set")  # never echo it
                     self.sim.wifi.join_password = value
                 elif name == W["join_ssid"]:
@@ -979,6 +1246,23 @@ class MockServer:
             self.broadcast(sse("reload", "{}"), reload=True)
 
 
+def _digest_ok(header: str | None, method: str, password: str) -> bool:
+    """RFC 2617 digest (MD5, qop auth), user admin: what the device checks. Any nonce goes: it's a mock."""
+    if not header or not header.startswith("Digest "):
+        return False
+    p = {k: q or v for k, q, v in re.findall(r'(\w+)=(?:"([^"]*)"|([^,\s]*))', header[7:])}
+    if p.get("username") != PAGE_USER:
+        return False
+    md5 = lambda text: hashlib.md5(text.encode()).hexdigest()  # noqa: E731, S324 -- digest auth is MD5
+    ha1 = md5(f"{PAGE_USER}:{p.get('realm', REALM)}:{password}")
+    ha2 = md5(f"{method}:{p.get('uri', '')}")
+    if p.get("qop"):
+        expected = md5(f"{ha1}:{p.get('nonce')}:{p.get('nc')}:{p.get('cnonce')}:{p['qop']}:{ha2}")
+    else:
+        expected = md5(f"{ha1}:{p.get('nonce')}:{ha2}")
+    return p.get("response") == expected
+
+
 def make_handler(mock: MockServer):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -1018,9 +1302,25 @@ def make_handler(mock: MockServer):
                 clients.remove(q)
                 self.close_connection = True
 
+        def authorized(self, path: str) -> bool:
+            """The device's digest login, once a Page Password is set during this run; else a 401 is sent."""
+            password = mock.sim.settings.page_password
+            if password is None or path.startswith("/__mock/"):
+                return True
+            if _digest_ok(self.headers.get("Authorization"), self.command, password):
+                return True
+            nonce, opaque = os.urandom(16).hex(), os.urandom(16).hex()
+            self.send_response(401)
+            self.send_header("WWW-Authenticate", f'Digest realm="{REALM}", qop="auth", nonce="{nonce}", opaque="{opaque}"')
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return False
+
         def do_GET(self):  # noqa: N802 -- http.server API
             url = urlsplit(self.path)
             path = unquote(url.path)
+            if not self.authorized(path):
+                return None
             if path in ("/", "/index.html"):
                 return self.send_body(200, mock.index_html().encode(), "text/html; charset=utf-8")
             if path == "/events":
@@ -1042,7 +1342,7 @@ def make_handler(mock: MockServer):
                     e = mock.entity(*parts)
                     if e:
                         detail_all = parse_qs(url.query).get("detail") == ["all"]
-                        body = json.dumps(entity_json(e, mock.sim.snapshot().get(e.name), detail_all))
+                        body = json.dumps(mock.json(e, mock.sim.snapshot().get(e.name), detail_all))
                         return self.send_body(200, body.encode(), "application/json")
             return self.send_body(404)
 
@@ -1050,6 +1350,8 @@ def make_handler(mock: MockServer):
             url = urlsplit(self.path)
             length = int(self.headers.get("Content-Length") or 0)
             body = self.rfile.read(length).decode() if length else ""
+            if not self.authorized(unquote(url.path)):
+                return
             params = {**parse_qs(body), **parse_qs(url.query)}
             parts = [unquote(p) for p in url.path.strip("/").split("/")]
             status = mock.act(*parts, params) if len(parts) == 3 else 404
@@ -1093,6 +1395,8 @@ def main() -> int:
                         help="also load this YAML package's entities (repeatable), e.g. wifi-setup.yaml")
     parser.add_argument("--hotspot", action="store_true",
                         help="start on the fallback hotspot, with no clock")
+    parser.add_argument("--fresh", action="store_true",
+                        help="start as a controller not set up yet (on its hotspot, nothing set)")
     args = parser.parse_args()
 
     if args.check:
@@ -1101,13 +1405,14 @@ def main() -> int:
     # PID 1 in the container ignores SIGTERM by default, so `docker stop` would
     # otherwise wait out its timeout and SIGKILL.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    mock = MockServer(args.config, args.index, args.extra, args.hotspot)
+    mock = MockServer(args.config, args.index, args.extra, args.hotspot, args.fresh)
     threading.Thread(target=mock.ticker, daemon=True).start()
     threading.Thread(target=mock.watcher, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(mock))
     server.daemon_threads = True
     print(f"[mock] {mock.layout.title}: {len(mock.layout.entities)} entities, serving on port {args.port}"
-          f" ({'custom page ' + args.index if args.index else 'the page the firmware serves'}). Ctrl-C to stop.",
+          f" ({'custom page ' + args.index if args.index else 'the page the firmware serves'})"
+          f"{', fresh (not set up)' if args.fresh else ''}. Ctrl-C to stop.",
           flush=True)
     try:
         server.serve_forever()
