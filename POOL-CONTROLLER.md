@@ -562,7 +562,7 @@ device's page"). Three tabs:
 | Tab | What's in it |
 |---|---|
 | **Contrôle** | The pool card's panel (pump state, today's plan timeline, the pool's temperature over the last 7 days, Auto/Manuel, forced speed and duration), the temperatures with today's pool min/max, the fill-water meter |
-| **Avancé** | Filtration settings with their Apply gate, boost pulses, freeze-protection threshold and override timeout, today's plan in detail, the last 7 days (Daily History), the device's sensors, its live log |
+| **Avancé** | Filtration settings with their Apply gate, boost pulses, freeze-protection threshold and override timeout (the pool card's settings variant, as in Home Assistant), today's plan in detail, the last 7 days (Daily History), the device's sensors, its live log |
 | **Wi-Fi** | The connection and its statistics, joining another network, the device's clock (see "Wi-Fi and the fallback hotspot" below) |
 
 The `sorting_groups:` under `web_server:` (Pump, Today's Plan, Filtration

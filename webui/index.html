@@ -48,17 +48,8 @@
       <!-- Two independent columns from 1000px, so a tall card on one side leaves no gap on the other.
            Below that the columns dissolve and o1..o5 keep the reading order. -->
       <div class="stack">
-        <div class="card o1">
-          <h2 data-icon="tune-vertical">Réglages <span class="chip warn" id="pendingChip" hidden>En attente</span></h2>
-          <div class="body">
-            <div class="banner" id="pendingBanner" hidden>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13,14H11V9H13M13,18H11V16H13M1,21H23L12,2L1,21Z"/></svg>
-              <span>Durée de filtration modifiée : elle ne compte qu'une fois appliquée, ce qui recalcule le plan du jour.</span>
-              <button class="btn fill" id="applyNow">Appliquer</button>
-            </div>
-            <div class="rows" id="settingsRows"></div>
-          </div>
-        </div>
+        <!-- Réglages: piscine-card's settings variant (app.js), the same rows as on Home Assistant's dashboard -->
+        <div id="settingsHost"></div>
         <div class="card o4">
           <h2 data-icon="chip">Capteurs internes</h2>
           <div class="body"><div class="rows" id="deviceRows"></div></div>

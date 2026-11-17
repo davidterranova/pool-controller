@@ -225,7 +225,8 @@ look of the Home Assistant dashboard. It has three tabs:
   duration), with tiles for the temperatures (the pool's with today's
   min/max) and the filling meter.
 - **Avancé**: the filtration settings with their Apply gate, the boost
-  pulses, the freeze-protection threshold and the override timeout, today's plan in
+  pulses, the freeze-protection threshold and the override timeout (the
+  card's settings variant, as on the Home Assistant dashboard), today's plan in
   detail, the last 7 days (hours filtered, pool min/max), the device's
   sensors, and its live log.
 - **Wi-Fi** (see below): the connection and its statistics, and a way to

@@ -237,33 +237,20 @@ function buttonRow(host, { id, label, sub, iconName, text = "Appuyer", ok, fill,
 }
 const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}</div>`));
 
-/* ---- Réglages */
+/* ---- Réglages: piscine-card's settings variant, the rows Home Assistant's dashboard shows too */
 {
-  const host = $("settingsRows");
-  const pending = () => s(E.pending) === "on";
-  updaters.push(() => {
-    $("pendingChip").hidden = !pending();
-    $("pendingBanner").hidden = !pending();
+  const settings = document.createElement("piscine-card");
+  settings.setConfig({
+    variant: "settings",
+    icons: ICONS, // no <ha-icon> here
+    entities: {
+      min: E.min, max: E.max, offset: E.offset, warm: E.warm, pending: E.pending, apply: E.apply,
+      boostDuration: E.boostDuration, boostInterval: E.boostInterval, highEvery: E.highEvery, freezeAt: E.freezeAt, timeout: E.timeout,
+    },
   });
-  $("applyNow").addEventListener("click", (ev) => {
-    ev.target.classList.add("busy");
-    run(hass.press(E.apply), "Réglages appliqués : plan du jour recalculé").finally(() => ev.target.classList.remove("busy"));
-  });
-  sect(host, "Durée de filtration · s'applique avec « Appliquer »");
-  numberRow(host, { id: E.min, label: "Filtration minimale", sub: "Plancher, même par eau froide" });
-  numberRow(host, { id: E.max, label: "Filtration maximale", sub: "Plafond, même en pleine chaleur" });
-  numberRow(host, { id: E.offset, label: "Ajustement de durée", sub: "Ajouté à la durée calculée" });
-  numberRow(host, { id: E.warm, label: "Décalage du pic de chaleur", sub: "Centre du 2ᵉ bloc par rapport au midi solaire" });
-  buttonRow(host, { id: E.apply, label: "Appliquer les réglages", sub: "Recalcule le plan du jour", text: "Appliquer", fill: true,
-    ok: "Réglages appliqués : plan du jour recalculé", disabled: () => !pending() });
-  sect(host, "Impulsions · immédiat");
-  numberRow(host, { id: E.boostDuration, label: "Durée d'une impulsion" });
-  numberRow(host, { id: E.boostInterval, label: "Intervalle entre impulsions", sub: "0 = pas d'impulsion" });
-  numberRow(host, { id: E.highEvery, label: "Une impulsion High toutes les", sub: "Les autres sont en Medium" });
-  sect(host, "Hors gel · immédiat");
-  numberRow(host, { id: E.freezeAt, label: "Low forcé sous", sub: "Quand l'eau descend sous ce seuil, quoi qu'on demande" });
-  sect(host, "Override manuel · immédiat");
-  numberRow(host, { id: E.timeout, label: "Retour automatique en Auto après", sub: "0 = jamais (alerte après 30 min)" });
+  settings.classList.add("o1");
+  $("settingsHost").replaceWith(settings);
+  updaters.push(() => { if (st(E.min)) settings.hass = hass; });
 }
 
 /* ---- Plan du jour */
