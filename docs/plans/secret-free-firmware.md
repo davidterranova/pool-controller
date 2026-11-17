@@ -25,7 +25,7 @@ Target:
 |---|---|---|---|---|---|
 | 0 | Card 1.3.1: parse ESPHome 2026.7's version string (« … (config hash …, built YYYY-MM-DD HH:MM:SS +0000) ») | — | fix/card-esphome-version-built | done | #28 (merged) |
 | 1 | Spike: confirm the runtime hooks on hardware with ESPHome 2026.11 | — | spike/wp1-runtime-hooks | review (hardware checks left) | #30 |
-| 2 | Firmware: settings package, no `!secret` left | 1 | feat/wp2-device-settings | in progress | |
+| 2 | Firmware: settings package, no `!secret` left | 1 | feat/wp2-device-settings | review (hardware checks left; ESPHome beta) | #31 |
 | 3 | Controller's page: setup wizard, « Contrôleur » sections | contract below (UI on the mock); 2 to finish | | todo | |
 | 4 | Card: Firmware section on the update entity, position/timezone from HA | contract below; 6 to finish | | todo | |
 | 5 | CI: releases carry the firmware, manifest + files on GitHub Pages | 2 (for a real build) | ci/wp5-firmware-releases | done (publishing waits for WP2 and the owner) | #29 (merged) |
@@ -42,11 +42,11 @@ Integration branch: WP2, WP3 and WP6 merge into `feat/secret-free-firmware`, not
 | Compiled today | Becomes (NVS) | Applied by | Set from |
 |---|---|---|---|
 | `wifi_ssid/password` | ESPHome's saved Wi-Fi credentials | the wifi component | install page (Improv serial); the page's « Rejoindre un réseau » (exists); the hotspot fallback stays |
-| API encryption key | provisioned noise PSK, `api: encryption: {}` | `APIServer::save_noise_psk()` (only exists without a YAML key) | Home Assistant on pairing: it generates and sets the key itself (WP1, from HA's source); the page only for a pasted key (migration) or a key generated **in the browser** for use without HA (shown once there) |
+| API encryption key | provisioned noise PSK, `api: encryption: {}` | `APIServer::save_noise_psk()` / `clear_noise_psk()` (only exist without a YAML key) | Home Assistant on pairing: it generates and sets the key itself (WP1, from HA's source); the page only for a pasted key (migration), or « Je n'utilise pas Home Assistant »: Generate API Key, a random key the firmware keeps and nobody sees; Forget API Key hands the controller to HA later |
 | OTA password | global, `ota: … password: ""` in YAML | `id(ota_id).set_auth_password()` on boot; random at first boot so OTA is never open. From 2026.11 the API key also authenticates OTA (Noise), the password only guards plaintext uploads | page |
 | page password | global; `web_server: auth:` compiled with placeholders | `web_server_base` `set_auth_username/password()` on boot; 2026.11 stores the `const char *` and reads it per request, so a change applies at once; null username = setup mode | page, wizard step 1 |
 | latitude / longitude | restored `number`s, rounded to 0.01° | `id(sun_id).set_latitude/longitude()` | page; card « Utiliser la position de Home Assistant » (`hass.config`) |
-| timezone (IANA, converted at build) | restored `text`, POSIX TZ | 2026.11 has no `set_timezone()`: our own small POSIX parser (an `includes:` header) fills a `time::ParsedTimezone`, then `time::set_global_tz()`; YAML keeps `timezone: UTC0` | page (IANA→POSIX table, preset from the browser's zone); card (from `hass.config.time_zone`) |
+| timezone (IANA, converted at build) | global `timezone_posix` (POSIX TZ, applied) + `timezone_name` (IANA, display only) | 2026.11 has no `set_timezone()`: our own POSIX parser (`device_settings.h`, a port of aioesphomeapi's) fills a `time::ParsedTimezone`, then `time::set_global_tz()`; YAML keeps `timezone: UTC0` | page (IANA→POSIX table, preset from the browser's zone); card (from `hass.config.time_zone`); both write Timezone and Timezone Name together |
 | 3 DS18B20 `address:` | role→address globals | `set_address()` before the first read; bus scan via `one_wire` | page: detected probes with live readings, one role select each |
 
 Rules:
@@ -54,7 +54,7 @@ Rules:
 - **Global ids are stable forever.** A global's NVS key is the md5 of its id, so renaming one silently loses its value (and so does changing its type or size).
 - **No `provisioning:` block.** Its window closing stops the hotspot until a power cycle (WP1). The API stays open on the LAN until a key is set, so the wizard gets to Home Assistant early.
 - **`web_server: local: false`** stays explicit: from 2026.11 an « AP only » Wi-Fi config (no network in YAML) would otherwise embed the stock page and serve it as a captive portal, outside auth.
-- **Factory reset:** ESPHome's `factory_reset` button, with a confirmation on the page, wipes NVS and returns to setup mode.
+- **Factory reset:** our own selective erase, not ESPHome's `factory_reset` (which wipes all of NVS): the page and OTA passwords, the saved Wi-Fi and the API key go; probe roles, position, both timezone entities, filtration/freeze settings and history stay. The page asks for a confirmation; the controller reboots into setup mode on its hotspot.
 
 ## Entity contract
 
@@ -62,20 +62,25 @@ These are agreed up front, so 3, 4 and the mock can proceed before 2 and 6. Name
 
 | Name | Type | Notes |
 |---|---|---|
-| Setup State | text_sensor | `configured` or the missing items: `page_password,api_key,position,probes` |
-| Page Password | text (password mode, write-only) | write → global; state never holds it |
-| OTA Password | text (write-only) | idem |
-| API Key | text (write-only) | base64 32 bytes, validated, then `save_noise_psk` |
-| Latitude, Longitude | number (°, 0.01) | restored |
-| Timezone | text | POSIX TZ, restored |
-| Detected Probes | text_sensor | `28ff…: 13.6, 28aa…: 14.9, …` (address: °C) |
-| Pool Probe, Pad Probe, Outdoor Probe | select | options = detected addresses + `none` |
+| Setup State | text_sensor | `configured`, or the missing items in wizard order: `page_password,wifi,position,probes,api_key` (`position` = latitude, longitude and timezone; `probes` = the pool probe) |
+| Page Password | text (password mode, write-only, 8–64) | write → global; state never holds it; none = setup mode (no login) |
+| OTA Password | text (write-only, 8–64) | idem; random at first boot |
+| API Key | text (write-only, 44) | base64 32 bytes, validated, all-zero refused, then `save_noise_psk` |
+| Generate API Key | button | a random key, kept, never shown (use without HA); ignored when a key is set |
+| Forget API Key | button | `clear_noise_psk`: back to no key, for HA to pair |
+| Latitude, Longitude | number (°, 0.01, box) | restored; unknown (NaN) until set |
+| Timezone | text | POSIX TZ, validated by the device's parser, applied, restored |
+| Timezone Name | text | IANA name (Europe/Paris), display only, restored; written with Timezone |
+| Detected Probes | text_sensor | `52000000518fe928: 13.6, ff00000026007028: 14.9` (address as ESPHome's `address:`, family code last; `--` for no answer; `--` alone for none), every minute |
+| Pool Probe, Pad Probe, Outdoor Probe | select | options = `none` + detected addresses (+ a role's address the bus didn't answer for); one role per probe; HA sees options a rescan added once it reconnects |
 | Rescan Probes | button | |
-| Auto Update | switch | restored |
-| Update Check Interval | number (h, 0 = by hand) | restored |
-| Firmware | update (http_request) | installed / latest / release URL; install action |
+| Schedule Waiting For | text_sensor | why the plan isn't computed: `position`, `timezone`, `clock`, `pool probe`, `pool temperature`, `sunrise/sunset`; `--` when it is |
+| Auto Update | switch | restored (WP6) |
+| Update Check Interval | select (WP6) | « À la demande / 6 h / 24 h / 7 j », default 24 h, restored |
+| Firmware | update (http_request) | installed / latest / release URL; install action; behind our own gate (WP6) |
+| Update Status | text_sensor (WP6) | the gate's state, e.g. « en attente » while a manual override or a fill runs |
 | Check for Update | button | |
-| Factory Reset | button | page asks for confirmation |
+| Factory Reset | button | page asks for confirmation; selective erase (Rules) |
 
 ## Work packages
 
@@ -94,16 +99,17 @@ These are agreed up front, so 3, 4 and the mock can proceed before 2 and 6. Name
 - [ ] `update.http_request` reads a GitHub Pages manifest over HTTPS (ESP-IDF cert bundle), OTA from it: compiles; needs hardware and a published manifest
 
 ### WP2: firmware settings
-- [ ] new package `device-settings.yaml`: globals, contract entities, boot lambdas (`on_boot` priority 700: after globals restore, before dallas_temp and web_server); `pool-controller.yaml` / `wifi-setup.yaml` lose every `!secret`
-- [ ] ESPHome pinned to 2026.11.x (the hooks above assume it); a POSIX TZ parser header for `time::set_global_tz()`; `web_server: local: false`; no `provisioning:`
-- [ ] `esphome: project: {name: davidterranova.pool-controller, version: ${firmware_version}}`; `improv_serial:`
-- [ ] the schedule waits for a position and timezone (Schedule Not Computed says why); probes without a role read `unknown`
-- [ ] webui mock simulates the contract (`MOCK_FRESH=1` = an unconfigured device); `make validate` / `mock-ui-check`
+- [x] new package `device-settings.yaml` + `device_settings.h`: globals, contract entities, boot lambdas (`on_boot` 700: after globals restore and the bus scan, before dallas_temp, OTA and web_server; 590: right after dallas_temp, a role with no probe back to address 0; -200: first publishes); `pool-controller.yaml` / `wifi-setup.yaml` lose every `!secret` (the guard finds none)
+- [x] ESPHome pinned once (Makefile `ESPHOME_VERSION`, used by CI): **2026.11.0b6, a beta**: move to 2026.11.x stable before `feat/secret-free-firmware` reaches main; a POSIX TZ parser header for `time::set_global_tz()`; `web_server: local: false`; no `provisioning:`
+- [x] `esphome: project: {name: davidterranova.pool-controller, version: ${firmware_version}}`; `improv_serial:`
+- [x] the schedule waits for a position and timezone (Schedule Not Computed on at once, Schedule Waiting For says why); probes without a role read `unknown`
+- [x] webui mock simulates the contract (`MOCK_FRESH=1` = an unconfigured device, digest login once a Page Password is set); `make validate` / `build` / `mock-ui-check` / `ha-dashboard-check`
+- [ ] on hardware: see « WP2 adds » under the spike log's hardware checks
 
 ### WP3: controller's page
 - [ ] mock-up first: a wizard while Setup State ≠ configured (page password → Wi-Fi → position/timezone → probes → Home Assistant)
 - [ ] « Contrôleur »: Accès, Position, Sondes, Home Assistant, Réinitialiser, beside Wi-Fi and Firmware
-- [ ] the Home Assistant step says « ajoutez l'appareil dans Home Assistant » (HA sets the key); API Key (paste, or generated with `crypto.getRandomValues` and shown once with « Copier ») is the fallback
+- [ ] the Home Assistant step says « ajoutez l'appareil dans Home Assistant » (HA sets the key); fallbacks: paste a key (API Key), or « Je n'utilise pas Home Assistant » (Generate API Key: the firmware makes and keeps a key nobody sees; Forget API Key to pair with HA later)
 
 ### WP4: card
 - [ ] Avancé › Firmware on the update entity: installed / latest, notes link, « Installer » (`update.install`), Auto Update + interval rows; retire `checkFirmware` / `FIRMWARE_FILES` (keep `parseVersion`)
@@ -114,7 +120,7 @@ These are agreed up front, so 3, 4 and the mock can proceed before 2 and 6. Name
 - [x] one project version: a change to the card **or** firmware sources needs a new VERSION (card.yml's check, now `release.yml`: the card, `webui/`, any `*.yaml` at the root)
 - [x] on release: compile with pinned ESPHome, no secrets, `-s firmware_version vX.Y.Z`; attach `firmware.ota.bin`, `firmware.factory.bin`, `manifest.json` (ESP-Web-Tools format + `ota` block: path, md5, release_url) — wired and tested on a development build; the first release that carries them comes after WP2
 - [ ] publish them to GitHub Pages under `/firmware/` (stable URL, no redirect); the repo setting is the owner's call — wired, off until the owner enables Pages and sets `PUBLISH_FIRMWARE_PAGES`
-- [ ] `validate.yml` drops the placeholder-secrets step — with WP2 (it still needs it while `!secret` remains)
+- [x] `validate.yml` drops the placeholder-secrets step — done in WP2 (it runs the guard instead)
 
 How it works (`.github/workflows/`):
 - `release.yml` (was `card.yml`): on main, a VERSION with no release calls `firmware.yml` with the tag, then releases. The card is released exactly as before; the firmware's three files are attached only when `firmware.yml` built a publishable release, after checking the manifest's version and md5.
@@ -139,7 +145,7 @@ For the WPs that build on it:
 ### WP8: migrating a controller built with secrets.yaml (no re-pairing in HA)
 - [ ] ~~on the old firmware, join the Wi-Fi once from the page~~ won't carry over (WP1: saved credentials are keyed by the config hash while the YAML has a network); after the OTA, join the network again from the hotspot page, or first OTA a one-off bridge build that saves them under the generic key (needs hardware)
 - [ ] `make ota` the generic build (last upload with the old password)
-- [ ] on the page: page and OTA passwords, paste the old API key (HA reconnects unchanged; meanwhile **don't** confirm HA's « encryption removed » reauth), position, timezone, probe roles
+- [ ] on the page: page and OTA passwords, paste the old API key (HA reconnects unchanged; meanwhile **don't** confirm HA's « encryption removed » reauth), position, timezone, probe roles (until the pool probe has its role, Pool Return Temperature is unknown: no new plan and **no freeze protection**, so set it first; the day's plan restored from NVS keeps running)
 - [ ] HA's entities, the card and its light check out; then delete secrets.yaml
 
 ## Verification (the WP closing each item ticks it)
@@ -154,6 +160,12 @@ For the WPs that build on it:
 - Audience: anyone with the hardware (CI-built firmware, browser install page).
 - Updates: the user chooses automatic (with a check interval) or on request; HA's Update entity can install when paired.
 - Probes: detected on the bus, roles assigned on the page.
+- Setup State lists `wifi` too, in wizard order: `page_password,wifi,position,probes,api_key`.
+- Timezone: two entities, Timezone (POSIX, applied) and Timezone Name (IANA, display only), written together by the page and the card.
+- Factory reset: our own selective erase (Rules), never ESPHome's `factory_reset`.
+- API key without HA: generated and kept by the firmware (Generate API Key), never in the browser; Forget API Key to hand over to HA.
+- Updates (WP6): Update Check Interval is a select « À la demande / 6 h / 24 h / 7 j » (24 h); every install, HA's Update entity included, waits for a manual override or a fill to end (our own gate around `update.http_request`), with an Update Status text_sensor.
+- Integration branch: WP2, WP3 and WP6 merge into `feat/secret-free-firmware`; it reaches main once the firmware is usable end to end.
 - This file: `docs/plans/`, updated by each WP's PR.
 
 ## Spike log (WP1)
@@ -184,6 +196,15 @@ Sizes (`Flash` / `RAM` as ESPHome prints them):
 
 Flash % is of the 1,835,008 B app slot. The firmware builds unchanged on 2026.11.0b6, about 62 KB smaller (2026.11 also warns that `ota: password:` costs flash and RAM next to an API key and suggests `ota: encryption:`); the update path adds about 119 KB, so the generic firmware should land near 63 %, with room to spare.
 
+**2026-11-18, WP2 build (no hardware).** The whole firmware with `device-settings.yaml`, ESPHome 2026.11.0b6 (2026.11.0 stable wasn't out: still the newest on 2026-11-18): compiles with no warning from our code. **Flash 1,059,447 B (57.7 %), RAM 56,068 B (31.0 %)**, vs 56.5 % / 29.3 % for the secrets build on the same ESPHome: the settings cost ~22 KB of flash. What WP2 learned or decided while building it:
+- `random_uint32()` is « not suitable for cryptographic use » (helpers.h): the OTA password and Generate API Key use `random_bytes()` instead (the spike's lambda used `random_uint32`).
+- **Forgetting the saved Wi-Fi** without wiping NVS: the wifi component loads a 98-byte `SavedWifiSettings` under key 88491487 (no network in the YAML) and a length mismatch reads as none, so Factory Reset saves a 1-byte record under that key and syncs.
+- **Select options at run time**: `select.traits.set_options(FixedVector<const char *>)` copies the pointer list but not the strings, so the addresses live in a static, append-only table (`probe_option()`); the selects republish their state after each change. HA reads options on connect only.
+- **dallas_temp auto-picks**: a sensor with no address takes the bus's only device at setup, so a second `on_boot` (590, right after dallas_temp's 600) puts unassigned roles back to address 0 (`update()` then does nothing: unknown).
+- **web login from another task**: on ESP32 web_server_idf answers in the httpd task, which reads the credential pointers per request, so the password sits in one of two static buffers and a change swaps the pointer (`set_page_login()`).
+- **on_boot in a package**: packages merge lists by concatenation but a mapping replaces, so `pool-controller.yaml`'s `on_boot` became a list, which the package's entries join.
+- `make ota` passes the OTA password with `-s ota_password …` to `esphome upload` only (`ota: password: ${ota_password}`, empty when compiled), from `OTA_PASSWORD` or the untracked `.ota-password`.
+
 **web auth.**
 - 2026.11: `Credentials` holds `const char *` pointers (« point to string literals in generated code; nothing is copied »), and every request reads them (`GuardMiddlewareHandler::check_auth_`): `username == nullptr` means no auth. So a null username is setup mode, and a password set from the page applies on the next request, no reboot. The pointer must outlive the call: point it at a global `std::string`'s `c_str()` and set it again after each change. YAML `auth:` still requires a non-empty username and password, hence placeholders.
 - 2026.7.2: `std::string` copies, and auth is decided once per handler when web_server registers it (`add_handler`, at its setup, priority 249): an empty username then means no auth **until reboot**. Password changes apply live; leaving setup mode needs a reboot. `nullptr` compiles there but is undefined behaviour (`std::string(nullptr)`): use `""`.
@@ -210,9 +231,17 @@ Flash % is of the 1,835,008 B app slot. The firmware builds unchanged on 2026.11
 - timezone: `set_global_tz()` from on_boot vs the same zone in YAML: same local time, same sunrise from `sun` at a set latitude/longitude, across a DST change (set the clock by hand);
 - API: add the device to an HA 2026.11 test instance: it should set the key by itself (`Noise PSK saved` in the log), then reconnect encrypted; also the API Key text path (`save_noise_psk` from a set_action);
 - update: `update.http_request` against a real HTTPS manifest (GitHub Pages or any HTTPS host), then install from it;
-- 2026.11 stable: rebuild on the release (2026.11.0b6 was the newest on 2026-11-17).
+- 2026.11 stable: rebuild on the release (2026.11.0b6 was the newest on 2026-11-17, and still on 2026-11-18 when WP2 pinned it).
+
+**WP2 adds** (its firmware on a spare ESP32 with 2+ DS18B20, never the controller in service):
+- first boot: hotspot at once, page without login, Setup State `page_password,wifi,position,probes,api_key`; OTA refuses an upload with no password (the random one is set);
+- Page Password from the hotspot: next request asks for it; survives a reboot; Improv serial and « Join WiFi Network » save the network (Setup State drops `wifi`), survives a reboot and an OTA;
+- Latitude/Longitude/Timezone: plan computed, sunrise matches the same values compiled in; Schedule Waiting For goes `position` → `timezone` → `--`; a DST change by hand;
+- probes: Detected Probes lists all with readings; roles survive a reboot and read the right probe from the first update; an unassigned role reads unknown even with a single probe on the bus; Rescan after plugging one in adds an option (and HA after a reconnect);
+- API: HA pairs and sets the key (Setup State drops `api_key`); API Key paste, Generate API Key, Forget API Key each behave;
+- Factory Reset: back to setup mode on the hotspot, roles/position/timezone/history kept; `make ota` with `.ota-password` uploads.
 
 ## Open questions
 - ~~Does HA 2026.11 provision a keyless device's API key by itself? (WP1)~~ Yes, from its source (spike log); to see on hardware.
-- Timezone parser: write our own small one, or have the page send the parsed fields? (WP2, WP3)
+- ~~Timezone parser: write our own small one, or have the page send the parsed fields? (WP2, WP3)~~ Our own (WP2): the page sends a POSIX string, the device parses and validates it.
 - Enabling GitHub Pages on the repo (owner's call, WP5): Settings › Pages › Source: GitHub Actions, and the repository variable `PUBLISH_FIRMWARE_PAGES` = `true` (README › Releases). Worth doing once a release carries a firmware (after WP2), since WP6 and WP7 need the URL.
