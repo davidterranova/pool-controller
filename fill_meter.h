@@ -163,6 +163,14 @@ inline bool acknowledge(State &s) {
   return true;
 }
 
+/// The controller's one State. A function-local static rather than an
+/// ESPHome global: main.cpp declares globals before it includes this header,
+/// so a global can't be of a type defined here.
+inline State &state() {
+  static State s;
+  return s;
+}
+
 /// Fill Meter turned off: no fill, no alarm, no test. The litres counted so
 /// far today stay counted; the caller stops counting new ones.
 inline Events disable(State &s) {
