@@ -180,6 +180,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 16px 16px 40px; }
 .day .bar { position: relative; height: 10px; border-radius: 5px; background: var(--raised); }
 .day .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; background: var(--acc); }
 .day.today .bar i { opacity: .55; }
+.day.short .bar i { background: var(--amber); }
 .day .bar b { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--primary-text-color); }
 .day .v { text-align: right; }
 .day.missing .v, .day.missing .lbl { color: var(--secondary-text-color); font-style: italic; }
