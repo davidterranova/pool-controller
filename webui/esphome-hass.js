@@ -31,6 +31,7 @@ export const E = {
   hoursPlanned: "sensor/Planned Filtration Hours",
   hoursToday: "sensor/Filtration Hours Today",
   history: "text_sensor/Daily History",
+  planHistory: "text_sensor/Daily Plan History",
   b1s: "text_sensor/Schedule Block 1 Start",
   b1e: "text_sensor/Schedule Block 1 End",
   b2s: "text_sensor/Schedule Block 2 Start",

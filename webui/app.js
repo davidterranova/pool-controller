@@ -289,7 +289,8 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
   buttonRow(host, { id: E.recompute, label: "Recalculer le plan maintenant", text: "Recalculer", ok: "Plan du jour recalculé" });
 }
 
-/* ---- 7 derniers jours: closed days from the device's Daily History, plus today so far */
+/* ---- 7 derniers jours: closed days from the device's Daily History, each with its plan from Daily Plan History
+   (days closed since the firmware that has it), plus today so far. As piscine-card's « 7 derniers jours ». */
 {
   const host = $("days");
   const WD = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
@@ -298,18 +299,27 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
   const parse = (text) => Object.fromEntries([...String(text || "").matchAll(
     /(\d{4}-\d{2}-\d{2}): ([\d.]+) h(?: (-?[\d.]+)\/(-?[\d.]+) °C)?/g)]
     .map((m) => [m[1], { hours: +m[2], lo: m[3] === undefined ? NaN : +m[3], hi: m[4] === undefined ? NaN : +m[4] }]));
+  const SHORT_TOLERANCE_H = 0.25; // under its plan by more than the day boundary and the minute rounding
+  const isShort = (r) => Number.isFinite(r.hours) && Number.isFinite(r.planned) && r.hours < r.planned - SHORT_TOLERANCE_H;
+  const title = (r) => {
+    if (r.today) return "En cours ; le trait marque la durée planifiée";
+    if (!Number.isFinite(r.hours)) return "Pas de données : contrôleur éteint ou sans heure ce jour-là";
+    if (!Number.isFinite(r.planned)) return "Plan du jour non enregistré";
+    const gap = r.hours - r.planned;
+    return `Plan ${fmt1(r.planned)} h ; ${Math.abs(gap) < 0.05 ? "plan tenu" : `${gap > 0 ? "+" : "−"}${fmt1(Math.abs(gap))} h`}`;
+  };
   let drawn = "";
   updaters.push(() => {
     if (!st(E.history) && !st(E.hoursToday)) return;
     const today = new Date();
-    const key = [s(E.history), s(E.hoursToday), s(E.hoursPlanned), s(E.waterMin), s(E.waterMax), today.toDateString()].join("|");
+    const key = [s(E.history), s(E.planHistory), s(E.hoursToday), s(E.hoursPlanned), s(E.waterMin), s(E.waterMax), today.toDateString()].join("|");
     if (key === drawn) return;
     drawn = key;
-    const closed = parse(s(E.history));
+    const closed = parse(s(E.history)), plans = parse(s(E.planHistory));
     const rows = [{ label: "Aujourd'hui", hours: n(E.hoursToday), planned: n(E.hoursPlanned), lo: n(E.waterMin), hi: n(E.waterMax), today: true }];
     for (let i = 1; i <= 7; i++) {
       const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
-      rows.push({ label: i === 1 ? "Hier" : `${WD[d.getDay()]} ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`, ...closed[dayKey(d)] });
+      rows.push({ label: i === 1 ? "Hier" : `${WD[d.getDay()]} ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`, ...closed[dayKey(d)], planned: plans[dayKey(d)]?.hours });
     }
     const scale = Math.max(1, ...rows.flatMap((r) => [r.hours, r.planned]).filter(Number.isFinite));
     const pct = (v) => `${Math.min(100, (v / scale) * 100).toFixed(1)}%`;
@@ -317,8 +327,8 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
     host.innerHTML = `<div class="day head"><span></span><span>Filtration</span><span></span><span class="w">Eau</span></div>`
       + rows.map((r) => {
         const known = Number.isFinite(r.hours);
-        return `<div class="day${r.today ? " today" : ""}${known ? "" : " missing"}"
-          title="${r.today ? "En cours ; le trait marque la durée planifiée" : known ? "" : "Pas de données : contrôleur éteint ou sans heure ce jour-là"}">
+        return `<div class="day${r.today ? " today" : ""}${known ? "" : " missing"}${!r.today && isShort(r) ? " short" : ""}"
+          title="${title(r)}">
           <span class="lbl">${r.label}</span>
           <span class="bar">${known ? `<i style="width:${pct(r.hours)}"></i>` : ""}${Number.isFinite(r.planned) && r.planned > 0 ? `<b style="left:${pct(r.planned)}"></b>` : ""}</span>
           <span class="v num">${known ? `${fmt1(r.hours)} h` : "—"}</span>
@@ -328,6 +338,7 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
     host.appendChild(h(`<p class="foot">${past.length
       ? `Moyenne ${fmt1(past.reduce((a, r) => a + r.hours, 0) / past.length)} h de filtration par jour sur ${past.length} jour${past.length > 1 ? "s" : ""}.`
       : "Aucune journée complète pour l'instant."}
+      Le trait marque la durée planifiée ; en orange, une journée restée sous son plan.
       Eau : minimum et maximum du jour, mesurés pompe en marche. Le contrôleur enregistre chaque journée à minuit.</p>`));
   });
 }
