@@ -645,7 +645,7 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
 .erow .btns { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
 .erow:has(> .btns) .name { min-width:6.5em; } /* two buttons go under the name rather than break « Mise à jour » */
 .erow .val.acc { color:var(--acc); font-weight:500; }
-.erow.more { cursor:pointer; border-radius:12px; margin:0 -8px; padding:4px 8px; gap:10px; }
+.erow.more { cursor:pointer; border-radius:12px; margin:0 -8px; padding:4px 8px; }
 .erow.more:hover, .erow.more:focus-visible { background:var(--raised); outline:none; }
 .erow .chev { display:grid; flex:none; margin-left:-4px; color:var(--muted); }
 .erow .chev svg { width:18px; height:18px; }
