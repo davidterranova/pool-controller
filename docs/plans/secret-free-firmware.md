@@ -25,13 +25,13 @@ Target:
 |---|---|---|---|---|---|
 | 0 | Card 1.3.1: parse ESPHome 2026.7's version string (« … (config hash …, built YYYY-MM-DD HH:MM:SS +0000) ») | — | fix/card-esphome-version-built | done | #28 (merged) |
 | 1 | Spike: confirm the runtime hooks on hardware with ESPHome 2026.11 | — | spike/wp1-runtime-hooks | review (hardware checks left) | #30 |
-| 2 | Firmware: settings package, no `!secret` left | 1 | feat/wp2-device-settings | review (hardware checks left; ESPHome beta) | #31 |
+| 2 | Firmware: settings package, no `!secret` left | 1 | feat/wp2-device-settings | done in `feat/secret-free-firmware` (hardware checks left, in the WP8 window; ESPHome beta) | #31 (merged) |
 | 3 | Controller's page: setup wizard, « Contrôleur » sections | contract below (UI on the mock); 2 to finish | | todo | |
 | 4 | Card: Firmware section on the update entity, position/timezone from HA | contract below; 6 to finish | | todo | |
 | 5 | CI: releases carry the firmware, manifest + files on GitHub Pages | 2 (for a real build) | ci/wp5-firmware-releases | done (publishing waits for WP2 and the owner) | #29 (merged) |
 | 6 | Firmware: updates (http_request OTA + update entity + auto-update) | 1, 5 (manifest URL) | | todo | |
 | 7 | Install page (ESP Web Tools) + docs | 5 | | todo | |
-| 8 | Migration of an existing controller built with secrets.yaml | 2, 3, 6 | | todo | |
+| 8 | Automatic migration of an existing controller (`make migrate`: one OTA seeds its secrets.yaml settings) | 2 | | todo | |
 
 Parallel from day one: 0, 1, the mock-ups of 3 and 4, and 5's workflow (tested on a dummy build).
 
@@ -142,11 +142,27 @@ For the WPs that build on it:
 - [ ] `docs/install/index.html` on Pages: ESP Web Tools (Chrome/Edge, USB), Improv Wi-Fi, then « ouvrez http://pool-controller.local pour terminer »
 - [ ] README, POOL-CONTROLLER: first setup, updates, factory reset, dev builds (no secrets.yaml; `make ota` takes the OTA password from an untracked file); `secrets.yaml.template` goes
 
-### WP8: migrating a controller built with secrets.yaml (no re-pairing in HA)
-- [ ] ~~on the old firmware, join the Wi-Fi once from the page~~ won't carry over (WP1: saved credentials are keyed by the config hash while the YAML has a network); after the OTA, join the network again from the hotspot page, or first OTA a one-off bridge build that saves them under the generic key (needs hardware)
-- [ ] `make ota` the generic build (last upload with the old password)
-- [ ] on the page: page and OTA passwords, paste the old API key (HA reconnects unchanged; meanwhile **don't** confirm HA's « encryption removed » reauth), position, timezone, probe roles (until the pool probe has its role, Pool Return Temperature is unknown: no new plan and **no freeze protection**, so set it first; the day's plan restored from NVS keeps running)
-- [ ] HA's entities, the card and its light check out; then delete secrets.yaml
+### WP8: migrating a controller built with secrets.yaml, automatically (one OTA, no setup, no re-pairing)
+The goal is uptime. One OTA carries every setting over, so the controller is back in about 15–20 s with nothing to set up. That is the same downtime as any `make ota`, and the pump keeps its plan through the reboot, as it does today.
+
+- [ ] **`make migrate`.** It builds the generic firmware plus a local-only package, `migration.yaml`. The Makefile generates that package from `secrets.yaml` and the three probe addresses compiled into today's firmware; it is gitignored, never committed, never published. The secret guard and CI never see it.
+- [ ] **Seeding on boot.** The package seeds the settings at `on_boot` priority 800, before WP2's 700 step applies them and before Wi-Fi and the API start. **It only fills an empty value, never overwrites.**
+  - Wi-Fi: saved credentials under the generic (no-network) key, so it connects at once with no hotspot.
+  - API key: the current one, via `save_noise_psk`, so HA reconnects without a prompt and never sees a keyless device.
+  - Page and OTA passwords: the current ones.
+  - Latitude, longitude, POSIX timezone and the IANA name.
+  - Probe roles: pool, pad and outdoor from the compiled addresses. The pool probe has its role before its first read, so freeze protection and the plan never stop.
+- [ ] **Uploaded like today.** `make migrate` uploads with today's OTA password, which is also the seeded one.
+- [ ] **Waits and checks.** It waits for the controller to come back, then checks that Setup State reads `configured`, the pool temperature reads again, and the controller answers with the same API key (HA's Status on). On any failure it prints the rollback command.
+- [ ] **Later updates.** The next normal update (a published release) no longer carries the package; the values stay in NVS. Then secrets.yaml can go.
+
+Rollback: the last secrets.yaml build (v1.3.x) stays at hand; `make ota` of it restores the controller as it is today.
+
+The only failure that cuts the controller off is Wi-Fi seeding not taking. It then falls back to its hotspot, and someone rejoins from its page near the pool. Verify this first (spike log: the fixed key `88491487` when the YAML has no network).
+
+Timing: with the pump off, no manual override, no fill; someone stays on it until the checks pass. No spare board, so this is the first time it runs on hardware: the WP1/WP2 hardware checks happen in the same window, right after.
+
+Before it runs: confirm that a value seeded at priority 800 survives into WP2's apply step, and that `save_noise_psk` at boot doesn't race HA's first connection. Both are read from the source, then compiled.
 
 ## Verification (the WP closing each item ticks it)
 - [ ] each PR: `make validate`, `make mock-ui-check`, `make ha-dashboard-check`, CI green
@@ -154,7 +170,7 @@ For the WPs that build on it:
 - [ ] reboot and OTA keep every setting
 - [ ] a test release is found and installed: automatically on schedule, with « Installer » on the page, and from HA's Update entity
 - [ ] factory reset brings back setup mode
-- [ ] migration (WP8) on a controller in service
+- [ ] `make migrate` (WP8) on a controller in service: back within one reboot, `configured`, same API key, pool temperature reading
 
 ## Decisions
 - Audience: anyone with the hardware (CI-built firmware, browser install page).
@@ -167,6 +183,8 @@ For the WPs that build on it:
 - Updates (WP6): Update Check Interval is a select « À la demande / 6 h / 24 h / 7 j » (24 h); every install, HA's Update entity included, waits for a manual override or a fill to end (our own gate around `update.http_request`), with an Update Status text_sensor.
 - Integration branch: WP2, WP3 and WP6 merge into `feat/secret-free-firmware`; it reaches main once the firmware is usable end to end.
 - This file: `docs/plans/`, updated by each WP's PR.
+- Migration (2026-11-18): automatic, to keep uptime. One `make migrate` OTA seeds every current setting (Wi-Fi, API key, passwords, position, timezone, probe roles) from secrets.yaml into NVS, with nothing to set up and no re-pairing; manual steps are only the fallback (WP8).
+- Hardware: there is no spare ESP32. The hardware checks run on the controller in service, in one planned window right after `make migrate`, with the last secrets.yaml build kept as the rollback. A spare ESP32 with DS18B20s would move them off it; recommended, not required.
 
 ## Spike log (WP1)
 _(findings, with the ESPHome version they were checked on)_
@@ -224,7 +242,7 @@ Flash % is of the 1,835,008 B app slot. The firmware builds unchanged on 2026.11
 
 **NVS keys of globals:** md5 of the global's id only (`globals/__init__.py`); a changed type or size reads as missing too.
 
-**Needs hardware** (spike build + a spare ESP32 with a DS18B20, never the controller in service):
+**Needs hardware** (on a spare ESP32 with a DS18B20 if one turns up; otherwise on the controller in service, in the WP8 window, see Decisions):
 - boot the spike: hotspot comes up, no login on the page with nothing stored; set Page Password → the next request asks for it, no reboot (2026.11); reboot → still asked;
 - OTA: `esphome upload` with a password set at run time (`ota: password: ${ota_password}` + `-s ota_password …` at upload only), and with the API key (2026.11 Noise path);
 - probes: with 2+ probes on the bus, Rescan Probes lists them, `set_address()` on boot reads the chosen one from the first update; the « More than one device » boot error is harmless;
@@ -233,7 +251,7 @@ Flash % is of the 1,835,008 B app slot. The firmware builds unchanged on 2026.11
 - update: `update.http_request` against a real HTTPS manifest (GitHub Pages or any HTTPS host), then install from it;
 - 2026.11 stable: rebuild on the release (2026.11.0b6 was the newest on 2026-11-17, and still on 2026-11-18 when WP2 pinned it).
 
-**WP2 adds** (its firmware on a spare ESP32 with 2+ DS18B20, never the controller in service):
+**WP2 adds** (same: a spare ESP32 with 2+ DS18B20s, or the WP8 window):
 - first boot: hotspot at once, page without login, Setup State `page_password,wifi,position,probes,api_key`; OTA refuses an upload with no password (the random one is set);
 - Page Password from the hotspot: next request asks for it; survives a reboot; Improv serial and « Join WiFi Network » save the network (Setup State drops `wifi`), survives a reboot and an OTA;
 - Latitude/Longitude/Timezone: plan computed, sunrise matches the same values compiled in; Schedule Waiting For goes `position` → `timezone` → `--`; a DST change by hand;
