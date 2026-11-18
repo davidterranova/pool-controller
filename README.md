@@ -7,9 +7,12 @@ safety rule that always wins, and three temperature sensors — all exposed to
 Home Assistant, but not dependent on it. The device keeps running its
 schedule whether or not HA is reachable.
 
-See [POOL-CONTROLLER.md](POOL-CONTROLLER.md) for how the controller actually
-works: wiring, control logic, and Home Assistant setup. This file covers the
-repo itself — layout and tooling.
+**Install it from the browser: <https://pool-controller.kitesize.fr/>**
+(Chrome or Edge on a computer, the board over USB), then finish on the
+controller's own page. See [POOL-CONTROLLER.md](POOL-CONTROLLER.md) for how
+the controller actually works: wiring, first setup, updates, control logic,
+and Home Assistant setup. This file covers the repo itself — layout and
+tooling, and building the firmware yourself.
 
 ## Repo layout
 
@@ -23,10 +26,12 @@ repo itself — layout and tooling.
 | `hacs.json` | Tells the Marketplace (HACS) which file this repo publishes: the card above, from each GitHub release. |
 | `tools/webui-mock/` | Local mock of the device's web UI, for working on the page without flashing (see below). |
 | `tools/tz-posix.py` | Regenerates the card's IANA → POSIX time-zone table from tzdata (« Utiliser la position et le fuseau de Home Assistant »). |
-| `tools/release/` | Release helpers for CI: the guard that keeps secrets out of a published firmware, and the firmware's `manifest.json` (see [Releases](#releases)). |
+| `tools/release/` | Release helpers for CI: the guard that keeps secrets out of a published firmware, and the firmware's `manifest.json` (see [Releases](#releases)), with its tests (`python3 -I tools/release/test_manifest.py`). |
+| `tools/migrate/` | `make migrate`: moves a controller built with `secrets.yaml` to this firmware in one OTA (see [Coming from a secrets.yaml build](#coming-from-a-secretsyaml-build)). |
+| `docs/install/` | The install page, served at the root of <https://pool-controller.kitesize.fr/> (see [The install page](#the-install-page-docsinstall)). |
 | `webui/` | The device's own web page, built around the same `piscine-card` (see below). `make webui` bundles it into `webui/dist/` (gitignored), which the firmware embeds. |
 | `docs/plans/` | Plans for work spanning several PRs, with their progress: [secret-free firmware and OTA updates](docs/plans/secret-free-firmware.md). |
-| `.gitignore` | Excludes `.ota-password` (see `make ota`), `secrets.yaml` (older builds), `.esphome/` (build cache), `.vscode/`. |
+| `.gitignore` | Excludes `.ota-password` (see `make ota`), `secrets.yaml` (older builds, `make migrate`), `.migrate/`, `.esphome/` (build cache), `.vscode/`. |
 | `LICENSE` | MIT. |
 
 ## Toolchain
@@ -41,15 +46,32 @@ repo itself — layout and tooling.
   device through to a Linux container, so `make flash` shells out to the
   host's esptool directly instead of going through Docker.
 
-## First-time setup
+## Installing a controller
 
-1. Nothing to fill in before building: the firmware compiles in no network,
-   key, password, position or probe address. Each controller is set up
-   after the flash, from its page (see 6.).
+Nothing to build: each release's firmware is published, and
+<https://pool-controller.kitesize.fr/> installs it from Chrome or Edge on a
+computer, over USB (ESP Web Tools; every install erases the board), then
+sends the Wi-Fi over the same cable (Improv). The controller's own page then
+runs its setup wizard (page password, Wi-Fi, position, probes, Home
+Assistant). The whole walk-through, with what to do without Wi-Fi:
+[POOL-CONTROLLER.md, First setup](POOL-CONTROLLER.md#first-setup).
+
+From then on it updates itself from the releases (Auto Update, on by
+default, every 24 h; see [POOL-CONTROLLER.md, Updates](POOL-CONTROLLER.md#updates)).
+
+## Development builds
+
+For a change to the firmware, or other GPIOs than the published ones.
+
+1. Nothing to fill in before building, and no `secrets.yaml`: the firmware
+   compiles in no network, key, password, position or probe address (the
+   guard, `tools/release/secret_guard.py`, keeps it that way). Each
+   controller is set up after the flash, from its page.
 
 2. Check the `substitutions:` block at the top of `pool-controller.yaml` —
-   the four relay GPIO pins and the OneWire bus pin — match your own wiring.
-   See [POOL-CONTROLLER.md](POOL-CONTROLLER.md) for what each one does.
+   the four relay GPIO pins, the OneWire bus pin and the water meter's —
+   match your own wiring. See [POOL-CONTROLLER.md](POOL-CONTROLLER.md) for
+   what each one does.
 
 3. `make validate` — parses the YAML and checks component schemas (fast, no
    compile).
@@ -58,19 +80,36 @@ repo itself — layout and tooling.
    ESP32 Arduino/ESP-IDF toolchain inside the container (~1GB), so budget
    several minutes; later builds are quick.
 
-5. Plug the board in over USB and `make flash`.
+5. First flash: plug the board in over USB and `make flash` (it writes the
+   build over whatever the board holds, without erasing its settings).
+   A board with nothing saved opens its hotspot `pool-controller` at once:
+   join it and open http://192.168.4.1 (no login yet), where the setup
+   wizard starts, as after an install from the page.
 
-6. Set it up: with no network saved, the controller opens its hotspot
-   `pool-controller` at once; join it and open http://192.168.4.1 (no login
-   yet). Setup State lists what's left: `page_password`, `wifi`, `position`
-   (Latitude, Longitude, Timezone), `probes` (which DS18B20 is the pool's),
-   `api_key` (Home Assistant sets it when you add the device). Until the
-   page's setup wizard exists, set the entities from the page's lists, or
-   over the REST API. Put the OTA Password you set in `.ota-password`
-   (gitignored) for `make ota`.
+6. Later, over Wi-Fi: `make ota`. It needs the controller's **OTA
+   Password** — random at first boot, so set your own on the page
+   (Contrôleur › Accès) — read from `.ota-password` (one line, gitignored)
+   or `OTA_PASSWORD=…`, and given to the upload only, never compiled in.
 
-6. Pair it with Home Assistant — see
-   [POOL-CONTROLLER.md](POOL-CONTROLLER.md#home-assistant-configuration).
+A controller running your own build still checks the published releases:
+your build reports `git describe`'s version (`v1.5.0-3-g1a2b3c4`, `dev`),
+which never matches a release's, so with Auto Update on the next scheduled
+check installs the release over it. Turn Auto Update off, or set Update
+Check Interval to « À la demande », on a controller you flash yourself
+(Contrôleur › Firmware, or Home Assistant).
+
+## Coming from a secrets.yaml build
+
+A controller still running a firmware built with `secrets.yaml` (v1.3.x)
+moves over once, from the checkout that holds that file: `make migrate`. One
+OTA carries every setting it was built with (Wi-Fi, API key, page and OTA
+passwords, position and timezone, probe roles) into the controller's own
+storage, so it comes back in about 20 s, set up and still paired with Home
+Assistant, with no wizard. It checks the controller is idle first, checks
+it afterwards, prints the rollback on a failure, and writes `.ota-password`
+for the next `make ota`. From then on it updates like any other, and
+`secrets.yaml` can go. Details: `make migrate` in the Makefile, and WP8 of
+the [plan](docs/plans/secret-free-firmware.md).
 
 ## Makefile targets
 
@@ -82,11 +121,14 @@ repo itself — layout and tooling.
 | `make flash` | Rebuild, then flash over USB via esptool. Auto-detects the serial port; override with `PORT=/dev/cu.xxxx`. |
 | `make status` | Query the connected board over USB: chip type, revision, MAC address. |
 | `make kill-port` | Kill whatever process (a leftover `screen`/monitor session, usually) is holding the serial port open. |
-| `make ota` | Rebuild, then push the firmware over Wi-Fi instead of USB. Only works once the device has already joined Wi-Fi at least once. |
+| `make ota` | Rebuild, then push the firmware over Wi-Fi instead of USB. Only works once the device has already joined Wi-Fi at least once; the OTA Password comes from `.ota-password` or `OTA_PASSWORD=`. |
+| `make migrate` | Move a controller built with `secrets.yaml` to this firmware in one OTA (see above). `make migrate-build` only builds it, `make migrate-check` repeats its checks, `make migrate-clean` deletes the generated build, `make migrate-test` runs its tests. |
 | `make ip` | Resolve and print the device's current IP via mDNS. |
 | `make mock-ui` | Serve a local mock of the device's web UI at http://localhost:8080/ (see below). `MOCK_PORT=` to change the port, `MOCK_INDEX=path.html` to serve your own page. |
 | `make mock-webui` | `make mock-ui` serving the page from its sources in `webui/`, reloading on save (see below). `MOCK_HOTSPOT=1` starts the simulated device on its hotspot, with no clock. |
 | `make mock-ui-check` | Print the web UI layout (sections and order) and fail on any entity type the mock can't render. Runs in CI. |
+| `make firmware-test` | Host tests of the firmware's pure C++ helpers (`tools/tests/`). Runs in CI. |
+| `make webui-test` | Unit tests of the device's page and the install page's pure modules, with Node's test runner. Runs in CI. |
 | `make ha-dashboard-check` | Fail when the Home Assistant dashboard components in `home-assistant/dashboard/` name an entity the firmware doesn't have, or leave one out of the pool card. Runs in CI. |
 | `make clean` | Remove the local build cache (`.esphome/`). |
 
@@ -362,12 +404,38 @@ of 8 characters or more; the other networks fail, as with a wrong password.
 `MOCK_HOTSPOT=1 make mock-webui` starts on the hotspot with no clock, as a
 new install would.
 
+## The install page (`docs/install/`)
+
+`docs/install/index.html` is the page at <https://pool-controller.kitesize.fr/>:
+it reads `firmware/manifest.json` beside it (the published release) and
+installs it with [ESP Web Tools](https://esphome.github.io/esp-web-tools/)
+10.4.0, pinned and loaded from unpkg. Its decisions (which browser, which
+manifest state) are in `install-model.js`, tested by `make webui-test`;
+`install.js` draws them.
+
+- **States.** Ready (the release's version on the button); a phone or tablet
+  (installing is done from a computer: a note, and a link to copy); a
+  browser without Web Serial; a page opened without HTTPS; no firmware
+  published yet (the manifest answers 404: the button stays off); the
+  manifest unreachable (« Réessayer »); ESP Web Tools not loaded from unpkg.
+- **Always erases.** The manifest has no `new_install_prompt_erase`, so ESP
+  Web Tools erases the board without asking, then goes straight to the Wi-Fi
+  step. The page is for a new board or one to start over; a controller in
+  service updates itself.
+- **Trying it locally.** Serve `docs/install/` with any static server on
+  localhost (a secure context, so Web Serial works), with a
+  `firmware/` folder beside it holding a release's three files, or none for
+  the 404 state.
+- It reaches the site with the next release that carries the firmware (see
+  below); a change to the page alone waits for that release.
+
 ## Updating firmware after the first flash
 
-Once the device has joined Wi-Fi, prefer `make ota` over `make flash` — no
-cable needed. `make flash` (USB) is only required for the very first flash,
-or if the device is stuck in a state where it can't reach Wi-Fi at all (e.g.
-a bad password baked into a previous build).
+An installed controller updates itself from the releases: see
+[POOL-CONTROLLER.md, Updates](POOL-CONTROLLER.md#updates). For your own
+build, `make ota` (no cable; see [Development builds](#development-builds));
+`make flash` (USB) only for a first flash, or a controller that can't reach
+Wi-Fi at all.
 
 ## Releases
 
@@ -420,9 +488,12 @@ previous ones, only when the repository allows it:
    `PUBLISH_FIRMWARE_PAGES` = `true`.
 
 Without both, a firmware release is attached to the release only, and the
-workflow says so. Each deploy replaces the whole Pages site, so the job
-rebuilds it: `/firmware/`, plus `docs/install/` as `/install/` once the
-install page exists.
+workflow says so. Each deploy replaces the whole Pages site, so the `pages`
+job rebuilds it whole: `docs/install/`'s contents at the root (the install
+page, `/`), and the release's three files under `/firmware/`, where both the
+page and the controllers read them. The custom domain is a repository
+setting (Settings › Pages): a site deployed by GitHub Actions needs no
+`CNAME` file, and ignores one.
 
 ## Troubleshooting
 
