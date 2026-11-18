@@ -2,7 +2,9 @@
  * The controller's own page: « Contrôle » runs Home Assistant's piscine-card (unchanged, fed by
  * esphome-hass.js) next to HA-style tiles; « Remplissage » the card's water variant; « Avancé » the
  * settings, today's plan, the device's sensors and its live log; « Contrôleur » its Wi-Fi
- * (wifi-setup.yaml: connection, statistics, joining a network) and its firmware. The device keeps no
+ * (wifi-setup.yaml: connection, statistics, joining a network), its firmware, and what setup.js adds:
+ * its position, probes, passwords, Home Assistant key and factory reset, plus the setup wizard shown
+ * instead of the page while the controller isn't set up (device-settings.yaml). The device keeps no
  * history of its sensors, so the only charts are of what it records itself: the pool's min/max and
  * filtration of the last 7 days, and the fill water of 30 days and 12 months. Everything talks to the
  * ESP32 only (but, on a firmware without updates.yaml, « Vérifier », which asks GitHub), so it keeps
@@ -10,6 +12,8 @@
  */
 import { EspHass, E } from "./esphome-hass.js";
 import { ICONS } from "./icons.js";
+import { mountSetup } from "./setup.js";
+import { WAITING_FOR } from "./setup-model.js";
 
 const hass = new EspHass();
 const $ = (id) => document.getElementById(id);
@@ -285,7 +289,8 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
     value: () => (s(E.nextAt) && s(E.nextAt) !== "--:--" ? `${s(E.nextAt)} → ${SPEED_FR[s(E.nextTo)] || s(E.nextTo)}` : "Plus rien aujourd'hui") });
   valueRow(host, { id: E.nextBoostStart, label: "Prochaine impulsion", value: range(E.nextBoostStart, E.nextBoostEnd) });
   valueRow(host, { id: E.recomputed, label: "Plan calculé à", value: () => stamp(s(E.recomputed)) });
-  valueRow(host, { id: E.notComputed, label: "Plan du jour", problem: "Non calculé" });
+  valueRow(host, { id: E.notComputed, label: "Plan du jour", problem: "Non calculé",
+    sub: () => (s(E.notComputed) === "on" && WAITING_FOR[s(E.waitingFor)] ? `Attend ${WAITING_FOR[s(E.waitingFor)]}` : "") });
   valueRow(host, { id: E.overrideActive, label: "Override sans limite", problem: "Depuis plus de 30 min" });
   buttonRow(host, { id: E.recompute, label: "Recalculer le plan maintenant", text: "Recalculer", ok: "Plan du jour recalculé" });
 }
@@ -621,6 +626,10 @@ const orDash = (id) => () => s(id) || "—";
     }
   });
 }
+
+/* ---- Setup: the wizard while the controller isn't set up, and the Contrôleur tab's Position, Sondes,
+   Accès, Home Assistant and Réinitialiser sections (setup.js) */
+updaters.push(mountSetup({ hass, E, ui: { icon, esc, toast, fmt1, bars } }));
 
 /* ---- Capteurs internes */
 const KNOWN = new Set(Object.values(E));

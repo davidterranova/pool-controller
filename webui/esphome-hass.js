@@ -90,6 +90,24 @@ export const E = {
   join: "button/Join WiFi Network",
   clock: "datetime/Device Clock",
   clockSource: "text_sensor/Clock Source",
+  // From device-settings.yaml (setup.js): what used to be compiled in. Secrets are write-only.
+  setupState: "text_sensor/Setup State",
+  pagePassword: "text/Page Password",
+  otaPassword: "text/OTA Password",
+  apiKey: "text/API Key",
+  generateKey: "button/Generate API Key",
+  forgetKey: "button/Forget API Key",
+  latitude: "number/Latitude",
+  longitude: "number/Longitude",
+  timezone: "text/Timezone",
+  timezoneName: "text/Timezone Name",
+  detectedProbes: "text_sensor/Detected Probes",
+  poolProbe: "select/Pool Probe",
+  padProbe: "select/Pad Probe",
+  outdoorProbe: "select/Outdoor Probe",
+  rescanProbes: "button/Rescan Probes",
+  factoryReset: "button/Factory Reset",
+  waitingFor: "text_sensor/Schedule Waiting For",
 };
 
 /** What the recorder keeps (every change): the card draws today's overrides from it. */
@@ -129,8 +147,14 @@ export class EspHass extends EventTarget {
   connect() {
     const es = new EventSource("/events");
     es.addEventListener("open", () => this._setLink(true));
-    // EventSource retries on its own; until then the controller is unreachable from here.
-    es.addEventListener("error", () => this.connected && this._setLink(false));
+    // EventSource retries on its own; until then the controller is unreachable from here. It gives up
+    // for good on an answer other than 200, such as the 401 of a page password set or changed since:
+    // a plain request lets the browser ask for the login, then a new stream starts.
+    es.addEventListener("error", () => {
+      if (this.connected) this._setLink(false);
+      if (es.readyState !== EventSource.CLOSED) return;
+      setTimeout(() => fetch("/", { cache: "no-store" }).catch(() => {}).finally(() => this.connect()), 5000);
+    });
     es.addEventListener("ping", (ev) => {
       this.lastEventAt = Date.now();
       const data = JSON.parse(ev.data || "{}");
