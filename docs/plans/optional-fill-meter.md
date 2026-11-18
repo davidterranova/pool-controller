@@ -129,7 +129,7 @@ The detection result (`detected`, plus when) is kept in a restored global (`fill
 | F4 | HA side: blueprint, dashboard, `ha-dashboard-check` | F1 (ids for `ha-dashboard-check`) | | todo | |
 | F5 | Documentation pass: every file in « Documentation » below agrees with what merged | F1–F4 merged | | todo | |
 
-| — | Feature branch: plan + VERSION 1.7.0 | — | feat/optional-fill-meter | in progress | (draft PR into main) |
+| — | Feature branch: plan + VERSION 1.7.0 | — | feat/optional-fill-meter | in progress | #47 (draft, into main) |
 
 F2 can start right away. F3 can start right away on the mock, once F1's entity declarations are pushed; it doesn't need F1's logic. F4 comes last, or alongside F1. Each WP updates the docs for what it changes (its « Docs » items). F5 is a final read-through across all of them, plus the cross-references.
 
