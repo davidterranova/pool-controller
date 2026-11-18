@@ -589,7 +589,7 @@ class UpdateSim:
 
     def check(self, origin: str, scheduled: bool = False):
         """A manual check disarms Auto Update: what it finds waits for an explicit install."""
-        self.log(f"Checking for update ({origin}): https://davidterranova.github.io/pool-controller/firmware/manifest.json")
+        self.log(f"Checking for update ({origin}): https://pool-controller.kitesize.fr/firmware/manifest.json")
         self.checking_until = time.time() + self.CHECK_S
         self.last_op = "check"
         self.auto_armed = scheduled
