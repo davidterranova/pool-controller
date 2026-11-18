@@ -31,7 +31,7 @@ Target:
 | 5 | CI: releases carry the firmware, manifest + files on GitHub Pages | 2 (for a real build) | ci/wp5-firmware-releases | done (publishing waits for WP2 and the owner) | #29 (merged) |
 | 6 | Firmware: updates (http_request OTA + update entity + auto-update) | 1, 5 (manifest URL) | feat/wp6-updates | in progress (hardware checks left) | |
 | 7 | Install page (ESP Web Tools) + docs | 5 | | todo | |
-| 8 | Automatic migration of an existing controller (`make migrate`: one OTA seeds its secrets.yaml settings) | 2 | | todo | |
+| 8 | Automatic migration of an existing controller (`make migrate`: one OTA seeds its secrets.yaml settings) | 2 | feat/wp8-make-migrate | in progress (built and compiled; the run needs the hardware window) | |
 
 Parallel from day one: 0, 1, the mock-ups of 3 and 4, and 5's workflow (tested on a dummy build).
 
@@ -152,16 +152,27 @@ For the WPs that build on it:
 ### WP8: migrating a controller built with secrets.yaml, automatically (one OTA, no setup, no re-pairing)
 The goal is uptime. One OTA carries every setting over, so the controller is back in about 15–20 s with nothing to set up. That is the same downtime as any `make ota`, and the pump keeps its plan through the reboot, as it does today.
 
-- [ ] **`make migrate`.** It builds the generic firmware plus a local-only package, `migration.yaml`. The Makefile generates that package from `secrets.yaml` and the three probe addresses compiled into today's firmware; it is gitignored, never committed, never published. The secret guard and CI never see it.
-- [ ] **Seeding on boot.** The package seeds the settings at `on_boot` priority 800, before WP2's 700 step applies them and before Wi-Fi and the API start. **It only fills an empty value, never overwrites.**
-  - Wi-Fi: saved credentials under the generic (no-network) key, so it connects at once with no hotspot.
-  - API key: the current one, via `save_noise_psk`, so HA reconnects without a prompt and never sees a keyless device.
+- [x] **`make migrate`.** It builds the generic firmware plus a local-only package, `migration.yaml`. The Makefile generates that package from `secrets.yaml` and the three probe addresses compiled into today's firmware; it is gitignored, never committed, never published. The secret guard and CI never see it.
+  - `make migrate-build`: `tools/migrate/migrate.py generate` (in the ESPHome image, `python3 -I`) reads `secrets.yaml` (`MIGRATE_SECRETS`) and `git show $(MIGRATE_FROM):pool-controller.yaml` (`MIGRATE_FROM`, default `v1.3.1`), checks every value (a page or OTA password under 8 characters is seeded as it is, with a warning that the page will ask to change it; over 64 bytes the globals can't store it: an error), and writes `.migrate/migration.yaml` (mode 600, in a mode-700 dir) from `tools/migrate/migration.yaml.in`; then `esphome compile` of it, with its own build dir `.migrate/.esphome/`. `make migrate-clean` deletes both.
+  - `.migrate/migration.yaml` is the top-level config: `packages: !include ../pool-controller.yaml` plus the seeding step. The guard only scans the root's `*.yaml` and what they include, so it never reads it; the release workflows only build `pool-controller.yaml`. A normal build holds no migration code (checked on the generated sources).
+  - Values are C++ literals with every byte outside `[A-Za-z0-9 _.,/+=-]` as a 3-digit octal escape: no quote, backslash, newline or `$` (ESPHome substitutions) reaches the YAML.
+  - `make migrate-test`: the generator's and checks' tests, on made-up values (also in `validate.yml`).
+- [x] **Seeding on boot.** The package seeds the settings at `on_boot` priority **750** (not 800, which ties with the globals' restore: see « WP8 build » in the log), after the globals' restore and before WP2's 700 step applies them, before Wi-Fi and the API start. **It only fills an empty value, never overwrites.** `tools/migrate/migration_seed.h`; it logs which settings it filled or kept, never a value.
+  - Wi-Fi: saved credentials under the generic (no-network) key, so it connects at once with no hotspot. Written as wifi's own `SavedWifiSettings` record under `88491487` and synced; wifi loads it at its start (250).
+  - API key: the current one, ~~via `save_noise_psk`~~ written as the API's own `SavedNoisePsk` record under `88491486` and synced before the API server's setup (200), which loads it: HA reconnects without a prompt and never sees a keyless device.
   - Page and OTA passwords: the current ones.
-  - Latitude, longitude, POSIX timezone and the IANA name.
-  - Probe roles: pool, pad and outdoor from the compiled addresses. The pool probe has its role before its first read, so freeze protection and the plan never stop.
-- [ ] **Uploaded like today.** `make migrate` uploads with today's OTA password, which is also the seeded one.
-- [ ] **Waits and checks.** It waits for the controller to come back, then checks that Setup State reads `configured`, the pool temperature reads again, and the controller answers with the same API key (HA's Status on). On any failure it prints the rollback command.
-- [ ] **Later updates.** The next normal update (a published release) no longer carries the package; the values stay in NVS. Then secrets.yaml can go.
+  - Latitude, longitude, POSIX timezone and the IANA name. Position rounded to 0.01° by the generator; the POSIX zone from the IANA name by ESPHome's own conversion (the zone the old build compiled in), and checked by the device's parser.
+  - Probe roles: pool, pad and outdoor from the compiled addresses. The pool probe has its role before its first read, so freeze protection and the plan never stop. A role isn't filled with a probe another role holds.
+  - Once per build: a restored global, `migration_run`, keeps the build's random run id, so a Factory Reset while the migration build is installed stays a reset. A write NVS refuses leaves the run unrecorded: the next boot tries again. At `on_boot` -100, `settings_save` commits the filled globals at once.
+- [x] **Uploaded like today.** `make migrate` uploads with today's OTA password, which is also the seeded one. Read from secrets.yaml inside the container and given to `esphome upload` only (`-s ota_password`), as `make ota`: with `api: encryption: {}` and no key in the YAML, `esphome upload` takes the plaintext password path, the one the old firmware answers.
+- [x] **Waits and checks.** It waits for the controller to come back, then checks that Setup State reads `configured`, the pool temperature reads again, and the controller answers with the same API key (HA's Status on). On any failure it prints the rollback command.
+  - Before the upload, `preflight`: the controller answers with secrets.yaml's API key, and is idle (Pump off, Manual Override Active off, no fill flow), else it stops (`MIGRATE_FORCE=1` overrides).
+  - After: connects as HA does (aioesphomeapi, Noise with the old key, expected name `pool-controller`), retrying while it reboots and while the old firmware still answers; the migration build is the one running (Setup State exists, project version = the build's `FW_VERSION`); then waits up to 180 s for `configured` and a Pool Return Temperature reading. `make migrate-check` repeats this alone.
+  - Once migrated: `.ota-password` (mode 600, gitignored) gets secrets.yaml's OTA password, so the next `make ota` needs nothing more; a file already holding another password is left alone, with a note.
+  - On a failure after the upload: the rollback, as commands (a worktree of `MIGRATE_FROM`, secrets.yaml copied in, `make ota`), and the hotspot fallback (HOST=192.168.4.1).
+- [ ] **Later updates.** The next normal update (a published release) no longer carries the package; the values stay in NVS. Then secrets.yaml can go. (Until WP6: `make ota` of the generic build, with the OTA password `make migrate` put in `.ota-password`.)
+- [ ] **Rebuild after WP6.** Once WP6 (`updates.yaml`, `ota:` as a list with `http_request`, `components/gated_update`) lands on `feat/secret-free-firmware`, recompile the migration build (`make migrate-build` with the fake secrets is enough) and re-check its flash size before the window: the numbers in « WP8 build » are without WP6.
+- [ ] **On hardware, in the window:** see « WP8 adds » under the log's hardware checks.
 
 Rollback: the last secrets.yaml build (v1.3.x) stays at hand; `make ota` of it restores the controller as it is today.
 
@@ -169,7 +180,7 @@ The only failure that cuts the controller off is Wi-Fi seeding not taking. It th
 
 Timing: with the pump off, no manual override, no fill; someone stays on it until the checks pass. No spare board, so this is the first time it runs on hardware: the WP1/WP2 hardware checks happen in the same window, right after.
 
-Before it runs: confirm that a value seeded at priority 800 survives into WP2's apply step, and that `save_noise_psk` at boot doesn't race HA's first connection. Both are read from the source, then compiled.
+- [x] Before it runs: confirm that a value seeded at priority 800 survives into WP2's apply step, and that `save_noise_psk` at boot doesn't race HA's first connection. Both are read from the source, then compiled. Neither holds as written: 800 ties with the globals' restore (order not guaranteed), and `save_noise_psk` can't save before the API server's setup. Both are solved (750; the API's own record written before its setup), see « WP8 build » in the log.
 
 ## Verification (the WP closing each item ticks it)
 - [ ] each PR: `make validate`, `make mock-ui-check`, `make ha-dashboard-check`, CI green
@@ -242,6 +253,14 @@ Flash % is of the 1,835,008 B app slot. The firmware builds unchanged on 2026.11
 - `ota:` in `pool-controller.yaml` became a list, so the package's `http_request` entry joins it (a mapping would be replaced).
 - Fill = the water meter's rate > 0; `pulse_meter`'s 5 min timeout means an install waits up to 5 min after the last litre.
 
+**2026-11-18, WP8 build (no hardware).** `make migrate-build` with a made-up secrets.yaml, ESPHome 2026.11.0b6: the migration build compiles, **Flash 1,061,655 B (57.9 %), RAM 56,180 B (31.1 %)**, no warning from our code (WP2's normal build: 57.7 % / 31.0 %). Read from that version's sources (`esphome/core/`, `components/{globals,wifi,api,esp32}/`), then compiled:
+- **An `on_boot` at 800 isn't guaranteed to run after the globals' restore.** Both are setup priority 800 (`HARDWARE`); `Application::setup()` sorts with a stable insertion sort, so a tie keeps registration order, and that order comes from codegen's coroutines: `_add_automations` (`CoroPriority.AUTOMATION` = 30) registers each `on_boot` trigger, then awaits its automation, which waits for the ids its lambdas use, here the globals (`globals.to_code`, `CoroPriority.LATE` = -100). In the generated `main.cpp` the first trigger of the merged list (device-settings.yaml's 700) registers before every global, the others after them; a probe build with the seeding at 800 put it after the globals, but only because it is not first in the list. Had it run first, a global set there is overwritten if NVS holds one, and if not, `setup()` takes the set value as its last-saved copy, so the 1 s poll never writes it: the next firmware wouldn't have it. **The seeding runs at 750**, strictly between the restore (800) and WP2's apply (700), so no tie decides anything. (WP2's 700 and 590 don't tie with anything that matters.)
+- **`save_noise_psk()` at boot can't work, and isn't needed.** Its preference (`noise_pref_`) is only made in `APIServer::setup()` (`AFTER_WIFI`, 200); before that it is a default `ESPPreferenceObject` with no backend, whose `save()` returns false (« Failed to save Noise PSK »). After it, it drops every client and applies 100 ms later. Instead the seeding writes the API's own record, `api::SavedNoisePsk` (32 bytes, public in `api_server.h`) under `NOISE_PSK_PREF_HASH` = `88491486` (private in `api_server.cpp`), and syncs: `APIServer::setup()` loads it (`load_and_apply_noise_psk_`), so from its first client the server speaks Noise with the old key only. No race with HA: the key is in place before the server listens, nothing is dropped, there is no 100 ms window, and plaintext or zero-key clients are refused from the start.
+- **Wi-Fi.** `WiFiComponent::start()`, from `setup()` at `WIFI` (250), loads `wifi::SavedWifiSettings` (`char ssid[33]; char password[65]`, packed, 98 bytes) from NVS key `88491487` when the YAML has no network (`has_sta()` false), then `set_sta()`: the first connection uses it, no hotspot. The seeding writes that record (zeroed, then `strncpy`, as `save_wifi_sta()` does) and syncs at 750. ESP32 preferences are NVS blobs keyed by the decimal key; `load()` reads a pending save first, then NVS, and a size mismatch (Factory Reset's 1-byte record) reads as none. 2026.11's wifi has no `can_proceed()` of its own: setup doesn't wait for the connection, the API sets up right after wifi starts, and HA can only connect once Wi-Fi is up, well after.
+- **Pinned to 2026.11.** Both keys are private constants: `migration_seed.h` `static_assert`s ESPHome 2026.11.x and both records' sizes, so another version fails to compile until they are re-read.
+- **Paths.** `.migrate/migration.yaml` as the top-level config works: 2026.11 resolves a relative `includes:`/`js_include:` path in the config dir, then beside the YAML that declares it (`cv._existing_path`), and the build lands in `.migrate/.esphome/`. A normal build's generated sources hold no migration code.
+- **Upload.** With `api: encryption: {}` (no key in the YAML) and no `ota: encryption:`, `esphome upload` (`_upload_via_native_api`) sends no Noise key: the plaintext password path, which the old firmware expects.
+
 **web auth.**
 - 2026.11: `Credentials` holds `const char *` pointers (« point to string literals in generated code; nothing is copied »), and every request reads them (`GuardMiddlewareHandler::check_auth_`): `username == nullptr` means no auth. So a null username is setup mode, and a password set from the page applies on the next request, no reboot. The pointer must outlive the call: point it at a global `std::string`'s `c_str()` and set it again after each change. YAML `auth:` still requires a non-empty username and password, hence placeholders.
 - 2026.7.2: `std::string` copies, and auth is decided once per handler when web_server registers it (`add_handler`, at its setup, priority 249): an empty username then means no auth **until reboot**. Password changes apply live; leaving setup mode needs a reboot. `nullptr` compiles there but is undefined behaviour (`std::string(nullptr)`): use `""`.
@@ -283,6 +302,14 @@ Flash % is of the 1,835,008 B app slot. The firmware builds unchanged on 2026.11
 - Install from the page, from HA's Update entity, and by Auto Update after a scheduled check: each waits while Manual Override ≠ Auto or the meter counts (`en attente (…)`), then installs and reboots on the new version, every setting kept; Cancel Update while it waits → `disponible`, nothing installed; a manual check with Auto Update on installs nothing; a bad md5 → `erreur (installation)`, the old firmware keeps running;
 - HA's Update entity shows the installed version before any check, the release notes link, and progress if the API gets it out during the download;
 - RAM: the check's TLS session runs in its own task (8 KB stack) next to the web server and API: watch the free heap during a check and an install.
+
+**WP8 adds** (the window itself; `make migrate` from the checkout holding secrets.yaml):
+- before it: the rollback ready, built once so it is only an upload (`git worktree add ../pool-controller-rollback v1.3.1`, secrets.yaml copied in, `make build` there); `make migrate-build` done ahead too;
+- preflight on the old firmware: it connects with secrets.yaml's key, reads Pump, Manual Override Active and the fill flow (names as in v1.3.1);
+- upload: ESPHome 2026.11's `esphome upload` to the old firmware's OTA, plaintext password;
+- first boot of the migration build: the log's `[migration]` lines (« Filled: wifi, api_key, page_password, … »); it joins Wi-Fi with no hotspot; HA reconnects with no reauth prompt and its Status stays on; Setup State `configured`; Pool Return Temperature reads from the first update; the day's plan continues; `make migrate` ends « Migrated »;
+- a reboot: « Already migrated by this build », everything still set;
+- then `make ota` of the generic build (with `.ota-password`) keeps every setting; only then the WP2 checks that need a fresh controller (Factory Reset first).
 
 ## Open questions
 - ~~Does HA 2026.11 provision a keyless device's API key by itself? (WP1)~~ Yes, from its source (spike log); to see on hardware.
