@@ -24,7 +24,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build firmware-test flash status kill-port ota ip logs webui webui-test mock-ui mock-webui mock-ui-check ha-dashboard-check migrate-build migrate migrate-check migrate-clean migrate-test clean
+.PHONY: validate build firmware-test flash status kill-port ota ip logs webui webui-test mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate: webui
@@ -197,6 +197,30 @@ webui/dist/device.js: $(WEBUI_SRC)
 
 webui/dist/device.css: webui/app.css
 	$(ESBUILD) webui/app.css --minify --log-level=warning --outfile=$@
+
+# piscine-card's preview (tools/card-preview/): the card as it is, against a stand-in
+# for Home Assistant, in named situations (scenarios.js), with no Home Assistant
+# nor controller. card-preview serves it at http://localhost:$(CARD_PREVIEW_PORT)/tools/card-preview/.
+# card-shots takes each situation's tile and panel at 390 and 760 px, light and
+# dark, into tools/card-preview/shots/ (SCENARIO=fill-alarm,normal for some);
+# card-preview-check loads them all on every tab and fails on an error, or on
+# « undefined » / « NaN » in the card. Both run Chromium in Playwright's image,
+# with playwright-core installed once into .card-preview/.
+CARD_PREVIEW_PORT ?= 8124
+PLAYWRIGHT_VERSION := 1.52.0
+PLAYWRIGHT := docker run --rm -v "$(CURDIR):/src" -w /src -e NPM_CONFIG_UPDATE_NOTIFIER=false \
+	mcr.microsoft.com/playwright:v$(PLAYWRIGHT_VERSION)-noble sh -c \
+	'test -d .card-preview/node_modules/playwright-core || npm i -s --no-audit --no-fund --prefix .card-preview playwright-core@$(PLAYWRIGHT_VERSION) >/dev/null; node tools/card-preview/shoot.mjs "$$@"' --
+
+card-preview:
+	@echo "piscine-card preview: http://localhost:$(CARD_PREVIEW_PORT)/tools/card-preview/"
+	docker run --rm -it -p $(CARD_PREVIEW_PORT):8124 -v "$(CURDIR):/src:ro" -w /src --entrypoint python3 $(ESPHOME_IMAGE) -m http.server 8124
+
+card-shots:
+	$(PLAYWRIGHT) $(if $(SCENARIO),--only $(SCENARIO))
+
+card-preview-check:
+	$(PLAYWRIGHT) --check
 
 # Unit tests of the pages' pure modules (webui/test/: the setup's logic, the
 # time zone table; tools/tests/install-page.test.mjs: the install page's

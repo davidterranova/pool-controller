@@ -1,0 +1,208 @@
+<!doctype html>
+<!--
+  piscine-card's preview: the card as it is (home-assistant/piscine-card.js), against a stand-in for Home Assistant
+  (fake-hass.js), in the situations of scenarios.js. `make card-preview` serves it; `make card-shots` and
+  `make card-preview-check` drive it headless (shoot.mjs).
+
+  ?s=<scenario>&w=<panel width>&theme=light|dark&tab=pump|settings|controller, and &shot for the bare tile and
+  panel the screenshots take. Entity ids are a fresh install's: the dashboard's map (dashboard.yaml, &pool), then the
+  card's own defaults for what that map leaves out.
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>piscine-card preview</title>
+<style>
+  /* Home Assistant's theme variables the card reads, light and dark */
+  :root { --primary-background-color:#f2f3f5; --card-background-color:#fff; --primary-text-color:#1f2328;
+    --secondary-text-color:#69707a; --divider-color:rgba(0,0,0,.12); --ha-card-border-radius:12px;
+    --ha-card-border-color:#e0e3e7; --accent:#0e86c4; color-scheme:light; }
+  :root[data-theme="dark"] { --primary-background-color:#111214; --card-background-color:#1c1d20; --primary-text-color:#e3e5e8;
+    --secondary-text-color:#9aa0a8; --divider-color:rgba(255,255,255,.12); --ha-card-border-color:#2c2e33; --accent:#3fb0ec; color-scheme:dark; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--primary-background-color); color:var(--primary-text-color);
+    font:14px/1.4 Roboto, "Noto Sans", system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .app { display:grid; grid-template-columns:280px minmax(0,1fr); min-height:100vh; }
+  aside { border-right:1px solid var(--divider-color); padding:16px; display:flex; flex-direction:column; gap:14px;
+    position:sticky; top:0; height:100vh; overflow:auto; }
+  aside h1 { font-size:16px; margin:0; }
+  aside h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--secondary-text-color); margin:4px 0 0; font-weight:500; }
+  .scen { display:flex; flex-direction:column; gap:2px; }
+  .scen button { text-align:left; border:0; background:none; color:inherit; font:inherit; padding:6px 8px; border-radius:8px; cursor:pointer; }
+  .scen button small { display:block; color:var(--secondary-text-color); font-size:12px; }
+  .scen button[aria-current="true"] { background:color-mix(in srgb,var(--accent) 14%,transparent); }
+  .scen button:hover { background:color-mix(in srgb,var(--accent) 8%,transparent); }
+  .seg { display:flex; gap:4px; flex-wrap:wrap; }
+  .seg button { border:1px solid var(--divider-color); background:var(--card-background-color); color:inherit; font:inherit;
+    border-radius:16px; padding:3px 10px; cursor:pointer; }
+  .seg button[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); }
+  .log { list-style:none; margin:0; padding:0; font:12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; display:flex; flex-direction:column; gap:6px; }
+  .log li { overflow-wrap:anywhere; } .log li span { color:var(--secondary-text-color); }
+  main { padding:16px; display:flex; flex-direction:column; gap:18px; min-width:0; }
+  main h3 { font-size:12px; font-weight:500; color:var(--secondary-text-color); margin:0 0 6px; }
+  .row { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
+  .note { color:var(--secondary-text-color); margin:0; }
+  /* the pop-up the panel sits in: Bubble Card's dialog on a screen, its bottom sheet on a phone */
+  .dialog { background:var(--card-background-color); border-radius:24px; padding:14px 16px; max-width:100%; }
+  body.shot main { padding:16px; gap:16px; }
+  @media (max-width: 760px) { .app { grid-template-columns:1fr; } aside { position:static; height:auto; border-right:0; border-bottom:1px solid var(--divider-color); } }
+</style>
+<script>
+  // Home Assistant's <ha-card>, which the card's tile, water and settings variants render in.
+  customElements.define("ha-card", class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: "open" }).innerHTML = `<style>:host { display:block; color:var(--primary-text-color);
+        background:var(--ha-card-background,var(--card-background-color)); border-radius:var(--ha-card-border-radius,12px);
+        border:1px solid var(--ha-card-border-color,var(--divider-color)); }</style><slot></slot>`;
+    }
+  });
+</script>
+<script src="../../home-assistant/piscine-card.js"></script>
+</head>
+<body>
+<div class="app" id="app">
+  <aside id="side">
+    <h1>piscine-card</h1>
+    <h2>Situation</h2>
+    <div class="scen" id="scen"></div>
+    <h2>Pop-up</h2>
+    <div class="seg" id="width"><button data-w="390">Téléphone 390</button><button data-w="760">Écran 760</button></div>
+    <h2>Thème</h2>
+    <div class="seg" id="theme"><button data-t="light">Clair</button><button data-t="dark">Sombre</button></div>
+    <div class="seg"><button id="reset">Recharger la situation</button></div>
+    <h2>Appels du card</h2>
+    <ol class="log" id="log"></ol>
+  </aside>
+  <main id="main"></main>
+</div>
+<script type="module">
+import { FakeHass } from "./fake-hass.js";
+import { SCENARIOS, statesOf } from "./scenarios.js";
+import { ICONS } from "../../webui/icons.js";
+
+// Home Assistant's <ha-icon icon="mdi:…">, from the paths the controller's page ships (a dot for one it lacks).
+customElements.define("ha-icon", class extends HTMLElement {
+  static observedAttributes = ["icon"];
+  attributeChangedCallback() {
+    const p = ICONS[String(this.getAttribute("icon") || "").replace(/^mdi:/, "")];
+    this.style.display = "inline-flex";
+    this.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" style="width:var(--mdc-icon-size,24px);height:var(--mdc-icon-size,24px);fill:currentColor">${
+      p ? `<path d="${p}"/>` : '<circle cx="12" cy="12" r="3"/>'}</svg>`;
+  }
+});
+
+const q = new URLSearchParams(location.search);
+const shot = q.has("shot");
+const view = { s: q.get("s") || "normal", w: +(q.get("w") || 390), theme: q.get("theme") || "light", tab: q.get("tab") };
+const $ = (id) => document.getElementById(id);
+let done, home = location.href;
+window.preview = { scenarios: SCENARIOS.map(({ id, name, tab }) => ({ id, name, tab: tab || "pump" })), errors: [] };
+
+/** The dashboard's entity map (dashboard.yaml, `entities: &pool`): a fresh install's ids, as `make ha-dashboard-check` keeps them. */
+async function poolEntities() {
+  const text = await (await fetch("../../home-assistant/dashboard/dashboard.yaml")).text();
+  const lines = text.slice(text.indexOf("entities: &pool")).split("\n").slice(1), out = {};
+  const indent = /^\s*/.exec(lines[0])[0].length;
+  for (const l of lines) {
+    const m = /^(\s*)(\w+): (\S+)\s*$/.exec(l);
+    if (!m || m[1].length !== indent) break;
+    out[m[2]] = m[3];
+  }
+  return out;
+}
+const pool = await poolEntities();
+// The card's own key -> id map, its defaults under the dashboard's: what every state here is written against.
+const probe = document.createElement("piscine-card");
+probe.setConfig({ variant: "tile", entities: pool });
+const ids = probe._e;
+
+function log(kind, what, data) {
+  if (kind === "ws") return; // the recorder's calls: every load, not worth a line
+  const li = document.createElement("li");
+  li.innerHTML = `${new Date().toLocaleTimeString("fr-FR")} <b></b> <span></span>`;
+  li.querySelector("b").textContent = what;
+  li.querySelector("span").textContent = JSON.stringify(data);
+  $("log").prepend(li);
+  while ($("log").children.length > 40) $("log").lastChild.remove();
+}
+
+/** One piscine-card, in a titled slot. */
+function card(host, title, config, width) {
+  const slot = document.createElement("div");
+  if (width) slot.style.width = `${width}px`;
+  if (!shot) slot.innerHTML = `<h3>${title}</h3>`;
+  const c = document.createElement("piscine-card");
+  c.setConfig({ entities: pool, ...config });
+  if (config.variant === "panel") { const d = document.createElement("div"); d.className = "dialog"; d.append(c); slot.append(d); }
+  else slot.append(c);
+  host.append(slot);
+  return c;
+}
+
+function render() {
+  const sc = SCENARIOS.find((x) => x.id === view.s) || SCENARIOS[0];
+  document.documentElement.dataset.theme = view.theme;
+  if (!shot) { // the side bar: the bare screenshot has none
+    for (const b of $("scen").children) b.setAttribute("aria-current", String(b.dataset.s === sc.id));
+    for (const b of $("width").children) b.setAttribute("aria-pressed", String(+b.dataset.w === view.w));
+    for (const b of $("theme").children) b.setAttribute("aria-pressed", String(b.dataset.t === view.theme));
+  }
+  const main = $("main"), cfg = sc.config || {};
+  main.innerHTML = shot ? "" : `<p class="note"><b></b> — <span></span></p>`;
+  if (!shot) { main.querySelector("b").textContent = sc.name; main.querySelector("span").textContent = sc.note || ""; }
+  const top = document.createElement("div"); top.className = "row"; main.append(top);
+  const cards = [card(top, "tile", { variant: "tile", ...cfg }, Math.min(view.w, 360))];
+  if (!shot) cards.push(card(top, "tile vertical", { variant: "tile", layout: "vertical", ...cfg }, 130));
+  const panel = card(main, `panel (${view.w} px)`, { variant: "panel", ...cfg }, view.w);
+  cards.push(panel);
+  if (!shot) {
+    const more = document.createElement("div"); more.className = "row"; main.append(more);
+    cards.push(card(more, "variant: water", { variant: "water", ...cfg }, 390), card(more, "variant: settings", { variant: "settings", ...cfg }, 390));
+  }
+  const hass = new FakeHass({ ids, specs: statesOf(sc), scenario: sc, dark: view.theme === "dark", log,
+    onChange: () => { const h = hass.snapshot(); for (const c of cards) c.hass = h; } });
+  hass.onChange();
+  const tab = view.tab || sc.tab;
+  if (tab && tab !== "pump") panel.shadowRoot.querySelector(`#tabs [data-tab="${tab}"]`)?.click();
+  Object.assign(window.preview, { hass, panel, cards, scenario: sc.id });
+  // the recorder answers after 200 ms; the charts draw on the next update
+  window.preview.ready = new Promise((ok) => { clearTimeout(done); done = setTimeout(ok, 700); });
+}
+
+function go(changes) {
+  Object.assign(view, changes);
+  const p = new URLSearchParams({ s: view.s, w: view.w, theme: view.theme });
+  if (view.tab) p.set("tab", view.tab);
+  history.replaceState(null, "", `?${p}`);
+  home = location.href;
+  render();
+}
+
+if (shot) { document.body.classList.add("shot"); $("app").replaceWith($("main")); }
+else {
+  for (const s of SCENARIOS) {
+    const b = document.createElement("button");
+    b.dataset.s = s.id;
+    b.innerHTML = "<span></span><small></small>";
+    b.querySelector("span").textContent = s.name; b.querySelector("small").textContent = s.note || "";
+    b.addEventListener("click", () => go({ s: s.id, tab: null }));
+    $("scen").append(b);
+  }
+  $("width").addEventListener("click", (e) => e.target.dataset.w && go({ w: +e.target.dataset.w }));
+  $("theme").addEventListener("click", (e) => e.target.dataset.t && go({ theme: e.target.dataset.t }));
+  $("reset").addEventListener("click", () => render());
+}
+// The card navigates like Home Assistant (history + « location-changed »): the device page, the tile's pop-up hash.
+// Log where it would go, and stay here.
+window.addEventListener("location-changed", () => {
+  if (location.href === home) return;
+  log("navigate", location.pathname.replace(/^.*\/card-preview\/(index\.html)?$/, "") + location.hash, {});
+  history.replaceState(null, "", home);
+});
+window.addEventListener("error", (e) => window.preview.errors.push(String(e.message)));
+render();
+</script>
+</body>
+</html>

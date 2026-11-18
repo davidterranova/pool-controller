@@ -27,6 +27,7 @@ tooling, and building the firmware yourself.
 | `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS). `dashboard/`: dashboard components for these entities and the scripts the card calls, with a guide ([home-assistant/dashboard/README.md](home-assistant/dashboard/README.md)). |
 | `hacs.json` | Tells the Marketplace (HACS) which file this repo publishes: the card above, from each GitHub release. |
 | `tools/webui-mock/` | Local mock of the device's web UI, for working on the page without flashing (see below). |
+| `tools/card-preview/` | The pool card against a stand-in for Home Assistant, in named situations, with screenshots and a check (see [Previewing the card](#previewing-the-card)). |
 | `tools/tz-posix.py` | Regenerates the card's IANA → POSIX time-zone table from tzdata (« Utiliser la position et le fuseau de Home Assistant »). |
 | `tools/release/` | Release helpers for CI: the guard that keeps secrets out of a published firmware, and the firmware's `manifest.json` (see [Releases](#releases)), with its tests (`python3 -I tools/release/test_manifest.py`). |
 | `tools/migrate/` | `make migrate`: moves a controller built with `secrets.yaml` to this firmware in one OTA (see [Coming from a secrets.yaml build](#coming-from-a-secretsyaml-build)). |
@@ -131,6 +132,7 @@ the [plan](docs/plans/secret-free-firmware.md).
 | `make mock-ui-check` | Print the web UI layout (sections and order) and fail on any entity type the mock can't render. Runs in CI. |
 | `make firmware-test` | Host tests of the firmware's pure C++ helpers (`tools/tests/`). Runs in CI. |
 | `make webui-test` | Unit tests of the device's page and the install page's pure modules, with Node's test runner. Runs in CI. |
+| `make card-preview` | Serve the pool card's preview at http://localhost:8124/tools/card-preview/ (see [Previewing the card](#previewing-the-card)). `make card-shots` screenshots every situation into `tools/card-preview/shots/` (`SCENARIO=a,b` for some); `make card-preview-check` loads them all and fails on an error or a « NaN ». |
 | `make ha-dashboard-check` | Fail when the Home Assistant dashboard components in `home-assistant/dashboard/` name an entity the firmware doesn't have, or leave one out of the pool card. Runs in CI. |
 | `make clean` | Remove the local build cache (`.esphome/`). |
 
@@ -292,9 +294,9 @@ Marketplace installs ([hacs.json](hacs.json)), and its tag is the card's
 1. Bump `VERSION` at the top of the card. A pull request that changes the
    card without a new `VERSION` fails CI
    ([.github/workflows/release.yml](.github/workflows/release.yml)).
-2. Check the panel on the device's page against the mock (`make
-   mock-webui`). It doesn't exercise the HA-only parts: the tile variant, the
-   scripts, the recorder.
+2. Look at it in the preview (`make card-preview`, below) and run `make
+   card-preview-check`; check the panel on the device's page against the mock
+   (`make mock-webui`) too, since the page runs the same file.
 3. Merge. The workflow publishes release `v<VERSION>` with the card, then
    runs the Marketplace's (HACS's) own checks against the repo.
 4. Home Assistant offers the update (Settings → Updates) once the
@@ -303,6 +305,38 @@ Marketplace installs ([hacs.json](hacs.json)), and its tag is the card's
 
 The card's history up to 1.2.0 is in the local-k3s repo's git log, where it
 was first written (`bridges/homeassistant/config/www/piscine/`).
+
+### Previewing the card
+
+[tools/card-preview/](tools/card-preview/) runs the card as it is against a
+stand-in for Home Assistant: no Home Assistant, no controller. `make
+card-preview` serves it at http://localhost:8124/tools/card-preview/: pick a
+situation (normal day, override, freeze protection, controller offline, a
+firmware update waiting…), the pop-up's width (phone or screen) and the
+theme. The tile, the panel on any tab and the `water` and `settings` variants
+are drawn side by side, and what the card calls (scripts, services, the
+pages it opens) is listed. Its commands are applied as the controller would
+(« Manuel » then « High » sets the override, a setting takes its value), so
+it can be clicked through. The recorder's 24 h history and long-term
+statistics are generated, so every chart draws.
+
+- **Situations** are in [scenarios.js](tools/card-preview/scenarios.js),
+  written with the card's own keys (`override`, `water`…) as changes to a
+  normal day; add one when the card learns a new state. Entity ids are the
+  dashboard's (a fresh install's), so nothing there is one install's.
+- **`make card-shots`** takes each situation's tile and panel at 390 and
+  760 px, light and dark, at a fixed time, into `tools/card-preview/shots/`
+  (not committed): for a pull request's description. `SCENARIO=stuck,offline`
+  takes only those.
+- **`make card-preview-check`** loads every situation on each of the panel's
+  tabs at both widths, and fails on a page or console error, or on
+  « undefined », « NaN » or « [object Object] » in what the card shows.
+
+Both run Chromium in Playwright's image (about 3.5 GB, pulled once);
+`playwright-core` is installed once into `.card-preview/`. The stand-in is
+not Home Assistant: the preview catches layout and wiring, not how Home
+Assistant itself behaves (when it changes `last_changed`, what the recorder
+really keeps).
 
 ## The device's page (`webui/`)
 
