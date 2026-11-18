@@ -496,7 +496,8 @@ const orDash = (id) => () => s(id) || "—";
         return { text: `${latest} s'installera à ${why}.`, cls: "fw-up" };
       }
       if (st_ === "vérification") return { text: "Vérification de la dernière version…" };
-      if (st_ === "erreur (vérification)") return { text: "La vérification a échoué (réseau ou GitHub) : réessayez plus tard.", cls: "fw-err" };
+      // Also every check until a first release is published: the controller only knows it got no answer.
+      if (st_ === "erreur (vérification)") return { text: "La vérification a échoué : pas de réseau, ou aucune version publiée pour l'instant.", cls: "fw-err" };
       if (st_ === "erreur (installation)") return { text: `L'installation de ${latest} a échoué ; le contrôleur garde ${now}.`, cls: "fw-err" };
       if (st(E.fwUpdate).state === "on") return { text: `${latest} disponible (installée : ${now}).`, cls: "fw-up", href: a.release_url, link: "Notes de version" };
       if (st(E.fwUpdate).state === "off") return { text: `À jour : ${now} est la dernière version.`, cls: "fw-ok" };
