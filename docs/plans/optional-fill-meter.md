@@ -124,8 +124,8 @@ Whether the meter is proven (`detected`) is kept in a restored global (`fill_met
 | WP | What | Depends on | Branch | Status | PR |
 |---|---|---|---|---|---|
 | F1 | Firmware: switch, alarm + acknowledgement, detection, gating of the counters | — | feat/optional-fill-meter-f1-firmware | done | #49 |
-| F2 | Card: hide « Remplissage », alarm banner, pulsing light | contract above | feat/optional-fill-meter-f2-card | review | #50 |
-| F3 | Controller's page + mock: « Remplissage », Capteurs rows, « Compteur d'eau », wizard | contract; F1's YAML for the mock | | todo | |
+| F2 | Card: hide « Remplissage », alarm banner, pulsing light | contract above | feat/optional-fill-meter-f2-card | done | #50 |
+| F3 | Controller's page + mock: « Remplissage », Capteurs rows, « Compteur d'eau », wizard | contract; F1's YAML for the mock | feat/optional-fill-meter-f3-page | in progress | |
 | F4 | HA side: blueprint, dashboard, `ha-dashboard-check` | F1 (ids for `ha-dashboard-check`) | | todo | |
 | F5 | Documentation pass: every file in « Documentation » below agrees with what merged | F1–F4 merged | | todo | |
 
