@@ -35,7 +35,8 @@ jobs:
       - name: make mock-ui-check
         run: make mock-ui-check
 
-      # The web UI's pure modules (setup wizard logic, time zone table).
+      # The pages' pure modules: the web UI's (setup wizard logic, time zone
+      # table) and the install page's (docs/install/install-model.js).
       - name: make webui-test
         run: make webui-test
 

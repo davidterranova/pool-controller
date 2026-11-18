@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Installer le firmware du contrôleur de piscine sur un ESP32, depuis le navigateur, par USB.">
+<link rel="icon" href="data:,">
+<title>Contrôleur de piscine · Installer</title>
+<!--
+  The install page (docs/plans/secret-free-firmware.md, WP7), served at the root of the project's GitHub Pages
+  site, https://pool-controller.kitesize.fr/, beside /firmware/ (the release's manifest.json and images):
+  .github/workflows/release.yml's pages job deploys this folder's contents there. ESP Web Tools does the
+  install; install.js loads it, pinned, from unpkg where it can install (Chrome or Edge on a computer).
+-->
+<style>
+/* Tokens: webui/app.css (Home Assistant's default theme + piscine-card's palette), light then dark. */
+:root {
+  color-scheme: light dark;
+  --primary-color: #03a9f4;
+  --primary-background-color: #fafafa;
+  --card-background-color: #fff;
+  --primary-text-color: #212121;
+  --secondary-text-color: #727272;
+  --divider-color: rgba(0, 0, 0, .12);
+  --ha-card-border-radius: 12px;
+  --ha-card-border-color: #e0e0e0;
+  --acc: #0e86c4; --acc-soft: rgba(14, 134, 196, .14); --on-acc: #fff;
+  --amber: #c98500; --amber-soft: rgba(227, 154, 6, .17);
+  --cool: #2a72cf; --cool-soft: rgba(42, 114, 207, .13);
+  --danger: #cc3a2f; --danger-soft: rgba(204, 58, 47, .12);
+  --ok: #2e7d32; --ok-soft: rgba(46, 125, 50, .13);
+  --idle: #858c94; --idle-soft: rgba(133, 140, 148, .17);
+  --raised: rgba(127, 135, 145, .12); --line: rgba(127, 135, 145, .28);
+  --shadow: 0 1px 2px rgba(20, 24, 30, .08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --primary-background-color: #111111;
+    --card-background-color: #1c1c1c;
+    --primary-text-color: #e1e1e1;
+    --secondary-text-color: #9b9b9b;
+    --divider-color: rgba(225, 225, 225, .12);
+    --ha-card-border-color: rgba(225, 225, 225, .12);
+    --acc: #3fb0ec; --acc-soft: rgba(63, 176, 236, .18); --on-acc: #06202e;
+    --amber: #f0b03a; --amber-soft: rgba(240, 176, 58, .17);
+    --cool: #5f9dee; --cool-soft: rgba(95, 157, 238, .17);
+    --danger: #ff6b60; --danger-soft: rgba(255, 107, 96, .15);
+    --ok: #66bb6a; --ok-soft: rgba(102, 187, 106, .15);
+    --idle: #8f969e; --idle-soft: rgba(143, 150, 158, .17);
+    --raised: rgba(255, 255, 255, .07); --line: rgba(255, 255, 255, .12);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .35);
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; min-height: 100vh;
+  background: var(--primary-background-color); color: var(--primary-text-color);
+  font: 14px/1.45 Roboto, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+button, input, select { font: inherit; color: inherit; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+svg { display: block; fill: currentColor; }
+a { color: var(--acc); }
+code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+.muted { color: var(--secondary-text-color); }
+.skip { position: absolute; left: -9999px; }
+.skip:focus { left: 16px; top: 8px; z-index: 30; background: var(--card-background-color); padding: 8px 12px; border-radius: 8px; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+section:focus, .go:focus { outline: none; }
+
+/* ---------- header (webui .top) */
+.top { max-width: 1040px; margin: 0 auto; padding: 28px 16px 4px; display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.top .logo { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--acc-soft); color: var(--acc); align-self: center; }
+.top .logo svg { width: 26px; height: 26px; }
+.top .title { flex: 1; min-width: 200px; }
+.top h1 { margin: 0; font-size: 24px; font-weight: 400; }
+.top p { margin: 2px 0 0; color: var(--secondary-text-color); font-size: 15px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 4px 10px 4px 8px;
+  border-radius: 14px; background: var(--idle-soft); color: var(--idle); white-space: nowrap; text-decoration: none; }
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.chip.ok { background: var(--ok-soft); color: var(--ok); }
+.chip.bad { background: var(--danger-soft); color: var(--danger); }
+.chip.warn { background: var(--amber-soft); color: var(--amber); }
+
+main { max-width: 1040px; margin: 0 auto; padding: 8px 16px 32px; display: flex; flex-direction: column; gap: 16px; }
+.lede { margin: 4px 4px 0; font-size: 15px; max-width: 72ch; }
+.en { margin: 0 4px; font-size: 13px; color: var(--secondary-text-color); max-width: 90ch; display: flex; gap: 8px; align-items: baseline; }
+.en .tag { flex: none; font-size: 11px; font-weight: 500; letter-spacing: .06em; padding: 1px 6px; border-radius: 6px; background: var(--raised); color: var(--secondary-text-color); }
+
+/* ---------- ha-card look */
+.card { background: var(--card-background-color); border: 1px solid var(--ha-card-border-color); border-radius: var(--ha-card-border-radius); min-width: 0; }
+.card > h2 { margin: 0; padding: 16px 16px 4px; font-size: 20px; font-weight: 400; display: flex; align-items: center; gap: 10px; }
+.card > h2 svg { width: 24px; height: 24px; flex: none; color: var(--secondary-text-color); }
+.card .body { padding: 8px 16px 16px; }
+.hint { margin: 0; font-size: 12px; color: var(--secondary-text-color); }
+.sect { margin: 14px 0 4px; font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--secondary-text-color); }
+
+.cols { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 900px) { .cols { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ---------- buttons (webui .btn) */
+.btn { height: 36px; padding: 0 16px; border-radius: 18px; border: 0; cursor: pointer; font-weight: 500; font-size: 14px;
+  background: transparent; color: var(--acc); white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+.btn:hover { background: var(--acc-soft); }
+.btn.fill { background: var(--acc); color: var(--on-acc); }
+.btn.fill:hover { filter: brightness(1.08); }
+.btn.fill:disabled { background: var(--raised); color: var(--secondary-text-color); cursor: not-allowed; filter: none; }
+.btn.line { border: 1px solid var(--line); }
+.btn svg { width: 20px; height: 20px; }
+.btn.big { height: 48px; padding: 0 24px 0 20px; border-radius: 24px; font-size: 16px; }
+.btn.big svg { width: 22px; height: 22px; }
+
+/* ---------- entity-like rows (webui .erow) */
+.rows { display: flex; flex-direction: column; }
+.erow { display: flex; align-items: flex-start; gap: 14px; padding: 8px 0; }
+.erow .ic { width: 40px; height: 40px; flex: none; display: grid; place-items: center; color: var(--secondary-text-color); }
+.erow .ic svg { width: 24px; height: 24px; }
+.erow .name { flex: 1; min-width: 0; overflow-wrap: anywhere; padding-top: 9px; }
+.erow .name > span { display: block; }
+.erow .name small { display: block; font-size: 12px; line-height: 1.4; color: var(--secondary-text-color); margin-top: 2px; }
+.stag { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 500; padding: 1px 8px; border-radius: 10px;
+  background: var(--idle-soft); color: var(--idle); vertical-align: 1px; white-space: nowrap; }
+
+/* ---------- boxes */
+.dangerbox { background: var(--danger-soft); border-radius: 12px; padding: 12px 14px; display: grid; gap: 6px; font-size: 13px; }
+.dangerbox b.h { color: var(--danger); font-weight: 500; font-size: 15px; display: flex; gap: 8px; align-items: center; }
+.dangerbox b.h svg { width: 20px; height: 20px; flex: none; }
+.dangerbox p { margin: 0; }
+.box { border-radius: 12px; padding: 12px 14px; display: grid; gap: 6px; font-size: 13px; background: var(--raised); }
+.box b.h { font-weight: 500; font-size: 14px; display: flex; gap: 8px; align-items: center; }
+.box b.h svg { width: 20px; height: 20px; flex: none; }
+.box p { margin: 0; }
+.box.info { background: var(--cool-soft); }
+.box.info b.h { color: var(--cool); }
+.box.warn { background: var(--amber-soft); }
+.box.warn b.h { color: var(--amber); }
+.box.bad { background: var(--danger-soft); }
+.box.bad b.h { color: var(--danger); }
+
+/* ---------- the install card */
+.install .body { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); padding-top: 12px; }
+@media (min-width: 900px) { .install .body { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 28px; } }
+.act { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.go { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; padding: 4px 0; }
+.ver { font-size: 13px; color: var(--secondary-text-color); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.ver b { color: var(--primary-text-color); font-weight: 500; }
+.ver a { text-decoration: none; font-weight: 500; display: inline-flex; gap: 3px; align-items: center; }
+.ver a svg { width: 14px; height: 14px; }
+.unsup { display: flex; gap: 12px; align-items: flex-start; }
+.unsup .ic { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--amber-soft); color: var(--amber); }
+.unsup .ic svg { width: 24px; height: 24px; }
+.unsup b { display: block; font-size: 15px; font-weight: 500; }
+.unsup p { margin: 2px 0 0; font-size: 13px; color: var(--secondary-text-color); }
+.unsup .btn { margin-top: 8px; margin-left: -12px; }
+
+/* numbered steps, the wizard's circles (webui .wz-steps .n) */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; counter-reset: st; }
+.steps > li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; counter-increment: st; }
+.steps > li::before { content: counter(st); width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--acc-soft); color: var(--acc); font-weight: 500; font-size: 13px; }
+.steps > li > div { padding-top: 3px; min-width: 0; }
+.steps small { display: block; font-size: 12px; color: var(--secondary-text-color); margin-top: 2px; }
+.steps .k { margin: 0 1px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; font-weight: 600; padding: 0 5px; border-radius: 5px;
+  background: var(--raised); white-space: nowrap; }
+.dlghead { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin: 0 0 10px; }
+.dlghead b { font-size: 16px; font-weight: 500; }
+
+/* the setup wizard's steps, as the controller's page draws them (webui .wz-steps) */
+.wz-steps { list-style: none; margin: 10px 0 4px; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+.wz-steps li { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; line-height: 1.2; color: var(--secondary-text-color);
+  text-align: center; position: relative; }
+.wz-steps li::before { content: ""; position: absolute; top: 13px; left: -50%; right: 50%; height: 2px; background: var(--line); }
+.wz-steps li:first-child::before { display: none; }
+.wz-steps .n { position: relative; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  background: linear-gradient(var(--raised), var(--raised)) var(--card-background-color); font-weight: 500; font-size: 13px; }
+.wz-steps li:first-child .n { background: var(--acc); color: var(--on-acc); }
+.wz-steps li:first-child { color: var(--primary-text-color); font-weight: 500; }
+
+/* wiring table */
+.pins { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pins th { text-align: left; font-size: 12px; font-weight: 500; color: var(--secondary-text-color); padding: 4px 8px 4px 0; border-bottom: 1px solid var(--divider-color); }
+.pins td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--divider-color); vertical-align: top; }
+.pins tr:last-child td { border-bottom: 0; }
+.pins td:first-child { white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; width: 1%; padding-right: 14px; }
+details.more { margin-top: 6px; }
+details.more summary { cursor: pointer; color: var(--acc); font-weight: 500; font-size: 13px; padding: 6px 0; list-style: none; display: flex; gap: 6px; align-items: center; }
+details.more summary::-webkit-details-marker { display: none; }
+details.more summary::before { content: ""; width: 0; height: 0; border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent; transition: transform .15s; }
+details.more[open] summary::before { transform: rotate(90deg); }
+details.more[open] summary { margin-bottom: 4px; }
+
+.links { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
+.links a { white-space: nowrap; overflow-wrap: normal; font-size: 12px; font-weight: 500; text-decoration: none; padding: 2px 8px; border-radius: 8px; background: var(--acc-soft); }
+.ext { display: inline-flex; gap: 3px; align-items: center; font-weight: 500; text-decoration: none; }
+.ext svg { width: 14px; height: 14px; }
+
+footer { max-width: 1040px; margin: 0 auto; padding: 0 20px 40px; font-size: 12px; color: var(--secondary-text-color); display: flex; flex-wrap: wrap; gap: 4px 14px; }
+footer a { color: inherit; }
+
+.toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; z-index: 40;
+  background: #1f2328; color: #f3f4f6; border-radius: 12px; padding: 11px 15px; font-size: 13px; font-weight: 500;
+  max-width: calc(100vw - 32px); transition: opacity .2s, transform .2s; box-shadow: 0 6px 20px rgba(0, 0, 0, .25); }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+@media (prefers-color-scheme: dark) { .toast { background: #e7e9ec; color: #141619; } }
+@media (max-width: 520px) {
+  .top { padding-top: 18px; }
+  .erow { gap: 10px; }
+  .erow .ic { width: 32px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition-duration: .01ms !important; animation-duration: .01ms !important; } }
+
+</style>
+</head>
+<body>
+<a class="skip" href="#install">Aller à l'installation</a>
+
+<header class="top">
+  <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2,15C3.67,14.25 5.33,13.5 7,13.17V5A3,3 0 0,1 10,2C11.31,2 12.42,2.83 12.83,4H10A1,1 0 0,0 9,5V6H14V5A3,3 0 0,1 17,2C18.31,2 19.42,2.83 19.83,4H17A1,1 0 0,0 16,5V14.94C18,14.62 20,13 22,13V15C19.78,15 17.56,17 15.33,17C13.11,17 10.89,15 8.67,15C6.44,15 4.22,16 2,17V15M14,8H9V10H14V8M14,12H9V13C10.67,13.16 12.33,14.31 14,14.79V12M2,19C4.22,18 6.44,17 8.67,17C10.89,17 13.11,19 15.33,19C17.56,19 19.78,17 22,17V19C19.78,19 17.56,21 15.33,21C13.11,21 10.89,19 8.67,19C6.44,19 4.22,20 2,21V19Z"/></svg></span>
+  <div class="title">
+    <h1>Contrôleur de piscine</h1>
+    <p>Installer son firmware depuis le navigateur</p>
+  </div>
+  <span class="chip" id="verChip">Recherche du firmware…</span>
+</header>
+
+<main>
+  <p class="lede">Un contrôleur de filtration pour piscine, sur un ESP32. Il pilote une pompe à vitesse variable, place chaque jour la filtration d'après la température de l'eau et le soleil, protège du gel et compte l'eau de remplissage. Il fonctionne seul&nbsp;; Home Assistant, s'il est là, le suit et le règle.</p>
+  <p class="en" lang="en"><span class="tag">EN</span><span>This page installs the pool controller's firmware on an ESP32 over USB, from Chrome or Edge on a computer. It erases the board: never use it on a controller in service, which updates itself. Then open <span class="mono">http://pool-controller.local</span>: the controller's own setup wizard does the rest (in French for now). Source and releases: <a href="https://github.com/davidterranova/pool-controller">github.com/davidterranova/pool-controller</a>.</span></p>
+
+  <!-- ============================================================ Installer -->
+  <section class="card install" id="install" aria-labelledby="hInstall" tabindex="-1">
+    <h2 id="hInstall"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15,7V11H16V13H13V5H15L12,1L9,5H11V13H8V10.93C8.7,10.56 9.2,9.85 9.2,9C9.2,7.78 8.21,6.8 7,6.8C5.78,6.8 4.8,7.78 4.8,9C4.8,9.85 5.3,10.56 6,10.93V13A2,2 0 0,0 8,15H11V18.05C10.29,18.41 9.8,19.15 9.8,20A2.2,2.2 0 0,0 12,22.2A2.2,2.2 0 0,0 14.2,20C14.2,19.15 13.71,18.41 13,18.05V15H16A2,2 0 0,0 18,13V11H19V7H15Z"/></svg>Installer sur une carte neuve</h2>
+    <div class="body">
+      <div class="act">
+        <div class="dangerbox" role="note">
+          <b class="h"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 14H11V9H13M13 18H11V16H13M1 21H23L12 2L1 21Z"/></svg>L'installation efface la carte</b>
+          <p>Pour une carte neuve, ou à remettre à zéro&nbsp;: tout ce qu'elle contient est perdu.</p>
+          <p>Jamais pour un contrôleur déjà en service&nbsp;: il se met à jour tout seul et garde ses réglages (voir <a href="#maj">Mises à jour</a>).</p>
+        </div>
+
+        <!-- The install action, one of: ESP Web Tools' button (Chrome or Edge on a computer), our note where
+             installing isn't possible from here (#unsup: a phone, no Web Serial, no HTTPS), and under it the
+             notices (#nofw: none published yet, manifest unreachable, ESP Web Tools not loaded). -->
+        <div class="go" id="go" tabindex="-1">
+          <esp-web-install-button manifest="firmware/manifest.json" id="ewt">
+            <button slot="activate" class="btn fill big" id="installBtn" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/></svg><span>Installer</span>
+            </button>
+          </esp-web-install-button>
+          <div class="unsup" id="unsup" hidden></div>
+          <noscript><div class="box warn"><b class="h">JavaScript est désactivé</b><p>L'installation en a besoin&nbsp;: activez-le pour cette page.</p></div></noscript>
+          <div id="nofw" hidden></div>
+          <div class="ver" id="ver"></div>
+          <p class="hint" id="goHint">Branchez la carte en USB, puis cliquez&nbsp;: le navigateur demande quel port utiliser. Pour installer, la carte seule suffit&nbsp;; le câblage peut venir après.</p>
+        </div>
+      </div>
+
+      <div>
+        <p class="dlghead"><b>Dans la fenêtre d'installation</b><span class="hint">celle d'ESP Web Tools, en anglais</span></p>
+        <ol class="steps">
+          <li><div>Choisissez le port de la carte (souvent «&nbsp;CP2102&nbsp;», «&nbsp;CH340&nbsp;» ou «&nbsp;USB to UART&nbsp;»), puis <span class="k">Connect</span>.
+            <small>Rien dans la liste&nbsp;? Un câble qui ne fait que charger, ou le pilote USB de la carte qui manque (CP210x ou CH34x). Débranchez, rebranchez, réessayez.</small></div></li>
+          <li><div><span class="k">Install Pool Controller</span>, puis <span class="k">Install</span>.
+            <small>La fenêtre prévient que tout sera effacé&nbsp;: c'est voulu, chaque installation part d'une carte vide.</small></div></li>
+          <li><div>L'installation&nbsp;: deux minutes environ. Gardez la page au premier plan, ne débranchez pas.</div></li>
+          <li><div><span class="k">Configure Wi-Fi</span>&nbsp;: le réseau de la maison et son mot de passe, puis <span class="k">Connect</span>.
+            <small>Ils passent par le câble USB (Improv)&nbsp;; le contrôleur ne les garde qu'une fois connecté. <span class="k">Skip</span>&nbsp;: il ouvrira son point d'accès à la place (voir <a href="#apres">Après l'installation</a>).</small></div></li>
+          <li><div><span class="k">Visit Device</span> ouvre la page du contrôleur&nbsp;: la suite se fait là.
+            <small><span class="k">Add to Home Assistant</span> peut attendre&nbsp;: c'est la dernière étape de l'assistant du contrôleur.</small></div></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <div class="cols">
+    <!-- ============================================================ Ce qu'il faut -->
+    <section class="card" aria-labelledby="hNeed">
+      <h2 id="hNeed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2,10.96C1.5,10.68 1.35,10.07 1.63,9.59L3.13,7C3.24,6.8 3.41,6.66 3.6,6.58L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.66,6.72 20.82,6.88 20.91,7.08L22.36,9.6C22.64,10.08 22.47,10.69 22,10.96L21,11.54V16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V10.96C2.7,11.13 2.32,11.14 2,10.96M12,4.15V4.15L12,10.85V10.85L17.96,7.5L12,4.15M5,15.91L11,19.29V12.58L5,9.21V15.91M19,15.91V12.69L14,15.59C13.67,15.77 13.3,15.76 13,15.6V19.29L19,15.91M13.85,13.36L20.13,9.73L19.55,8.72L13.27,12.35L13.85,13.36Z"/></svg>Ce qu'il faut</h2>
+      <div class="body">
+        <div class="rows">
+          <div class="erow"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6,4H18V5H21V7H18V9H21V11H18V13H21V15H18V17H21V19H18V20H6V19H3V17H6V15H3V13H6V11H3V9H6V7H3V5H6V4M11,15V18H12V15H11M13,15V18H14V15H13M15,15V18H16V15H15Z"/></svg></span>
+            <div class="name"><span>Une carte ESP32</span><small>De développement, à ESP32-WROOM («&nbsp;ESP32 DevKit&nbsp;»), avec son port USB.</small></div></div>
+          <div class="erow"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1,11H3.17C3.58,9.83 4.69,9 6,9C6.65,9 7.25,9.21 7.74,9.56L14.44,4.87L15.58,6.5L8.89,11.2C8.96,11.45 9,11.72 9,12A3,3 0 0,1 6,15C4.69,15 3.58,14.17 3.17,13H1V11M23,11V13H20.83C20.42,14.17 19.31,15 18,15A3,3 0 0,1 15,12A3,3 0 0,1 18,9C19.31,9 20.42,9.83 20.83,11H23M6,11A1,1 0 0,0 5,12A1,1 0 0,0 6,13A1,1 0 0,0 7,12A1,1 0 0,0 6,11M18,11A1,1 0 0,0 17,12A1,1 0 0,0 18,13A1,1 0 0,0 19,12A1,1 0 0,0 18,11Z"/></svg></span>
+            <div class="name"><span>Un module relais 5&nbsp;V, 4 canaux au moins</span><small>À optocoupleurs, commandé à l'état bas (les modules 8 canaux courants conviennent&nbsp;: 4 servent). Il ferme les entrées de la pompe.</small></div></div>
+          <div class="erow"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 21V15H3.5C3.18 14.06 3 13.05 3 12C3 7.03 7.03 3 12 3H22V9H20.5C20.82 9.94 21 10.95 21 12C21 16.97 16.97 21 12 21H2M5 12C5 13.28 5.34 14.47 5.94 15.5L9.4 13.5C9.15 13.06 9 12.55 9 12C9 11.35 9.21 10.75 9.56 10.26L6.3 7.93C5.5 9.08 5 10.5 5 12M12 19C14.59 19 16.85 17.59 18.06 15.5L14.6 13.5C14.08 14.4 13.11 15 12 15L11.71 15L11.33 18.97L12 19M12 9C13.21 9 14.26 9.72 14.73 10.76L18.37 9.1C17.27 6.68 14.83 5 12 5V9M12 11C11.45 11 11 11.45 11 12C11 12.55 11.45 13 12 13C12.55 13 13 12.55 13 12C13 11.45 12.55 11 12 11Z"/></svg></span>
+            <div class="name"><span>Une pompe à vitesse variable</span><small>Avec des entrées de commande à contact sec&nbsp;: trois vitesses et marche/arrêt (DI1 à DI4).</small></div></div>
+          <div class="erow"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 13V5A3 3 0 0 0 9 5V13A5 5 0 1 0 15 13M12 4A1 1 0 0 1 13 5V8H11V5A1 1 0 0 1 12 4Z"/></svg></span>
+            <div class="name"><span>Des sondes DS18B20</span><small>Une au moins, sur le retour vers la piscine&nbsp;; deux de plus pour le local technique et l'extérieur. Une résistance de 4,7&nbsp;kΩ entre la ligne de données et le 3,3&nbsp;V. Des sondes d'origine&nbsp;: une contrefaçon peut bloquer tout le bus.</small></div></div>
+          <div class="erow"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20Z"/></svg></span>
+            <div class="name"><span>Un compteur d'eau à impulsions<span class="stag">facultatif</span></span><small>Sur l'arrivée de remplissage, à contact sec, 1 impulsion par litre&nbsp;: le contrôleur compte l'eau ajoutée.</small></div></div>
+          <div class="erow"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16,7V3H14V7H10V3H8V7H8C7,7 6,8 6,9V14.5L9.5,18V21H14.5V18L18,14.5V9C18,8 17,7 16,7Z"/></svg></span>
+            <div class="name"><span>Une alimentation 5&nbsp;V</span><small>Pour la carte et le module relais.</small></div></div>
+          <div class="erow"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2C6.9 2 6 2.9 6 4V12H5V16L9 20V22H15V20L19 16V12H18V4C18 2.9 17.11 2 16 2M8 4H16V12H8M9 7V9H11V7M13 7V9H15V7Z"/></svg></span>
+            <div class="name"><span>Un câble USB de données</span><small>Pas un câble de charge seule&nbsp;: avec lui, la carte n'apparaît pas dans la liste des ports.</small></div></div>
+          <div class="erow"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4,6H20V16H4M20,18A2,2 0 0,0 22,16V6C22,4.89 21.1,4 20,4H4C2.89,4 2,4.89 2,6V16A2,2 0 0,0 4,18H0V20H24V18H20Z"/></svg></span>
+            <div class="name"><span>Un ordinateur avec Chrome ou Edge</span><small>Windows, macOS ou Linux. Un téléphone suffit ensuite pour régler le contrôleur.</small></div></div>
+        </div>
+
+        <details class="more">
+          <summary>Branchements (fixés dans le firmware publié)</summary>
+          <table class="pins">
+            <thead><tr><th scope="col">Broche</th><th scope="col">Va à</th></tr></thead>
+            <tbody>
+              <tr><td>GPIO26</td><td>Relais 1 → DI1, vitesse 1 (lente)</td></tr>
+              <tr><td>GPIO25</td><td>Relais 2 → DI2, vitesse 2</td></tr>
+              <tr><td>GPIO14</td><td>Relais 3 → DI3, vitesse 3 (rapide)</td></tr>
+              <tr><td>GPIO27</td><td>Relais 4 → DI4, marche/arrêt</td></tr>
+              <tr><td>GPIO4</td><td>Sondes DS18B20 (bus 1-Wire), 4,7&nbsp;kΩ vers le 3,3&nbsp;V</td></tr>
+              <tr><td>GPIO33</td><td>Compteur d'eau&nbsp;; son autre fil à GND</td></tr>
+            </tbody>
+          </table>
+          <p class="hint" style="margin-top:8px">Relais sur COM/NO&nbsp;: carte éteinte, tout s'ouvre et la pompe s'arrête. D'autres broches&nbsp;? Elles sont compilées&nbsp;: changez-les dans <span class="mono">pool-controller.yaml</span> et compilez vous-même. Le détail&nbsp;: <a class="ext" href="https://github.com/davidterranova/pool-controller/blob/main/POOL-CONTROLLER.md#hardware">POOL-CONTROLLER.md<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z"/></svg></a></p>
+        </details>
+      </div>
+    </section>
+
+    <!-- ============================================================ Après l'installation -->
+    <section class="card" id="apres" aria-labelledby="hAfter">
+      <h2 id="hAfter"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4,11V13H16L10.5,18.5L11.92,19.92L19.84,12L11.92,4.08L10.5,5.5L16,11H4Z"/></svg>Après l'installation</h2>
+      <div class="body" style="display:grid;gap:14px">
+        <ol class="steps">
+          <li><div>Le contrôleur redémarre et rejoint le Wi-Fi donné dans la fenêtre d'installation.</div></li>
+          <li><div>Ouvrez <b class="mono">http://pool-controller.local</b> depuis un téléphone ou un ordinateur du même réseau (ou <span class="k">Visit Device</span>).
+            <small>Si l'adresse ne répond pas&nbsp;: celle que votre box donne à «&nbsp;pool-controller&nbsp;».</small></div></li>
+          <li><div>Sa page ouvre l'assistant de configuration&nbsp;: cinq étapes, quelques minutes, et tout reste sur le contrôleur.
+            <ol class="wz-steps" aria-label="Les étapes de l'assistant">
+              <li><span class="n">1</span><span>Mot de passe</span></li>
+              <li><span class="n">2</span><span>Wi-Fi</span></li>
+              <li><span class="n">3</span><span>Position</span></li>
+              <li><span class="n">4</span><span>Sondes</span></li>
+              <li><span class="n">5</span><span>Home Assistant</span></li>
+            </ol>
+            <small>Commencez sans attendre par le mot de passe de la page&nbsp;: tant qu'il n'y en a pas, quiconque est sur le réseau peut l'ouvrir. Le Wi-Fi donné à l'installation y est déjà coché.</small></div></li>
+          <li><div>Home Assistant, à la dernière étape&nbsp;: ajoutez-y le contrôleur (Paramètres › Appareils et services › ESPHome&nbsp;; il le découvre souvent tout seul). Il crée la clé de chiffrement et la lui envoie.
+            <small>Sans Home Assistant, le contrôleur fonctionne aussi&nbsp;: «&nbsp;Je n'utilise pas Home Assistant&nbsp;».</small></div></li>
+        </ol>
+        <div class="box warn">
+          <b class="h"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2,5.9L21,5.1C19.6,3.7 17.8,3 16,3C14.2,3 12.4,3.7 11,5.1L11.8,5.9C13,4.8 14.5,4.2 16,4.2C17.5,4.2 19,4.8 20.2,5.9M19.3,6.7C18.4,5.8 17.2,5.3 16,5.3C14.8,5.3 13.6,5.8 12.7,6.7L13.5,7.5C14.2,6.8 15.1,6.5 16,6.5C16.9,6.5 17.8,6.8 18.5,7.5L19.3,6.7M19,13H17V9H15V13H5A2,2 0 0,0 3,15V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V15A2,2 0 0,0 19,13M8,18H6V16H8V18M11.5,18H9.5V16H11.5V18M15,18H13V16H15V18Z"/></svg>Pas de Wi-Fi&nbsp;?</b>
+          <p>Wi-Fi passé ou refusé&nbsp;: le contrôleur ouvre son propre point d'accès, «&nbsp;pool-controller&nbsp;», sans mot de passe Wi-Fi. Connectez-y un téléphone et ouvrez <b class="mono">http://192.168.4.1</b>&nbsp;: l'assistant commence là, par le mot de passe de la page puis le Wi-Fi.</p>
+          <p class="muted">Plus tard, s'il perd son réseau plus d'une minute, il rouvre ce même point d'accès.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ Mises à jour -->
+    <section class="card" id="maj" aria-labelledby="hUpd">
+      <h2 id="hUpd"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,6V9L16,5L12,1V4A8,8 0 0,0 4,12C4,13.57 4.46,15.03 5.24,16.26L6.7,14.8C6.25,13.97 6,13 6,12A6,6 0 0,1 12,6M18.76,7.74L17.3,9.2C17.74,10.04 18,11 18,12A6,6 0 0,1 12,18V15L8,19L12,23V20A8,8 0 0,0 20,12C20,10.43 19.54,8.97 18.76,7.74Z"/></svg>Mises à jour</h2>
+      <div class="body">
+        <p style="margin:4px 0 4px">Un contrôleur installé ne repasse pas par ici.</p>
+        <div class="rows">
+          <div class="erow"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,6V9L16,5L12,1V4A8,8 0 0,0 4,12C4,13.57 4.46,15.03 5.24,16.26L6.7,14.8C6.25,13.97 6,13 6,12A6,6 0 0,1 12,6M18.76,7.74L17.3,9.2C17.74,10.04 18,11 18,12A6,6 0 0,1 12,18V15L8,19L12,23V20A8,8 0 0,0 20,12C20,10.43 19.54,8.97 18.76,7.74Z"/></svg></span>
+            <div class="name"><span>Toutes seules</span><small>Il cherche une nouvelle version toutes les 24&nbsp;h et l'installe (réglable&nbsp;: à la demande, 6&nbsp;h, 24&nbsp;h, 7&nbsp;j, dans Contrôleur › Firmware). Jamais pendant une marche forcée ou un remplissage&nbsp;: il attend la fin.</small></div></div>
+          <div class="erow"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/></svg></span>
+            <div class="name"><span>Sur demande</span><small>«&nbsp;Installer&nbsp;» sur sa page (Contrôleur › Firmware) ou dans Home Assistant (Paramètres › Mises à jour).</small></div></div>
+          <div class="erow"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"/></svg></span>
+            <div class="name"><span>Les réglages restent</span><small>Mot de passe, Wi-Fi, position, sondes, clé Home Assistant&nbsp;: une mise à jour n'en touche aucun.</small></div></div>
+          <div class="erow"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20,19V7H4V19H20M20,3A2,2 0 0,1 22,5V19A2,2 0 0,1 20,21H4A2,2 0 0,1 2,19V5C2,3.89 2.9,3 4,3H20M13,17V15H18V17H13M9.58,13L5.57,9H8.4L11.7,12.3C12.09,12.69 12.09,13.33 11.7,13.72L8.42,17H5.59L9.58,13Z"/></svg></span>
+            <div class="name"><span>Compilé avec secrets.yaml (v1.3.x)&nbsp;?</span><small>Une seule fois, depuis le dépôt&nbsp;: <span class="mono">make migrate</span>. Il garde tous ses réglages et sa clé Home Assistant, sans assistant à refaire&nbsp;; ensuite il se met à jour comme les autres.</small></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ Le code -->
+    <section class="card" aria-labelledby="hCode">
+      <h2 id="hCode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,2A10,10 0 0,0 2,12C2,16.42 4.87,20.17 8.84,21.5C9.34,21.58 9.5,21.27 9.5,21C9.5,20.77 9.5,20.14 9.5,19.31C6.73,19.91 6.14,17.97 6.14,17.97C5.68,16.81 5.03,16.5 5.03,16.5C4.12,15.88 5.1,15.9 5.1,15.9C6.1,15.97 6.63,16.93 6.63,16.93C7.5,18.45 8.97,18 9.54,17.76C9.63,17.11 9.89,16.67 10.17,16.42C7.95,16.17 5.62,15.31 5.62,11.5C5.62,10.39 6,9.5 6.65,8.79C6.55,8.54 6.2,7.5 6.75,6.15C6.75,6.15 7.59,5.88 9.5,7.17C10.29,6.95 11.15,6.84 12,6.84C12.85,6.84 13.71,6.95 14.5,7.17C16.41,5.88 17.25,6.15 17.25,6.15C17.8,7.5 17.45,8.54 17.35,8.79C18,9.5 18.38,10.39 18.38,11.5C18.38,15.32 16.04,16.16 13.81,16.41C14.17,16.72 14.5,17.33 14.5,18.26C14.5,19.6 14.5,20.68 14.5,21C14.5,21.27 14.66,21.59 15.17,21.5C19.14,20.16 22,16.42 22,12A10,10 0 0,0 12,2Z"/></svg>Le code</h2>
+      <div class="body">
+        <div class="rows">
+          <div class="erow"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6,2A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2H6M6,4H13V9H18V20H6V4M8,12V14H16V12H8M8,16V18H13V16H8Z"/></svg></span>
+            <div class="name"><span><a class="ext" href="https://github.com/davidterranova/pool-controller">davidterranova/pool-controller<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z"/></svg></a></span><small>Le firmware ESPHome, la page du contrôleur, la carte Home Assistant. Licence MIT. Questions et problèmes&nbsp;: les issues du dépôt.</small></div></div>
+          <div class="erow"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.41 11.58L12.41 2.58A2 2 0 0 0 11 2H4A2 2 0 0 0 2 4V11A2 2 0 0 0 2.59 12.42L11.59 21.42A2 2 0 0 0 13 22A2 2 0 0 0 14.41 21.41L21.41 14.41A2 2 0 0 0 22 13A2 2 0 0 0 21.41 11.58M13 20L4 11V4H11L20 13M6.5 5A1.5 1.5 0 1 1 5 6.5A1.5 1.5 0 0 1 6.5 5Z"/></svg></span>
+            <div class="name"><span><a class="ext" href="https://github.com/davidterranova/pool-controller/releases">Versions<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z"/></svg></a></span><small>Les notes de chaque version, et ses fichiers.</small></div></div>
+          <div class="erow" id="filesRow"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6,4H18V5H21V7H18V9H21V11H18V13H21V15H18V17H21V19H18V20H6V19H3V17H6V15H3V13H6V11H3V9H6V7H3V5H6V4M11,15V18H12V15H11M13,15V18H14V15H13M15,15V18H16V15H15Z"/></svg></span>
+            <div class="name"><span>Les fichiers du firmware</span><small>Pour esptool&nbsp;: l'image complète à l'adresse 0x0.</small>
+              <span class="links"><a href="firmware/manifest.json">manifest.json</a><a href="firmware/firmware.factory.bin">firmware.factory.bin</a><a href="firmware/firmware.ota.bin">firmware.ota.bin</a></span></div></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <span id="site">pool-controller.kitesize.fr</span>
+  <span id="footVer"></span>
+  <a href="https://github.com/davidterranova/pool-controller">Code source</a>
+  <span>Installation par <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a></span>
+</footer>
+
+<p class="sr-only" id="live" role="status" aria-live="polite"></p>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="module" src="install.js"></script>
+</body>
+</html>
