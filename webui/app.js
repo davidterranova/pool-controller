@@ -254,7 +254,7 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
       boostDuration: E.boostDuration, boostInterval: E.boostInterval, highEvery: E.highEvery, freezeAt: E.freezeAt,
     },
   });
-  settings.classList.add("o1");
+  settings.classList.add("o3"); // Avancé: after Plan du jour and Capteurs internes (index.html)
   $("settingsHost").replaceWith(settings);
   updaters.push(() => { if (st(E.min)) settings.hass = hass; });
 }

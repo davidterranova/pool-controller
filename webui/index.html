@@ -67,23 +67,24 @@
 
     <!-- ============================================================ Avancé -->
     <section id="tab-avance" class="cols advanced" role="tabpanel" hidden>
-      <!-- Two independent columns from 1000px, so a tall card on one side leaves no gap on the other.
-           Below that the columns dissolve and o1..o5 keep the reading order. -->
+      <!-- Read in this order: Plan du jour, Capteurs internes, Réglages, 7 derniers jours, Journal. From 1000px, two
+           independent columns (so a tall card on one side leaves no gap on the other), the first two on the left;
+           below that the columns dissolve and o1..o5 keep the order. -->
       <div class="stack">
-        <!-- Réglages: piscine-card's settings variant (app.js), the same rows as on Home Assistant's dashboard -->
-        <div id="settingsHost"></div>
-        <div class="card o4">
+        <div class="card o1">
+          <h2 data-icon="calendar-clock">Plan du jour</h2>
+          <div class="body"><div class="rows" id="planRows"></div></div>
+        </div>
+        <div class="card o2">
           <h2 data-icon="chip">Capteurs internes</h2>
           <div class="body"><div class="rows" id="deviceRows"></div></div>
         </div>
       </div>
 
       <div class="stack">
-        <div class="card o2">
-          <h2 data-icon="calendar-clock">Plan du jour</h2>
-          <div class="body"><div class="rows" id="planRows"></div></div>
-        </div>
-        <div class="card o3">
+        <!-- Réglages: piscine-card's settings variant (app.js), the same rows as on Home Assistant's dashboard -->
+        <div id="settingsHost"></div>
+        <div class="card o4">
           <h2 data-icon="calendar-check">7 derniers jours</h2>
           <div class="body"><div class="days" id="days"></div></div>
         </div>
