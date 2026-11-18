@@ -103,7 +103,7 @@
  * temperature across the full width under the header — layout « B » approved on the mock-up (« Screen »
  * view) on 2026-11-11.
  */
-const VERSION = "1.5.0";
+const VERSION = "1.6.0";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",
