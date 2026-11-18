@@ -24,7 +24,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build flash status kill-port ota ip logs webui mock-ui mock-webui mock-ui-check ha-dashboard-check clean
+.PHONY: validate build firmware-test flash status kill-port ota ip logs webui mock-ui mock-webui mock-ui-check ha-dashboard-check clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate: webui
@@ -34,6 +34,12 @@ validate: webui
 # too, which `validate` alone can't since those are raw C++).
 build: webui
 	$(ESPHOME) -s firmware_version $(FW_VERSION) compile $(CONFIG)
+
+# Host tests of the firmware's pure C++ helpers (tools/tests/: updates.h's
+# schedule, install gate and Update Status), with the ESPHome image's g++.
+firmware-test:
+	docker run --rm -v "$(CURDIR):/config" -w /config --entrypoint sh $(ESPHOME_IMAGE) -c \
+		'g++ -std=c++20 -Wall -Wextra -Werror -o /tmp/updates_test tools/tests/updates_test.cpp && /tmp/updates_test'
 
 # Flashes over UART via esptool (bundled with the ESP-IDF install), not through
 # Docker: Docker Desktop on macOS can't pass a host USB-serial device into the
