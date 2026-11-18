@@ -6,7 +6,8 @@
  *   POST /{domain}/{name}/{action}?…   number set, select set, button press, fan/switch turn_on|off,
  *                                       update install
  *
- * Entity ids are ESPHome's `name_id` ("select/Manual Override"); the card is configured with those
+ * Entity ids are "domain/Name" ("select/Manual Override"): ESPHome 2026.11 sends them as `id`; older
+ * versions sent them as `name_id` beside an `id` of "domain-object_id", hence entityId(). The card is configured with those
  * instead of HA's entity ids. What HA has and the device doesn't:
  *   - scripts: piscine_forcer_vitesse / piscine_retour_auto only set the Manual Override select (and
  *     its timeout), so callService maps them onto the same REST calls;
@@ -121,6 +122,14 @@ const splitId = (id) => {
   return [id.slice(0, i), id.slice(i + 1)];
 };
 
+/** An entity's "domain/Name" id: `id` from ESPHome 2026.11, `name_id` before (when `id` was
+ * "domain-object_id"). Null for a message that carries neither. */
+export function entityId(msg) {
+  if (msg.name_id) return msg.name_id;
+  const id = String(msg.id || "");
+  return id.includes("/") ? id : null;
+}
+
 export class EspHass extends EventTarget {
   constructor() {
     super();
@@ -175,7 +184,7 @@ export class EspHass extends EventTarget {
   }
 
   _onState(msg) {
-    const id = msg.name_id;
+    const id = entityId(msg);
     if (!id) return;
     const [domain, name] = splitId(id);
     if (msg.domain) this.entities[id] = { ...msg };

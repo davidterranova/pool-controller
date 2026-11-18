@@ -1080,7 +1080,7 @@ def _step_decimals(step: float) -> int:
 def entity_json(e: Entity, value, detail_all: bool, options: list | None = None) -> dict:
     """The JSON the device sends for an entity -- see web_server.cpp's *_json_ methods. `options`: a
     select's options when they're set at run time (the probe roles), rather than the YAML's."""
-    out = {"name_id": f"{e.domain}/{e.name}", "id": f"{e.domain}-{e.object_id}"}
+    out = {"id": f"{e.domain}/{e.name}"}  # ESPHome 2026.11: "domain/Name" in `id`, no `name_id` any more
     if detail_all:
         out.update(domain=e.domain, name=e.name, icon=e.get("icon", ""),
                    entity_category={"config": 1, "diagnostic": 2}.get(e.get("entity_category", ""), 0))
