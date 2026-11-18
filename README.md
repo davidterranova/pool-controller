@@ -90,7 +90,7 @@ For a change to the firmware, or other GPIOs than the published ones.
 
 6. Later, over Wi-Fi: `make ota`. It needs the controller's **OTA
    Password** — random at first boot, so set your own on the page
-   (Contrôleur › Accès) — read from `.ota-password` (one line, gitignored)
+   (Réglages contrôleur › Accès) — read from `.ota-password` (one line, gitignored)
    or `OTA_PASSWORD=…`, and given to the upload only, never compiled in.
 
 A controller running your own build still checks the published releases:
@@ -98,7 +98,7 @@ your build reports `git describe`'s version (`v1.5.0-3-g1a2b3c4`, `dev`),
 which never matches a release's, so with Auto Update on the next scheduled
 check installs the release over it. Turn Auto Update off, or set Update
 Check Interval to « À la demande », on a controller you flash yourself
-(Contrôleur › Firmware, or Home Assistant).
+(Réglages contrôleur › Firmware, or Home Assistant).
 
 ## Coming from a secrets.yaml build
 
@@ -173,23 +173,25 @@ you set `local: true` back).
 
 [home-assistant/piscine-card.js](home-assistant/piscine-card.js) is
 `custom:piscine-card`, the pool card of the Home Assistant dashboard: a tile,
-and a panel shown in a pop-up with four tabs. « Pompe » has the pump's state,
-today's plan timeline, the pool's temperature (24 h, 7, 30 and 90 days, a
-year), Auto/Manuel, the forced speed and its duration, and the outdoor and
-equipment-pad temperatures; « Remplissage » the fill water today, this month
-and by day, week or month with the period's total; « Avancé » today's plan
-with « Recalculer », the controller (its link and Wi-Fi), its probes, its
-firmware (installed and latest version, a tap opening Home Assistant's own
-update dialog, « Vérifier » and « Installer » on its update entity, automatic
-updates and how often to check), then the last 7 days;
-« Réglages » every setting the controller has, and its position and time
-zone, which « Utiliser la position et le fuseau de Home Assistant » sets
-from Home Assistant's own. Two
-more variants draw a part alone: `settings` the settings, with a line under
-each saying what it does, and `water` the fill water.
+and a panel shown in a pop-up with three tabs, the device page's own.
+« Contrôle » has the pump's state, today's plan timeline, the pool's
+temperature (24 h, 7, 30 and 90 days, a year), Auto/Manuel, the forced speed
+and its duration, then the fill water today, this month and by day, week or
+month with the period's total; « Réglages » today's plan with « Recalculer »,
+the probes (a tap opens Home Assistant's more-info), « Filtration et hors
+gel », every setting the controller has, then the last 7 days; « Réglages
+contrôleur » its position and time zone, which « Utiliser la position et le
+fuseau de Home Assistant » sets from Home Assistant's own, and its firmware
+(installed and latest version, a tap opening Home Assistant's own update
+dialog, « Vérifier » and « Installer » on its update entity, automatic
+updates and how often to check). Two more variants draw a part alone:
+`settings` the settings, with a line under each saying what it does, and
+`water` the fill water.
 A light on the tile and in the panel's header says when the controller was
 last heard: green while it talks, amber when it goes quiet or has just gone
-offline, red after 15 min; each new message sends a ring out of it.
+offline, red after 15 min; each new message sends a ring out of it. In the
+panel, it opens Home Assistant's device page for the controller (its link,
+Wi-Fi signal and disconnections).
 It's a plain custom element, no framework and no build step, in French.
 
 It lives here because it's written against this firmware's entities, and
@@ -214,13 +216,13 @@ What it needs from Home Assistant, besides the entities:
   fill up from the day the firmware was flashed), and of Pool Return
   Temperature, whose daily mean (pipe included) stands in for the days before;
 - the long-term statistics of the fill meter (Piscine - Volume total
-  remplissage, `total_increasing`), for the « Remplissage » tab. Without the
-  meter or the recorder, that tab isn't there;
+  remplissage, `total_increasing`), for the fill water in « Contrôle ».
+  Without the meter or the recorder, it isn't there;
 - the Device Clock ([wifi-setup.yaml](wifi-setup.yaml)), which changes every
   minute: the light's heartbeat. Without it, the light only follows the link;
 - the firmware's update entity (Firmware, with Check for Update, Cancel
   Update, Auto Update, Update Check Interval and Update Status), for
-  « Avancé » › Firmware: « Installer » is `update.install`, which the
+  « Réglages contrôleur » › Firmware: « Installer » is `update.install`, which the
   firmware holds while a manual override or a fill runs (« Annuler la
   demande » presses Cancel Update); Auto Update installs only what a
   scheduled check finds; a tap on a version row opens Home Assistant's own
@@ -228,8 +230,8 @@ What it needs from Home Assistant, besides the entities:
   firmware exists is the controller's to say: the card asks GitHub nothing
   (it is itself updated by HACS). A firmware without that entity (before
   v1.4) has no Firmware section;
-- Latitude, Longitude, Timezone and Timezone Name, for « Réglages » ›
-  Position; its « Utiliser » reads Home Assistant's own location and zone
+- Latitude, Longitude, Timezone and Timezone Name, for « Réglages
+  contrôleur » › Position; its « Utiliser » reads Home Assistant's own location and zone
   (Settings › System › General) and converts the zone to the POSIX string the
   controller applies, from tzdata's rules
   ([tools/tz-posix.py](tools/tz-posix.py) regenerates the card's table).
@@ -291,24 +293,28 @@ was first written (`bridges/homeassistant/config/www/piscine/`).
 ## The device's page (`webui/`)
 
 The device serves a page of our own instead of ESPHome's stock one, with the
-look of the Home Assistant dashboard. It has four tabs:
+look of the Home Assistant dashboard. It has three tabs, the card's own:
 
-- **Contrôle**, for daily use: Home Assistant's `piscine-card` panel (the
-  pump's state, today's plan timeline, the pool's last 7 days, Auto/Manuel,
-  forced speed and its duration), with tiles for the temperatures (the
-  pool's with today's min/max).
-- **Remplissage**: the card's `water` variant on the controller's own record
-  (Fill Water Today, Days and Months): today, this month, the flow, and the
-  litres by day over 30 days or by month over 12.
-- **Avancé**: today's plan in detail, the device's sensors, the filtration
-  settings with their Apply gate, the boost pulses and the freeze-protection
-  threshold (the card's settings variant, the rows of its « Réglages » tab in
-  Home Assistant), the last 7 days (hours filtered, pool min/max), and its
-  live log.
-- **Contrôleur**: a Wi-Fi section (see below: the connection and its
-  statistics, and a way to join a network; only when the device has those
-  entities) and a Firmware one (the version it runs, ESPHome's, and its
-  updates: « Vérifier », « Installer », as in the card's « Avancé »).
+- **Contrôle** (`#controle`), for daily use: Home Assistant's `piscine-card`
+  panel (the pump's state, today's plan timeline, the pool's last 7 days,
+  Auto/Manuel, forced speed and its duration) and, on its right (below it on
+  a phone), Remplissage: the card's `water` variant on the controller's own
+  record (Fill Water Today, Days and Months): today, this month, the flow,
+  and the litres by day over 30 days or by month over 12.
+- **Réglages** (`#reglages`): today's plan in detail, the device's sensors,
+  « Filtration et hors gel » (the filtration settings with their Apply gate,
+  the boost pulses and the freeze-protection threshold: the card's settings
+  variant, the rows of its « Réglages » tab in Home Assistant), and the last
+  7 days (hours filtered, pool min/max).
+- **Réglages contrôleur** (`#reglages-controleur`): a Wi-Fi section (see
+  below: the connection and its statistics, and a way to join a network;
+  only when the device has those entities), Position and Sondes, a Firmware
+  one (the version it runs, ESPHome's, and its updates: « Vérifier »,
+  « Installer », as in the card's « Réglages contrôleur »), Accès, Home
+  Assistant, Réinitialiser, and its live log (Journal).
+
+Links from before keep working: `#avance` opens Réglages, `#controleur` and
+`#wifi` Réglages contrôleur, `#remplissage` Contrôle at its Remplissage.
 
 How it fits together:
 
@@ -332,8 +338,9 @@ How it fits together:
   the last 30 days and the last 12 months (Fill Water Today, Days, Months).
   So the card's temperature graph runs with `recorder: false` here: 7 days,
   with no range to pick; its fill water is the `water` variant on that
-  record, in the page's « Remplissage » tab. The panel has no tabs: its
-  « Avancé » and « Réglages » are the page's Avancé tab. Nor the card's
+  record, beside it in the page's « Contrôle ». The panel has no tabs
+  (`settings_tab: false`): the page has its own Réglages and Réglages
+  contrôleur. Nor the card's
   light: the page's own « Connecté au contrôleur » chip is its link to the
   device. The page only keeps the Manual Override's changes in memory from
   the moment it opens (gone on reload), for the card's record of today's

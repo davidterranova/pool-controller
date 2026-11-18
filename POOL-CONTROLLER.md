@@ -171,9 +171,9 @@ which an update doesn't touch).
   check finds, it installs.
 - **On request.** « Vérifier » (Check for Update) looks now, but never
   installs by itself, Auto Update or not; « Installer » then installs: on
-  the controller's page (Contrôleur › Firmware), in Home Assistant
+  the controller's page (Réglages contrôleur › Firmware), in Home Assistant
   (Settings › Updates, the **Firmware** update entity) or in the pool card
-  (Avancé › Firmware). With « À la demande » nothing is checked on a
+  (Réglages contrôleur › Firmware). With « À la demande » nothing is checked on a
   schedule.
 - **The gate.** Every install, Home Assistant's included, waits while a
   Manual Override or a fill runs (a reboot would end the override, and lose
@@ -196,7 +196,7 @@ Update off, or the next release replaces it.
 
 ## Factory reset
 
-Contrôleur › Réinitialiser on the controller's page (or the **Factory
+Réglages contrôleur › Réinitialiser on the controller's page (or the **Factory
 Reset** button), after a confirmation. A selective erase, not ESPHome's:
 
 - **erased**: the page and OTA passwords, the saved Wi-Fi, the API key
@@ -786,14 +786,17 @@ Password (digest auth); until one is set, the page opens without a login
 The page is our own, not ESPHome's stock one: it has the look of the Home
 Assistant dashboard and runs HA's pool card unchanged (see the README, "The
 device's page"). While Setup State isn't `configured`, the setup wizard
-takes its place (see [First setup](#first-setup)). Four tabs:
+takes its place (see [First setup](#first-setup)). Three tabs, the pool
+card's own:
 
 | Tab | What's in it |
 |---|---|
-| **Contrôle** | The pool card's panel (pump state, today's plan timeline, the pool's temperature over the last 7 days, Auto/Manuel, forced speed and duration), the temperatures with today's pool min/max |
-| **Remplissage** | The fill water from the device's own record (Fill Water Today, Days, Months): today, this month, the flow, litres by day over 30 days or by month over 12 (the pool card's water variant) |
-| **Avancé** | Today's plan in detail, the device's sensors, the filtration settings with their Apply gate, boost pulses and freeze-protection threshold (the pool card's settings variant, as in Home Assistant), the last 7 days (Daily History), its live log |
-| **Contrôleur** | Wi-Fi: the connection and its statistics, joining another network (see "Wi-Fi and the fallback hotspot" below). Firmware: the version it runs, ESPHome's, and its updates (« Vérifier », « Installer », Auto Update, the check interval, Update Status, « Annuler la demande »; see [Updates](#updates)). Accès (page and OTA passwords), Position, Sondes, Home Assistant, Réinitialiser (see [Controller settings](#controller-settings)). |
+| **Contrôle** (`#controle`) | The pool card's panel (pump state, today's plan timeline, the pool's temperature over the last 7 days, Auto/Manuel, forced speed and duration), and Remplissage: the fill water from the device's own record (Fill Water Today, Days, Months): today, this month, the flow, litres by day over 30 days or by month over 12 (the pool card's water variant) |
+| **Réglages** (`#reglages`) | Today's plan in detail, the device's sensors, « Filtration et hors gel »: the filtration settings with their Apply gate, boost pulses and freeze-protection threshold (the pool card's settings variant, as in Home Assistant), the last 7 days (Daily History) |
+| **Réglages contrôleur** (`#reglages-controleur`) | Wi-Fi: the connection and its statistics, joining another network (see "Wi-Fi and the fallback hotspot" below). Position, Sondes. Firmware: the version it runs, ESPHome's, and its updates (« Vérifier », « Installer », Auto Update, the check interval, Update Status, « Annuler la demande »; see [Updates](#updates)). Accès (page and OTA passwords), Home Assistant, Réinitialiser (see [Controller settings](#controller-settings)). Its live log (Journal). |
+
+The tabs' old addresses still land: `#avance` on Réglages, `#controleur` and
+`#wifi` on Réglages contrôleur, `#remplissage` on Contrôle at its Remplissage.
 
 The `sorting_groups:` under `web_server:` (Pump, Today's Plan, Filtration
 Settings, Sensors, Wi-Fi) and each entity's `web_server: {sorting_group_id,
@@ -858,9 +861,9 @@ From [wifi-setup.yaml](wifi-setup.yaml), a package of the firmware:
 
 **Freeze Protection Temperature** (number, default 3 °C, kept across
 reboots) is the cutoff: set it from Home Assistant (the pool card's
-« Réglages » tab, or the settings component of
+« Réglages » › « Filtration et hors gel », or the settings component of
 [home-assistant/dashboard](home-assistant/dashboard/README.md)), from the
-device's own page (Avancé › Réglages › Hors gel), or as any HA number. It
+device's own page (Réglages › Filtration et hors gel › Hors gel), or as any HA number. It
 applies on the spot, no Apply needed: it only moves a comparison the
 controller makes on every tick. The pool card draws it on its temperature
 graph, in red.

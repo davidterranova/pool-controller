@@ -724,7 +724,7 @@ class PoolSim:
                                  planned if d < 6 else None))
         # Fill water: the last 30 closed days and 12 months, newest first (None = unknown), seeded with a real
         # summer (~950 L every three days, then next to nothing); a fill of a few minutes every quarter hour, so
-        # the page's « Remplissage » counts live.
+        # the page's Contrôle › Remplissage counts live.
         days = [0, 2, 19, 0, 0, 0, 0, 0, 0, 0, 4, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0]
         self.fill_days = days[:]
         self.fill_days[12] = None  # a day the device was off
