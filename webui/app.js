@@ -1,9 +1,10 @@
 /*
  * The controller's own page, in three tabs, the same as Home Assistant's piscine-card (mock-up v17):
- * « Contrôle » runs that card's panel (unchanged, fed by esphome-hass.js) and its water variant;
+ * « Contrôle » runs that card's panel (unchanged, fed by esphome-hass.js; its long-fill banner too) and its water
+ * variant, gone with its heading while Fill Meter is off (fill-meter.yaml), as are the flow and volume rows;
  * « Réglages » today's plan, the device's sensors, the settings (the card's settings variant) and the
  * last 7 days; « Réglages contrôleur » its Wi-Fi (wifi-setup.yaml: connection, statistics, joining a
- * network), its firmware, what setup.js adds (its position, probes, passwords, Home Assistant key and
+ * network), its firmware, what setup.js adds (its position, probes, fill meter, passwords, Home Assistant key and
  * factory reset), and its live log, plus the setup wizard shown instead of the page while the
  * controller isn't set up (device-settings.yaml). The device keeps no history of its
  * sensors, so the only charts are of what it records itself: the pool's min/max and filtration of the
@@ -26,6 +27,8 @@ const pad2 = (v) => String(v).padStart(2, "0");
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 const SPEED_FR = { Off: "Arrêt", Low: "Low", Medium: "Medium", High: "High", Auto: "Auto" };
+/** Fill Meter turned off (fill-meter.yaml): no Remplissage, no flow nor volume rows. A firmware without it counts. */
+const fillOff = () => s(E.fillEnabled) === "off";
 
 function icon(name) {
   const p = ICONS[String(name || "").replace(/^mdi:/, "")];
@@ -94,7 +97,7 @@ function route() {
   }
   if (tab === "reglages-controleur") scrollLogToEnd();
   scrollTo({ top: 0 });
-  if (want === "remplissage") scrollToWater();
+  if (want === "remplissage" && !fillOff()) scrollToWater();
 }
 addEventListener("hashchange", route);
 addEventListener("popstate", route);
@@ -114,6 +117,9 @@ card.setConfig({
     water: E.water, waterMin: E.waterMin, waterMax: E.waterMax, history: E.history, outdoor: E.outdoor, online: E.online, stuck: E.overrideActive, notComputed: E.notComputed,
     recomputed: E.recomputed, boostInterval: E.boostInterval, boostDuration: E.boostDuration,
     highEvery: E.highEvery, timeout: E.timeout, endsAt: E.endsAt, freezeAt: E.freezeAt,
+    // the long-fill alarm's banner, with « Acquitter » (fill-meter.yaml): this page's own, fed by the controller
+    fillEnabled: E.fillEnabled, fillAlarmAfter: E.fillAlarmAfter, fillRunning: E.fillRunning, fillTooLong: E.fillTooLong,
+    fillAck: E.fillAck, fillAcked: E.fillAcked,
     sun: "sun.sun", // not on the device: the timeline just has no sunrise/sunset marks
   },
 });
@@ -252,10 +258,16 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
   water.setConfig({
     variant: "water",
     recorder: false,
-    entities: { flow: E.flow, volume: E.volume, fillToday: E.fillToday, fillDays: E.fillDays, fillMonths: E.fillMonths },
+    entities: { flow: E.flow, volume: E.volume, fillToday: E.fillToday, fillDays: E.fillDays, fillMonths: E.fillMonths,
+      fillEnabled: E.fillEnabled, fillAlarmAfter: E.fillAlarmAfter, fillRunning: E.fillRunning, fillTooLong: E.fillTooLong,
+      fillAcked: E.fillAcked },
   });
   $("waterHost").replaceWith(water);
-  updaters.push(() => { if (st(E.flow)) water.hass = hass; });
+  updaters.push(() => {
+    // Fill Meter off: no Remplissage at all (the card hides itself; its heading goes with it)
+    $("waterStack").hidden = fillOff();
+    if (st(E.flow)) water.hass = hass;
+  });
 }
 
 /* ---- Plan du jour */
@@ -627,8 +639,8 @@ const KNOWN = new Set(Object.values(E));
   valueRow(host, { id: E.water, label: "Eau (retour filtre)", iconName: "thermometer-water" });
   valueRow(host, { id: E.pad, label: "Local technique", iconName: "home-thermometer-outline" });
   valueRow(host, { id: E.outdoor, label: "Extérieur", iconName: "weather-partly-cloudy" });
-  valueRow(host, { id: E.flow, label: "Débit de remplissage" });
-  valueRow(host, { id: E.volume, label: "Volume total rempli" });
+  valueRow(host, { id: E.flow, label: "Débit de remplissage", visible: () => !fillOff() });
+  valueRow(host, { id: E.volume, label: "Volume total rempli", visible: () => !fillOff() });
   buttonRow(host, { id: E.updateTemps, label: "Relire les sondes de température", iconName: "thermometer", text: "Relire", ok: "Sondes relues" });
   const others = h(`<div></div>`);
   host.appendChild(others);
