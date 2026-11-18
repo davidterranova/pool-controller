@@ -136,7 +136,9 @@ equipment-pad temperatures; « Remplissage » the fill water today, this month
 and by day, week or month with the period's total; « Avancé » today's plan
 with « Recalculer », the last 7 days, the controller (its link and Wi-Fi),
 its probes and its firmware, with « Vérifier » to ask GitHub whether main has
-changed it since; « Réglages » every setting the controller has. Two
+changed it since; « Réglages » every setting the controller has, and its
+position and time zone, which « Utiliser la position et le fuseau de Home
+Assistant » sets from Home Assistant's own. Two
 more variants draw a part alone: `settings` the settings, with a line under
 each saying what it does, and `water` the fill water.
 A light on the tile and in the panel's header says when the controller was
@@ -175,6 +177,11 @@ What it needs from Home Assistant, besides the entities:
   and, for « Vérifier », a browser that reaches api.github.com. It only tells:
   installing stays `make ota` for now (updates from a release come with the
   secret-free firmware plan, WP6).
+- Latitude, Longitude, Timezone and Timezone Name, for « Réglages » ›
+  Position; its « Utiliser » reads Home Assistant's own location and zone
+  (Settings › System › General) and converts the zone to the POSIX string the
+  controller applies, from tzdata's rules
+  ([tools/tz-posix.py](tools/tz-posix.py) regenerates the card's table).
 
 The temperature graph exists because the probe is on the return pipe: it
 reads the pool only while water flows, and with the pump stopped it drifts

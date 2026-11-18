@@ -77,6 +77,10 @@ views:
               clock: datetime.pool_controller_device_clock    # wifi-setup.yaml too: the light's heartbeat, every minute
               fwVersion: sensor.pool_controller_firmware_version
               esphomeVersion: sensor.pool_controller_esphome_version
+              latitude: number.pool_controller_latitude      # these four: « Réglages » › Position
+              longitude: number.pool_controller_longitude
+              timezone: text.pool_controller_timezone
+              timezoneName: text.pool_controller_timezone_name
               sForce: script.piscine_forcer_vitesse
               sAuto: script.piscine_retour_auto
 

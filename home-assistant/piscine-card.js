@@ -143,6 +143,12 @@ const DEFAULT_ENTITIES = {
   clock: "datetime.piscine_pool_controller_device_clock",
   fwVersion: "sensor.piscine_pool_controller_firmware_version",
   esphomeVersion: "sensor.piscine_pool_controller_esphome_version",
+  // From here, a fresh install's ids (« Pool Controller »): entities the firmware got with its settings (WP2) and its
+  // updates (WP6). An older firmware has none of them, and their rows hide.
+  latitude: "number.pool_controller_latitude",
+  longitude: "number.pool_controller_longitude",
+  timezone: "text.pool_controller_timezone",
+  timezoneName: "text.pool_controller_timezone_name",
   sForce: "script.piscine_forcer_vitesse",
   sAuto: "script.piscine_retour_auto",
 };
@@ -284,6 +290,9 @@ const stamp = (s) => {
   return dayKey(new Date()) === `${m[1]}-${m[2]}-${m[3]}` ? `${m[4]}:${m[5]}` : `${m[3]}/${m[2]} ${m[4]}:${m[5]}`;
 };
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const r2 = (v) => Math.round(v * 100) / 100; // the controller keeps its position to 0.01° (about 1 km)
+const deg = (v) => (Number.isFinite(v) ? `${v.toFixed(2).replace(".", ",")}°` : "non définie");
+const isSet = (s) => s !== undefined && s !== "" && s !== "unknown" && s !== "unavailable";
 /** Daily History "2026-11-13: 6.42 h 25.9/26.6 °C, 2026-11-12: 6.70 h" -> { "2026-11-13": {hours, lo, hi}, … }. */
 const parseDays = (text) => Object.fromEntries([...String(text || "").matchAll(
   /(\d{4}-\d{2}-\d{2}): ([\d.]+) h(?: (-?[\d.]+)\/(-?[\d.]+) °C)?/g)]
@@ -617,6 +626,9 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
   background:var(--acc); color:var(--on-acc); flex:none; }
 .btn:disabled { background:var(--raised); color:var(--muted); cursor:not-allowed; }
 .btn.busy { opacity:.6; pointer-events:none; }
+/* « Réglages » › Position */
+.mono { font-family:var(--code-font-family,ui-monospace,SFMono-Regular,Menlo,monospace); font-size:11px; }
+.posnote { font-size:12px; color:var(--muted); margin:6px 0 0; }
 @container (max-width: 520px) {
   .erow { flex-wrap:wrap; }
   .erow .ctl { flex:1 1 100%; margin-left:54px; min-width:0; }
@@ -687,6 +699,8 @@ const PANEL_HTML = `
     <section><h4 class="sp-h">Réglages<span class="chip" id="pendChip" hidden>En attente</span></h4>
       <div class="banner" id="pendBanner" hidden>${svg("alert")}<span>Durée de filtration modifiée : elle ne compte qu'une fois appliquée, ce qui recalcule le plan du jour.</span><button class="btn" id="applyNow">Appliquer</button></div>
       <div id="rows"></div></section>
+    <section id="posSec" hidden><h4 class="sp-h">Position</h4><div id="posRows"></div>
+      <p class="posnote">Arrondies à 0,01° (environ 1 km) : assez pour le lever et le coucher du soleil, d'où le contrôleur tire son plan, sans situer la maison.</p></section>
   </div>
   <div class="plan">
     <div class="plan-h"><p class="lbl">Plan du jour</p><span class="num" id="planSum"></span></div>
@@ -817,6 +831,7 @@ class PiscineCard extends HTMLElement {
     this._stats = null;        // 30 / 90 j: { "YYYY-MM-DD": {lo, hi} }, the 23:00 rows of the hourly statistics
     this._daily = null;        // 30 j – 1 an: { "YYYY-MM-DD": {mean (the probe), lo, hi (HA's day of Min/Max Today)} }
     this._fwCheck = { busy: false, result: null }; // « Vérifier »: GitHub's answer, {text, cls, href}
+    this._posDrawn = "";
     this._beatSeen = null; this._beatAt = -1e9; // the light's last heartbeat: the message it was for, when (performance.now)
     this._statsAt = 0; this._statsLoading = false; this._statsErr = false;
     this._tVer = 0; this._tDrawn = "";
@@ -1060,6 +1075,42 @@ class PiscineCard extends HTMLElement {
     }
     return TZ_BY_NAME.get(String(iana || "")) || null;
   }
+  /* ---------- panel, tab « Réglages » › Position ---------- */
+  /** Home Assistant's own position and zone (hass.config), as the controller would take them; null without one. */
+  _haPos() {
+    const c = this._hass.config;
+    if (!c || !Number.isFinite(c.latitude) || !Number.isFinite(c.longitude)) return null;
+    return { lat: r2(c.latitude), lon: r2(c.longitude), iana: c.time_zone || "", posix: PiscineCard.posixTz(c.time_zone) };
+  }
+  _renderPos() {
+    const sec = this._$("posSec");
+    sec.hidden = !this._st("latitude") && !this._st("longitude") && !this._st("timezone");
+    if (sec.hidden) return;
+    const lat = this._n("latitude"), lon = this._n("longitude"), tz = this._s("timezone"), name = this._s("timezoneName"), h = this._haPos();
+    const near = (a, b) => Number.isFinite(a) && Math.abs(a - b) < 0.005;
+    const same = h && near(lat, h.lat) && near(lon, h.lon) && (!h.posix || (tz === h.posix && name === h.iana));
+    const row = (key, icon, label, value, sub = "") => (this._st(key) ? `<div class="erow"><span class="ic">${this._icon(icon)}</span><span class="name"><span>${label}</span>`
+      + `${sub ? `<small>${sub}</small>` : ""}</span><span class="val num">${esc(value)}</span></div>` : "");
+    const html = row("latitude", "map-marker", "Latitude", deg(lat)) + row("longitude", "map-marker", "Longitude", deg(lon))
+      + row("timezone", "earth", "Fuseau horaire", isSet(name) ? name : isSet(tz) ? "chaîne POSIX saisie" : "non défini", isSet(tz) ? `POSIX <span class="mono">${esc(tz)}</span>` : "")
+      + (h ? `<div class="erow"><span class="ic">${this._icon("home-assistant")}</span><span class="name"><span>Utiliser la position et le fuseau de Home Assistant</span><small>${same
+        ? (h.posix ? "Déjà ceux de Home Assistant." : esc(`Position déjà celle de Home Assistant ; son fuseau (${h.iana}) est inconnu de la carte : réglez-le sur la page du contrôleur.`))
+        : esc(`Home Assistant : ${deg(h.lat)} · ${deg(h.lon)} · ${h.iana || "fuseau non défini"}${h.posix ? "" : " (fuseau inconnu de la carte : la position seule)"}`)}</small></span>`
+        + `<button class="btn" data-act="pos-ha"${same || !this._online() ? " disabled" : ""}>Utiliser</button></div>` : "");
+    if (html !== this._posDrawn) { this._posDrawn = html; this._$("posRows").innerHTML = html; }
+  }
+  /** Writes hass.config's position, and its zone when TZ_POSIX has it: Timezone (POSIX, applied) and Timezone Name together. */
+  _posFromHa(btn) {
+    const h = this._haPos();
+    if (!h) return;
+    const writes = [["latitude", "number", h.lat], ["longitude", "number", h.lon], ...(h.posix ? [["timezone", "text", h.posix], ["timezoneName", "text", h.iana]] : [])]
+      .filter(([key]) => this._st(key));
+    btn.classList.add("busy");
+    Promise.all(writes.map(([key, domain, value]) => this._hass.callService(domain, "set_value", { entity_id: this._e[key], value })))
+      .then(() => this._toast(`${h.posix ? "Position et fuseau de Home Assistant envoyés" : "Position de Home Assistant envoyée"} : plan du jour recalculé`), (err) => this._refused(err))
+      .finally(() => { btn.classList.remove("busy"); this._posDrawn = ""; this._update(); });
+  }
+
   /** « Hors ligne depuis 6 min », « Contrôleur muet depuis 5 min », else `live`. */
   _lightText(L, live = `Contrôleur · ${agoTxt(L.quiet)}`, mute = "Contrôleur muet") {
     if (L.off !== null) return Number.isFinite(L.off) ? `Hors ligne depuis ${fmtD(L.off)}` : "Hors ligne";
@@ -1644,6 +1695,10 @@ class PiscineCard extends HTMLElement {
         this._paneRows.push(r);
       }
     }
+    this._$("posRows").addEventListener("click", (ev) => {
+      const b = ev.target.closest('button[data-act="pos-ha"]');
+      if (b && !b.disabled) this._posFromHa(b);
+    });
   }
   _renderAdvPane() {
     for (const r of this._paneRows) {
@@ -1956,7 +2011,7 @@ class PiscineCard extends HTMLElement {
       b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1;
     });
     if (this._tab === "adv") this._renderAdvPane();
-    if (this._tab === "settings") this._updateSettings();
+    if (this._tab === "settings") { this._updateSettings(); this._renderPos(); }
 
     // « Températures » at the foot of « Pompe »
     const probes = { outdoor: this._st("outdoor"), pad: this._st("pad") };
