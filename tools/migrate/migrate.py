@@ -142,7 +142,7 @@ def password_warnings(settings: "OldSettings") -> list:
     in old_settings(): the controller couldn't store it.)"""
     return [
         f"the {label} has {len(value)} characters, under {PASSWORD_MIN}: seeded as it is, "
-        f"the page will ask to change it ({PASSWORD_MIN} to {PASSWORD_MAX} characters)"
+        f"change it after the migration, from the page's Contrôleur › Accès (it takes {PASSWORD_MIN} to {PASSWORD_MAX} characters)"
         for label, value in (("page password", settings.page_password), ("OTA password", settings.ota_password))
         if len(value) < PASSWORD_MIN
     ]
