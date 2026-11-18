@@ -5,3 +5,5 @@ secrets.yaml
 webui/dist/
 __pycache__/
 .migrate/
+.card-preview/
+tools/card-preview/shots/
