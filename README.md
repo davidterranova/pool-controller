@@ -176,9 +176,10 @@ today's plan timeline, the pool's temperature (24 h, 7, 30 and 90 days, a
 year), Auto/Manuel, the forced speed and its duration, and the outdoor and
 equipment-pad temperatures; « Remplissage » the fill water today, this month
 and by day, week or month with the period's total; « Avancé » today's plan
-with « Recalculer », the last 7 days, the controller (its link and Wi-Fi),
-its probes and its firmware: installed and latest version, « Vérifier » and
-« Installer » on its update entity, automatic updates and how often to check;
+with « Recalculer », the controller (its link and Wi-Fi), its probes, its
+firmware (installed and latest version, a tap opening Home Assistant's own
+update dialog, « Vérifier » and « Installer » on its update entity, automatic
+updates and how often to check), then the last 7 days;
 « Réglages » every setting the controller has, and its position and time
 zone, which « Utiliser la position et le fuseau de Home Assistant » sets
 from Home Assistant's own. Two
@@ -220,12 +221,11 @@ What it needs from Home Assistant, besides the entities:
   « Avancé » › Firmware: « Installer » is `update.install`, which the
   firmware holds while a manual override or a fill runs (« Annuler la
   demande » presses Cancel Update); Auto Update installs only what a
-  scheduled check finds. A firmware without it (v1.3.x, built
-  with `make` from `secrets.yaml`) keeps the older rows instead: Firmware
-  Version and ESPHome Version (before a firmware that has them, ESPHome's
-  version comes from the device registry), and « Vérifier », which needs a
-  browser that reaches api.github.com and only tells: installing that one
-  stays `make ota`;
+  scheduled check finds; a tap on a version row opens Home Assistant's own
+  dialog for the entity (release notes, « Ignorer »). Whether a newer
+  firmware exists is the controller's to say: the card asks GitHub nothing
+  (it is itself updated by HACS). A firmware without that entity (before
+  v1.4) has no Firmware section;
 - Latitude, Longitude, Timezone and Timezone Name, for « Réglages » ›
   Position; its « Utiliser » reads Home Assistant's own location and zone
   (Settings › System › General) and converts the zone to the POSIX string the
@@ -298,15 +298,15 @@ look of the Home Assistant dashboard. It has four tabs:
 - **Remplissage**: the card's `water` variant on the controller's own record
   (Fill Water Today, Days and Months): today, this month, the flow, and the
   litres by day over 30 days or by month over 12.
-- **Avancé**: the filtration settings with their Apply gate, the boost
-  pulses and the freeze-protection threshold (the
-  card's settings variant, the rows of its « Réglages » tab in Home Assistant), today's plan in
-  detail, the last 7 days (hours filtered, pool min/max), the device's
-  sensors, and its live log.
+- **Avancé**: today's plan in detail, the device's sensors, the filtration
+  settings with their Apply gate, the boost pulses and the freeze-protection
+  threshold (the card's settings variant, the rows of its « Réglages » tab in
+  Home Assistant), the last 7 days (hours filtered, pool min/max), and its
+  live log.
 - **Contrôleur**: a Wi-Fi section (see below: the connection and its
   statistics, and a way to join a network; only when the device has those
-  entities) and a Firmware one (the commit it was built from, ESPHome's
-  version, and « Vérifier », as in the card's « Avancé »).
+  entities) and a Firmware one (the version it runs, ESPHome's, and its
+  updates: « Vérifier », « Installer », as in the card's « Avancé »).
 
 How it fits together:
 

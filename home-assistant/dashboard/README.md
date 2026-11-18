@@ -53,13 +53,13 @@ The panel has four tabs, so the pop-up needs no dashboard behind it:
   the outdoor and equipment-pad temperatures (a tap opens Home Assistant's more-info, with their history);
 - « Remplissage »: the fill water today, this month, and by day, week or month. It needs the `volume`
   entity and the recorder; without them the tab isn't there (`variant: water` draws it alone);
-- « Avancé »: today's plan in detail with « Recalculer », the last 7 days of filtration against the
-  plan, the controller's link and Wi-Fi, the probes with « Relire », and the firmware on its update
-  entity: installed and latest version with its release notes, « Vérifier », « Installer » (held by the
-  firmware while a manual override or a fill runs: the card asks first, then says it waits, and the
-  wait can be cancelled), automatic updates (what a scheduled check finds) and how often to check. On a firmware without updates (v1.3.x), the commit it was built from,
-  ESPHome's version and « Vérifier », which asks GitHub whether main has changed it since
-  (`firmware_repo`, this repo by default). The controller's light opens it at « Contrôleur »;
+- « Avancé », in the device page's order: today's plan in detail with « Recalculer », the controller's
+  link and Wi-Fi, the probes with « Relire », the firmware on its update entity (installed and latest
+  version, a tap opening Home Assistant's own update dialog with the release notes, « Vérifier »,
+  « Installer », held by the firmware while a manual override or a fill runs: the card asks first, then
+  says it waits, and the wait can be cancelled; automatic updates, what a scheduled check finds, and how
+  often to check), then the last 7 days of filtration against the plan. A firmware without the update
+  entity (before v1.4) has no firmware section. The controller's light opens it at « Contrôleur »;
 - « Réglages »: every setting, with its Apply gate, then the controller's position and time zone, with
   « Utiliser la position et le fuseau de Home Assistant » (Home Assistant's location rounded to 0.01°,
   its zone as the controller's Timezone Name and its POSIX string). `settings_tab: false` drops it and

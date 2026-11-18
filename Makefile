@@ -8,7 +8,7 @@ ESPHOME_VERSION ?= 2026.11.0b6
 ESPHOME_IMAGE ?= ghcr.io/esphome/esphome:$(ESPHOME_VERSION)
 ESPHOME := docker run --rm -v "$(CURDIR):/config" $(ESPHOME_IMAGE)
 # The commit the firmware is built from, as its Firmware Version entity reports it
-# (the pool card compares it with main on GitHub): v1.3.0, v1.3.0-4-g1a2b3c4, …-dirty.
+# (the pool card and the controller's page show it): v1.3.0, v1.3.0-4-g1a2b3c4, …-dirty.
 FW_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_DIR := .esphome/build/pool-controller/build
 ESPTOOL := /Users/davidterranova/.espressif/tools/python/v6.0.2/venv/bin/esptool
