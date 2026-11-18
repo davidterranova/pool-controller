@@ -520,6 +520,30 @@ text_sensor:
         out += buf;
       }
       return out.empty() ? std::string("--") : out;
+  # The plan Daily History's days were measured against: each closed day's
+  # Planned Filtration Hours, as it stood at the day's end. Same date and
+  # hours format as Daily History; days with no known plan are left out.
+  # 7 days take ~130 characters.
+  - platform: template
+    name: "Daily Plan History"
+    web_server: {sorting_group_id: grp_plan, sorting_weight: 26}
+    id: daily_plan_history
+    icon: mdi:calendar-clock
+    entity_category: diagnostic
+    update_interval: 1h
+    lambda: |-
+      std::string out;
+      for (int i = 0; i < 7; i++) {
+        uint32_t d = id(history_dates)[i];
+        uint16_t m = id(history_planned_minutes)[i];
+        if (d == 0 || m == 0xFFFF) continue;
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%s%04u-%02u-%02u: %u.%02u h", out.empty() ? "" : ", ",
+                 (unsigned) (d / 10000), (unsigned) (d / 100 % 100), (unsigned) (d % 100),
+                 (unsigned) (m / 60), (unsigned) ((m % 60) * 100 / 60));
+        out += buf;
+      }
+      return out.empty() ? std::string("--") : out;
   # Fill water, for the device's own page (Home Assistant has the meter's
   # long-term statistics). Days: the last 30 closed days, newest first, from
   # the date of the newest -- "2026-11-16: 0 19 0 - 940 …" in litres, "-" for
@@ -1048,6 +1072,19 @@ globals:
     type: int16_t[7]
     restore_value: true
     initial_value: '{INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN, INT16_MIN}'
+  # Each closed day's planned filtration in minutes, alongside the slots
+  # above (0xFFFF = not known: the day closed before this firmware, or with
+  # no plan computed). Its own array and its own text sensor (Daily Plan
+  # History), so Daily History's format and its readers stay as they are.
+  # planned_minutes_today is the running day's, kept by filtration_accrue.
+  - id: history_planned_minutes
+    type: uint16_t[7]
+    restore_value: true
+    initial_value: '{0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF}'
+  - id: planned_minutes_today
+    type: uint16_t
+    restore_value: true
+    initial_value: '0xFFFF'
   # Fill water: litres since midnight (restored: a reboot keeps the day's
   # count, at the cost of a flash write every flash_write_interval while a
   # fill runs), and the meter's total at its last reading, which restarts at
@@ -1416,12 +1453,15 @@ script:
                 id(history_filtration_minutes)[i] = id(history_filtration_minutes)[i - 1];
                 id(history_water_min)[i] = id(history_water_min)[i - 1];
                 id(history_water_max)[i] = id(history_water_max)[i - 1];
+                id(history_planned_minutes)[i] = id(history_planned_minutes)[i - 1];
               }
               id(history_dates)[0] = id(filtration_counted_date);
               id(history_filtration_minutes)[0] = (closed_ms + 30000UL) / 60000UL;
               id(history_water_min)[0] = id(water_min_today);
               id(history_water_max)[0] = id(water_max_today);
+              id(history_planned_minutes)[0] = id(planned_minutes_today);
               id(daily_history).update();
+              id(daily_plan_history).update();
               // Fill water: the day into the last 30 (days the device missed
               // stay unknown) and into its month.
               auto civil = [](uint32_t ymd) -> int32_t {  // days since 1970-01-01 (H. Hinnant's days_from_civil)
@@ -1461,6 +1501,8 @@ script:
             id(water_max_today) = INT16_MIN;
             id(water_min_today_sensor).update();
             id(water_max_today_sensor).update();
+            // ...and with no plan until today's is computed (just below).
+            id(planned_minutes_today) = 0xFFFF;
             id(filtration_ms_today) = after_midnight_ms;
             id(filtration_counted_day) = t.day_of_year;
             id(filtration_counted_date) =
@@ -1474,6 +1516,18 @@ script:
                   t.year * 10000UL + t.month * 100UL + t.day_of_month;
             }
             id(filtration_ms_today) += seg_ms;
+          }
+          // Keep the counted day's plan length for Daily Plan History. Only
+          // while the cached plan is that day's: right after midnight the
+          // recompute and this rollover can come in either order, and
+          // yesterday must not close with today's plan (nor today start
+          // with yesterday's). So the day keeps its last plan, recomputes
+          // included, as Planned Filtration Hours showed it.
+          if (id(sched_computed_day) == id(filtration_counted_day)) {
+            int32_t planned_s = (int32_t) (id(sched_block1_end) - id(sched_block1_start) +
+                                           id(sched_block2_end) - id(sched_block2_start));
+            id(planned_minutes_today) =
+                planned_s <= 0 ? 0 : (uint16_t) ((planned_s + 30) / 60);
           }
           // Leave a stopped pump stopped; only re-stamp a live run, so the
           // segment just accrued isn't counted again on the next call.

@@ -65,7 +65,7 @@ The panel has three tabs, the controller's own page's, so the pop-up needs no da
   often to check). A firmware without the update entity (before v1.4) has no firmware section.
 
 `settings_tab: false` drops both « Réglages » tabs, and with them the tab bar. `temperatures` (before
-1.7.0) is deprecated: accepted and ignored, the outdoor and equipment-pad probes are in « Réglages » › Sondes.
+1.8.0) is deprecated: accepted and ignored, the outdoor and equipment-pad probes are in « Réglages » › Sondes.
 
 Its header, and the tile, have a light for the controller: green while it talks (the Device Clock, `clock`,
 changes every minute), amber when it goes quiet or has been offline for less than 15 min, red beyond. In the

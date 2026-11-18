@@ -15,7 +15,7 @@
  *   controller_light: false                            # optional: no light for the controller (tile, header)
  *   controller_health: { warn: 3, alert: 15, beat: 4 }  # optional: its minutes before amber, before red; seconds between beats
  *   more_path: /config/…  # optional: where the light leads instead of the controller's device page
- *   # temperatures: deprecated since 1.7.0, accepted and ignored (the probes are in « Réglages » › Sondes)
+ *   # temperatures: deprecated since 1.8.0, accepted and ignored (the probes are in « Réglages » › Sondes)
  *
  * The card never writes the controller's Manual Override select itself:
  *   force a speed   script.piscine_forcer_vitesse (vitesse: Off|Low|Medium|High)
@@ -77,7 +77,7 @@
  * « Réglages » and « Réglages contrôleur »: between them, every control the controller has, as on its own page, so
  * the pop-up needs no dashboard behind it. « Réglages », read in this order: today's plan with « Recalculer », the
  * probes with « Relire » (a tap on one opens Home Assistant's more-info, its history), « Filtration et hors gel »
- * (the same rows as `variant: settings`), then the last 7 days of filtration against the plan (Daily History).
+ * (the same rows as `variant: settings`), then the last 7 days of filtration against the plan (Daily History, each day's plan from Daily Plan History).
  * « Réglages contrôleur »: « Position », the controller's latitude, longitude and time zone, and « Utiliser la
  * position et le fuseau de Home Assistant », which writes hass.config's, rounded to 0.01°, the zone as its IANA name
  * (Timezone Name) and its POSIX string (Timezone, from TZ_POSIX); then « Firmware » (mock-up 2026-11-18, plan WP4).
@@ -105,7 +105,7 @@
  * « Filtration » on the left, « Impulsions et hors gel » and 7 derniers jours on the right; « Réglages
  * contrôleur » is Position beside Firmware.
  */
-const VERSION = "1.7.0";
+const VERSION = "1.8.0";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",
@@ -123,6 +123,7 @@ const DEFAULT_ENTITIES = {
   waterMin: "sensor.piscine_pool_controller_pool_water_min_today",
   waterMax: "sensor.piscine_pool_controller_pool_water_max_today",
   history: "sensor.piscine_pool_controller_daily_history",
+  planHistory: "sensor.piscine_pool_controller_daily_plan_history",
   outdoor: "sensor.piscine_pool_controller_outdoor_temperature",
   online: "binary_sensor.piscine_pool_controller_status",
   stuck: "binary_sensor.piscine_pool_controller_manual_override_active",
@@ -296,6 +297,18 @@ const isSet = (s) => s !== undefined && s !== "" && s !== "unknown" && s !== "un
 const parseDays = (text) => Object.fromEntries([...String(text || "").matchAll(
   /(\d{4}-\d{2}-\d{2}): ([\d.]+) h(?: (-?[\d.]+)\/(-?[\d.]+) °C)?/g)]
   .map((m) => [m[1], { hours: +m[2], lo: m[3] === undefined ? NaN : +m[3], hi: m[4] === undefined ? NaN : +m[4] }]));
+
+/** A closed day this far under its plan is « sous son plan »: less is the day boundary and the minute rounding. */
+const SHORT_TOLERANCE_H = 0.25;
+const dayShort = (r) => Number.isFinite(r.hours) && Number.isFinite(r.planned) && r.hours < r.planned - SHORT_TOLERANCE_H;
+/** A row of « 7 derniers jours »'s tooltip: today's, a closed day's against its plan, or a day without data. */
+const dayTitle = (r) => {
+  if (r.today) return "En cours ; le trait marque la durée planifiée";
+  if (!Number.isFinite(r.hours)) return "Pas de données : contrôleur éteint ou sans heure ce jour-là";
+  if (!Number.isFinite(r.planned)) return "Plan du jour non enregistré";
+  const gap = r.hours - r.planned;
+  return `Plan ${fmt1(r.planned)} h ; ${Math.abs(gap) < 0.05 ? "plan tenu" : `${gap > 0 ? "+" : "−"}${fmt1(Math.abs(gap))} h`}`;
+};
 
 const STYLE = `
 :host {
@@ -583,6 +596,7 @@ ha-card.water-card.plain { background:var(--card); border:1px solid var(--ha-car
 .day .bar { position:relative; height:10px; border-radius:5px; background:var(--raised); }
 .day .bar i { position:absolute; left:0; top:0; bottom:0; border-radius:5px; background:var(--acc); }
 .day.today .bar i { opacity:.55; }
+.day.short .bar i { background:var(--amber); }
 .day .bar b { position:absolute; top:-4px; bottom:-4px; width:2px; margin-left:-1px; border-radius:1px; background:var(--fg); }
 .day.missing .v, .day.missing .dl { color:var(--muted); font-style:italic; }
 .days .dfoot { margin:8px 0 0; font-size:12px; color:var(--muted); }
@@ -838,7 +852,7 @@ class PiscineCard extends HTMLElement {
     if (!["tile", "panel", "settings", "water"].includes(variant)) throw new Error("variant must be tile, panel, settings or water");
     this._config = { variant, layout: config.layout || "horizontal", popup_hash: config.popup_hash || "#piscine", more_path: config.more_path || null,
       recorder: config.recorder !== false, title: config.title ?? "Réglages", icons: config.icons || null,
-      settings_tab: config.settings_tab !== false, // `temperatures` (before 1.7.0): accepted, ignored
+      settings_tab: config.settings_tab !== false, // `temperatures` (before 1.8.0): accepted, ignored
       controller_light: config.controller_light !== false, health: { ...HEALTH, ...(config.controller_health || {}) } };
     this._e = { ...DEFAULT_ENTITIES, ...(config.entities || {}) };
     this.setAttribute("variant", variant);
@@ -1859,17 +1873,21 @@ class PiscineCard extends HTMLElement {
     this._updateSettings();
     this._renderDays();
   }
-  /** Closed days from the device's Daily History, plus today so far: hours filtered, the plan's mark, the pool's min–max. */
+  /**
+   * Closed days from the device's Daily History, plus today so far: hours filtered, the plan's mark, the pool's
+   * min–max. A closed day's plan comes from Daily Plan History (firmware that has it, days closed since); a day that
+   * filtered more than SHORT_TOLERANCE_H under its plan turns amber.
+   */
   _renderDays() {
     const host = this._$("days");
-    const key = ["history", "hoursToday", "hoursPlanned", "waterMin", "waterMax"].map((k) => this._s(k)).join("|") + new Date().toDateString();
+    const key = ["history", "planHistory", "hoursToday", "hoursPlanned", "waterMin", "waterMax"].map((k) => this._s(k)).join("|") + new Date().toDateString();
     if (key === this._daysDrawn) return;
     this._daysDrawn = key;
-    const closed = parseDays(this._s("history"));
+    const closed = parseDays(this._s("history")), plans = parseDays(this._s("planHistory"));
     const rows = [{ label: "Aujourd'hui", hours: this._n("hoursToday"), planned: this._n("hoursPlanned"), lo: this._n("waterMin"), hi: this._n("waterMax"), today: true }];
     for (let i = 1; i <= 7; i++) {
       const d = dayAgo(i);
-      rows.push({ label: i === 1 ? "Hier" : `${WD[d.getDay()]} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`, ...closed[dayKey(d)] });
+      rows.push({ label: i === 1 ? "Hier" : `${WD[d.getDay()]} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`, ...closed[dayKey(d)], planned: plans[dayKey(d)]?.hours });
     }
     const scale = Math.max(1, ...rows.flatMap((r) => [r.hours, r.planned]).filter(Number.isFinite));
     const pct = (v) => `${Math.min(100, (v / scale) * 100).toFixed(1)}%`;
@@ -1877,15 +1895,15 @@ class PiscineCard extends HTMLElement {
     const past = rows.filter((r) => !r.today && Number.isFinite(r.hours));
     host.innerHTML = `<div class="day head"><span></span><span>Filtration</span><span></span><span class="w">Eau</span></div>`
       + rows.map((r) => {
-        const known = Number.isFinite(r.hours);
-        return `<div class="day${r.today ? " today" : ""}${known ? "" : " missing"}" title="${r.today ? "En cours ; le trait marque la durée planifiée" : known ? "" : "Pas de données : contrôleur éteint ou sans heure ce jour-là"}">`
+        const known = Number.isFinite(r.hours), short = !r.today && dayShort(r);
+        return `<div class="day${r.today ? " today" : ""}${known ? "" : " missing"}${short ? " short" : ""}" title="${dayTitle(r)}">`
           + `<span class="dl">${r.label}</span><span class="bar">${known ? `<i style="width:${pct(r.hours)}"></i>` : ""}`
           + `${Number.isFinite(r.planned) && r.planned > 0 ? `<b style="left:${pct(r.planned)}"></b>` : ""}</span>`
           + `<span class="v num">${known ? `${fmt1(r.hours)} h` : "—"}</span><span class="w num">${known ? water(r) : ""}</span></div>`;
       }).join("")
       + `<p class="dfoot">${past.length
         ? `Moyenne ${fmt1(past.reduce((a, r) => a + r.hours, 0) / past.length)} h de filtration par jour sur ${past.length} jour${past.length > 1 ? "s" : ""}.`
-        : "Aucune journée complète pour l'instant."} Eau : minimum et maximum du jour, mesurés pompe en marche. Le contrôleur enregistre chaque journée à minuit.</p>`;
+        : "Aucune journée complète pour l'instant."} Le trait marque la durée planifiée ; en orange, une journée restée sous son plan. Eau : minimum et maximum du jour, mesurés pompe en marche. Le contrôleur enregistre chaque journée à minuit.</p>`;
   }
 
   /* ---------- build ---------- */

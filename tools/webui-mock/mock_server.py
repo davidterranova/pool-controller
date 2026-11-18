@@ -228,6 +228,7 @@ N = {
     "planned_hours": "Planned Filtration Hours",
     "hours_today": "Filtration Hours Today",
     "history": "Daily History",
+    "plan_history": "Daily Plan History",
     "water_min": "Pool Water Min Today",
     "water_max": "Pool Water Max Today",
     "b1s": "Schedule Block 1 Start",
@@ -705,9 +706,10 @@ class PoolSim:
         self.water_lo: float | None = None
         self.water_hi: float | None = None
         self.run_started: float | None = None
-        # The last 7 closed days, newest first: (date, seconds, water min, water max). Seeded with a
-        # plausible week -- one day missing as if the device had been off, one with no water range as
-        # if the pump hadn't run -- so the page has something to show.
+        # The last 7 closed days, newest first: (date, seconds, water min, water max, planned seconds or
+        # None). Seeded with a plausible week -- one day missing as if the device had been off, one with
+        # no water range as if the pump hadn't run, one well under its plan, the oldest two closed
+        # before the firmware kept the plan -- so the page has something to show.
         today = datetime.now().date()
         self.history = []
         for d in range(1, 8):
@@ -715,8 +717,11 @@ class PoolSim:
                 continue
             lo = round(25.4 + random.uniform(-0.6, 0.6), 1)
             measured = d != 6
-            self.history.append((today - timedelta(days=d), random.uniform(4.5, 7.5) * 3600 if measured else 0.0,
-                                 lo if measured else None, round(lo + random.uniform(0.3, 0.9), 1) if measured else None))
+            planned = random.uniform(5.0, 7.5) * 3600
+            ran = 0.0 if not measured else planned * 0.6 if d == 2 else planned + random.uniform(-0.1, 0.4) * 3600
+            self.history.append((today - timedelta(days=d), ran,
+                                 lo if measured else None, round(lo + random.uniform(0.3, 0.9), 1) if measured else None,
+                                 planned if d < 6 else None))
         # Fill water: the last 30 closed days and 12 months, newest first (None = unknown), seeded with a real
         # summer (~950 L every three days, then next to nothing); a fill of a few minutes every quarter hour, so
         # the page's Contrôle › Remplissage counts live.
@@ -885,7 +890,9 @@ class PoolSim:
         if self.counted_day is None:
             self.counted_day = today
         if self.counted_day != today:
-            self.history = [(self.counted_day, self.filtration_s, self.water_lo, self.water_hi)] + self.history[:6]
+            b1s, b1e, b2s, b2e = self.blocks
+            self.history = [(self.counted_day, self.filtration_s, self.water_lo, self.water_hi,
+                             b1e - b1s + b2e - b2s)] + self.history[:6]
             self.fill_days = [round(self.fill_today)] + self.fill_days[:29]
             if today.month != self.counted_day.month:
                 self.fill_months = [0] + self.fill_months[:11]
@@ -1034,7 +1041,8 @@ class PoolSim:
             N["planned"]: self.plan_at(int(now)),
             N["planned_hours"]: (b1e - b1s + b2e - b2s) / 3600.0,
             N["hours_today"]: self.filtration_s / 3600.0,
-            N["history"]: ", ".join(_history_day(*day) for day in self.history) or "--",
+            N["history"]: ", ".join(_history_day(*day[:4]) for day in self.history) or "--",
+            N["plan_history"]: ", ".join(_plan_day(day[0], day[4]) for day in self.history if day[4] is not None) or "--",
             N["water_min"]: self.water_lo,
             N["water_max"]: self.water_hi,
             N["b1s"]: _hhmm(b1s), N["b1e"]: _hhmm(b1e), N["b2s"]: _hhmm(b2s), N["b2e"]: _hhmm(b2e),
@@ -1143,6 +1151,12 @@ def _history_day(day, sec, lo, hi) -> str:
     """One day of Daily History, as the device's lambda prints it."""
     out = f"{day.isoformat()}: {int(sec // 3600)}.{int(sec % 3600 // 60 * 100 // 60):02d} h"
     return out if lo is None or hi is None else f"{out} {lo:.1f}/{hi:.1f} °C"
+
+
+def _plan_day(day, sec) -> str:
+    """One day of Daily Plan History, as the device's lambda prints it (minutes, like the device keeps it)."""
+    m = round(sec / 60)
+    return f"{day.isoformat()}: {m // 60}.{m % 60 * 100 // 60:02d} h"
 
 
 # --------------------------------------------------------------------------- protocol
