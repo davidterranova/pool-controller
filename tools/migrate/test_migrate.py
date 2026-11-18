@@ -108,7 +108,7 @@ class Inputs(unittest.TestCase):
         warnings = migrate.password_warnings(s)
         self.assertEqual(len(warnings), 2)
         self.assertIn("page password has 5 characters", warnings[0])
-        self.assertIn("will ask to change it", warnings[0])
+        self.assertIn("change it after the migration", warnings[0])
         for warning in warnings:  # never the password itself
             self.assertNotIn("short", warning)
             self.assertNotIn("1234567", warning)
