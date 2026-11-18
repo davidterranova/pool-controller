@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "web
 from mock_server import load_layout  # noqa: E402  (the mock's loader: ESPHome tags, packages)
 
 HA_DOMAIN = {"text_sensor": "sensor"}  # ESPHome text sensors are sensors in Home Assistant
-ID = re.compile(r"\b((?:sensor|binary_sensor|number|select|button|switch|fan|text|datetime|script|sun|input_[a-z_]+)\.[a-z0-9_]+)\b")
+ID = re.compile(r"\b((?:sensor|binary_sensor|number|select|button|switch|fan|text|datetime|update|script|sun|input_[a-z_]+)\.[a-z0-9_]+)\b")
 
 
 def slugify(text: str) -> str:

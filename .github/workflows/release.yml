@@ -25,6 +25,7 @@ on:
       - LICENSE
       - "*.yaml"
       - "*.h"
+      - components/**
       - webui/**
       - .github/workflows/release.yml
       - .github/workflows/firmware.yml
@@ -48,12 +49,12 @@ jobs:
 
       # What ships in a release: the card, and the firmware built from
       # pool-controller.yaml, the packages beside it (any *.yaml at the root),
-      # their C++ includes (*.h at the root) and the device's page (webui/,
-      # which also bundles the card).
+      # their C++ includes (*.h at the root), the local ESPHome components
+      # (components/) and the device's page (webui/, which also bundles the card).
       - name: A changed card or firmware has a new VERSION
         run: |
           git fetch --depth=1 origin "${{ github.base_ref }}"
-          changed=$(git diff --name-only FETCH_HEAD -- home-assistant/piscine-card.js webui ':(glob)*.yaml' ':(glob)*.h')
+          changed=$(git diff --name-only FETCH_HEAD -- home-assistant/piscine-card.js webui components ':(glob)*.yaml' ':(glob)*.h')
           if [ -z "$changed" ]; then
             echo "Neither the card nor the firmware changed."
             exit 0
@@ -163,7 +164,7 @@ jobs:
               if [ -n "$FIRMWARE" ]; then
                 echo
                 echo "Changes to the firmware since $previous:"
-                git log --format='- %s' "$previous..HEAD" -- webui ':(glob)*.yaml' ':(glob)*.h'
+                git log --format='- %s' "$previous..HEAD" -- webui components ':(glob)*.yaml' ':(glob)*.h'
               fi
             fi
           } > notes.md

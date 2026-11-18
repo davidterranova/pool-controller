@@ -12,8 +12,8 @@ Entities, names, icons, number ranges and sorting groups are read from
 pool-controller.yaml, and the page reloads itself whenever that file is saved,
 so layout changes show up without a build or a flash. Behind the entities sits
 a small simulation of the controller (daily plan, boosts, Manual Override and
-its timeout, the Apply gate, filtration hours) so the controls react the way
-they do on the device. It is an approximation for UI work only: the firmware
+its timeout, the Apply gate, filtration hours, firmware updates and their
+install gate) so the controls react the way they do on the device. It is an approximation for UI work only: the firmware
 in pool-controller.yaml is the source of truth for the control logic.
 
 Usage (from the repo root; `make mock-ui` wraps this):
@@ -61,12 +61,12 @@ import yaml
 
 # Domains the mock renders, in the order ESPHome's entity iterator sends them.
 SUPPORTED_DOMAINS = ["binary_sensor", "fan", "sensor", "switch", "button", "text_sensor", "number", "datetime",
-                     "text", "select"]
+                     "text", "select", "update"]
 # Entity domains ESPHome has that the mock doesn't simulate; --check fails on them
 # so a new one can't silently go missing from the mock.
 UNSUPPORTED_DOMAINS = [
     "alarm_control_panel", "climate", "cover", "event", "light", "lock",
-    "media_player", "update", "valve", "water_heater",
+    "media_player", "valve", "water_heater",
 ]
 NUMBER_MODES = {"auto": 0, "box": 1, "slider": 2}
 TEXT_MODES = {"text": 0, "password": 1}
@@ -299,7 +299,16 @@ S = {
     "factory_reset": "Factory Reset",
     "waiting_for": "Schedule Waiting For",
 }
-SIMULATED = set(N.values()) | set(W.values()) | set(S.values())
+# Firmware updates (updates.yaml, a package of the config).
+U = {
+    "firmware": "Firmware",
+    "status": "Update Status",
+    "auto": "Auto Update",
+    "interval": "Update Check Interval",
+    "check": "Check for Update",
+    "cancel": "Cancel Update",
+}
+SIMULATED = set(N.values()) | set(W.values()) | set(S.values()) | set(U.values())
 
 # The simulated probe bus: made-up addresses, as ESPHome writes them (family
 # code 28 last), and what each probe measures. A fourth one hangs loose on the
@@ -547,6 +556,113 @@ def _stamp(ts: float) -> str:
     return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
 
 
+class UpdateSim:
+    """updates.yaml: the Firmware entity behind its install gate, the checks, Update Status.
+
+    The device's timings, shortened: the first check a few seconds after start (a minute on the
+    device), a check answers in 2 s, an install takes 15 s, then the controller "reboots" on the new
+    version (the page's event stream drops, as on the device). A release is always waiting at start.
+    Auto Update acts on scheduled checks only (updates.h's auto_update_step), and Cancel Update drops
+    an install waiting at the gate.
+    """
+
+    LATEST = "v1.5.0"
+    RELEASE_URL = "https://github.com/davidterranova/pool-controller/releases/tag/v1.5.0"
+    CHECK_S = 2
+    INSTALL_S = 15
+
+    def __init__(self, log, installed: str = "v1.4.0"):
+        self.log = log
+        self.installed = installed
+        self.latest: str | None = None
+        self.state = "UNKNOWN"  # as web_server sends it: UNKNOWN, NO UPDATE, UPDATE AVAILABLE, INSTALLING
+        self.error = False
+        self.last_op = None  # "check" | "install": which one failed
+        self.checking_until = 0.0
+        self.next_check = time.time() + 5
+        self.pending_origin: str | None = None
+        self.waiting_for: str | None = None
+        self.installing_until = 0.0
+        self.auto_armed = False  # a scheduled check ran and Auto Update hasn't acted on it yet
+
+    def check(self, origin: str, scheduled: bool = False):
+        """A manual check disarms Auto Update: what it finds waits for an explicit install."""
+        self.log(f"Checking for update ({origin}): https://davidterranova.github.io/pool-controller/firmware/manifest.json")
+        self.checking_until = time.time() + self.CHECK_S
+        self.last_op = "check"
+        self.auto_armed = scheduled
+
+    def cancel(self):
+        if not self.pending_origin:
+            self.log("Cancel Update: no install waiting")
+            return
+        self.log(f"Install of {self.latest} cancelled ({self.pending_origin}; was waiting: {self.waiting_for})")
+        self.pending_origin = self.waiting_for = None
+
+    def install_request(self, origin: str, blocker: str | None):
+        if self.state == "INSTALLING" or self.pending_origin:
+            self.log(f"Install ({origin}): already under way")
+        elif self.state != "UPDATE AVAILABLE":
+            self.log(f"Install ({origin}): no update available; check first")
+        else:
+            self.log(f"Install of {self.latest} requested ({origin})")
+            self.pending_origin, self.waiting_for = origin, None
+            self.gate(blocker)
+
+    def gate(self, blocker: str | None):
+        if not self.pending_origin:
+            return
+        if blocker:
+            if blocker != self.waiting_for:
+                self.log(f"Install of {self.latest} waits: {blocker} in progress")
+            self.waiting_for = blocker
+            return
+        self.log(f"Installing {self.latest} ({self.pending_origin}), then rebooting")
+        self.pending_origin = self.waiting_for = None
+        self.state, self.last_op = "INSTALLING", "install"
+        self.installing_until = time.time() + self.INSTALL_S
+
+    def tick(self, auto: bool, hours: float, blocker: str | None) -> bool:
+        """Advances checks and installs; True when the controller reboots onto the new firmware."""
+        now = time.time()
+        if self.checking_until and now >= self.checking_until:
+            self.checking_until = 0.0
+            self.latest, self.error = self.LATEST, False
+            self.state = "NO UPDATE" if self.latest == self.installed else "UPDATE AVAILABLE"
+            self.log(f"Firmware {self.latest} available (installed: {self.installed})" if self.state == "UPDATE AVAILABLE"
+                     else f"Firmware up to date ({self.installed})")
+        if hours and now >= self.next_check:
+            self.next_check = now + hours * 3600
+            self.check(f"every {hours:g} h", scheduled=True)
+        if self.auto_armed and not self.checking_until:  # the scheduled check has answered
+            self.auto_armed = False
+            if auto and not self.pending_origin and self.state == "UPDATE AVAILABLE":
+                self.install_request("Auto Update", blocker)
+        self.gate(blocker)
+        if self.state == "INSTALLING" and now >= self.installing_until:
+            self.installed, self.state = self.latest, "NO UPDATE"
+            return True
+        return False
+
+    def status(self, blocker: str | None) -> str:
+        """Update Status, as updates.h's status_text() words it."""
+        if self.state == "INSTALLING":
+            return "installation"
+        if self.pending_origin and blocker:
+            return f"en attente ({blocker})"
+        if self.pending_origin:
+            return "installation"
+        if self.checking_until:
+            return "vérification"
+        if self.error:
+            return "erreur (installation)" if self.last_op == "install" else "erreur (vérification)"
+        return {"UPDATE AVAILABLE": "disponible", "NO UPDATE": "à jour"}.get(self.state, "non vérifié")
+
+    def entity(self) -> dict:
+        return {"state": self.state, "latest": self.latest or "", "installed": self.installed,
+                "release_url": self.RELEASE_URL if self.latest else ""}
+
+
 class PoolSim:
     """A pocket version of evaluate_speed and friends, driven by wall-clock time."""
 
@@ -555,9 +671,11 @@ class PoolSim:
         # A fresh controller has no network saved: it starts on its hotspot.
         self.wifi = WifiSim(log, hotspot or fresh, saved=not fresh)
         self.settings = SettingsSim(log, fresh)
+        self.updates = UpdateSim(log)
+        self.rebooted = False  # set by an install: the server drops the page's event stream
         self.started = time.time()
         self.numbers: dict[str, float] = {}
-        self.selects: dict[str, str] = {}
+        self.selects: dict[str, str] = {U["interval"]: "24 h"}
         self.static: dict[str, object] = {}  # values for entities the sim doesn't model
         # What each probe on the simulated bus measures (PROBES); Pool Return Temperature & co. read
         # the one their role holds (reading()).
@@ -726,6 +844,7 @@ class PoolSim:
 
     def tick(self):
         self.wifi.tick()
+        self.tick_updates()
         now = time.time()
         today = datetime.fromtimestamp(now).date()
         if not self.wifi.clock_ok:
@@ -791,6 +910,26 @@ class PoolSim:
                 self.run_started = None if desired == "Off" else time.time()
             self.commanded = desired
 
+    # -- firmware updates (updates.yaml)
+
+    @property
+    def update_blocker(self) -> str | None:
+        """What an install waits for (updates.h's gate_blocker): the override first, then a fill."""
+        if self.override != "Auto":
+            return "mode manuel"
+        return "remplissage" if self.flow > 0 else None
+
+    def tick_updates(self):
+        hours = {"À la demande": 0, "6 h": 6, "24 h": 24, "7 j": 168}.get(self.selects.get(U["interval"]), 24)
+        online = self.wifi.mode == "Connected"  # the releases are on the internet
+        if self.updates.tick(bool(self.static.get(U["auto"])), hours if online else 0, self.update_blocker):
+            self.log(f"Rebooted on {self.updates.installed}")
+            self.started = time.time()
+            self.rebooted = True
+
+    def install(self, origin: str):
+        self.updates.install_request(origin, self.update_blocker)
+
     # -- actions (what the REST endpoints call)
 
     def set_override(self, option: str):
@@ -806,6 +945,13 @@ class PoolSim:
             self.recompute(time.time())
         elif name == W["join"]:
             self.wifi.join()
+        elif name == U["cancel"]:
+            self.updates.cancel()
+        elif name == U["check"]:
+            if self.wifi.mode == "Connected":
+                self.updates.check("on request")
+            else:
+                self.log("Check for update (on request): no network")
         elif name == N["update_temps"]:
             for k in self.temps:
                 self.temps[k] += random.uniform(-0.1, 0.1)
@@ -881,13 +1027,16 @@ class PoolSim:
             N["fill_today"]: round(self.fill_today),
             N["fill_days"]: _fill_line(self.counted_day - timedelta(days=1) if self.counted_day else None, self.fill_days),
             N["fill_months"]: _fill_line(datetime.now().strftime("%Y-%m"), self.fill_months),
-            # A real commit of the repo, so the page's « Vérifier » gets a real answer from GitHub.
-            N["fw_version"]: "v1.2.1-37-g9d79cd5",
+            # The release it runs: Firmware below updates it (updates.yaml).
+            N["fw_version"]: self.updates.installed,
             N["esphome_version"]: "2026.7.2 2026-11-17 18:05:00 +0000",
         }
         values.update(self.wifi.snapshot())
         values.update(self.settings.snapshot(self.wifi.saved, self.temps))
         values[S["waiting_for"]] = self.waiting_for() or "--"
+        values[U["firmware"]] = self.updates.entity()
+        values[U["status"]] = self.updates.status(self.update_blocker)
+        values[U["auto"]] = bool(self.static.get(U["auto"]))
         values.update(self.static)
         values.update(self.numbers)
         values.update(self.selects)
@@ -974,6 +1123,13 @@ def entity_json(e: Entity, value, detail_all: bool, options: list | None = None)
             out["mode"] = mode
     elif e.domain == "datetime":
         out.update(value=value, state=value)
+    elif e.domain == "update":
+        # web_server's update_json_: the latest version and the state with every event, the rest on connect.
+        value = value or {}
+        out.update(value=value.get("latest", ""), state=value.get("state", "UNKNOWN"))
+        if detail_all:
+            out.update(current_version=value.get("installed", ""), title="Pool Controller", summary="",
+                       release_url=value.get("release_url", ""))
 
     if detail_all and e.weight is not None:
         out["sorting_weight"] = e.weight
@@ -1201,6 +1357,10 @@ class MockServer:
                     self.sim.static[name] = value
             elif domain == "switch" and action in ("turn_on", "turn_off", "toggle"):
                 self.sim.static[name] = {"turn_on": True, "turn_off": False}.get(action, not self.sim.static.get(name))
+                if name == U["auto"]:
+                    self.log(f"Auto Update {'on' if self.sim.static[name] else 'off'}")
+            elif domain == "update" and action == "install":
+                self.sim.install("Home Assistant ou la page")
             else:
                 return 404
         self.publish_changes()
@@ -1214,6 +1374,12 @@ class MockServer:
             time.sleep(1)
             with self.lock:
                 self.sim.tick()
+                rebooted, self.sim.rebooted = self.sim.rebooted, False
+            if rebooted:
+                self.broadcast(None)  # the reboot: every page loses its stream and reconnects
+                with self.lock:
+                    self.sent = self.sim.snapshot()
+                continue
             self.publish_changes()
             if time.time() - last_ping >= 10:
                 last_ping = time.time()
@@ -1294,6 +1460,8 @@ def make_handler(mock: MockServer):
                         payload = q.get(timeout=15)
                     except queue.Empty:
                         payload = b": keep-alive\n\n"
+                    if payload is None:  # the simulated controller rebooted
+                        break
                     self.wfile.write(payload)
                     self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError, OSError):

@@ -20,6 +20,10 @@ jobs:
       - name: make validate
         run: make validate
 
+      # Host tests of the firmware's pure C++ helpers (tools/tests/).
+      - name: make firmware-test
+        run: make firmware-test
+
       # Prints the web UI layout and fails if pool-controller.yaml gains an
       # entity type the local mock (tools/webui-mock/) can't render, so the
       # mock can't silently fall behind the firmware.

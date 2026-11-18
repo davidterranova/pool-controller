@@ -68,9 +68,12 @@ wifi:
 # statistics and setting the clock from the browser: see wifi-setup.yaml.
 # The controller's settings (page and OTA passwords, API key, position,
 # timezone, probe roles, Setup State, Factory Reset): device-settings.yaml.
+# Firmware updates from the releases (checks, Auto Update, the install gate
+# that waits for a Manual Override or a fill to end): updates.yaml.
 packages:
   wifi_setup: !include wifi-setup.yaml
   device_settings: !include device-settings.yaml
+  updates: !include updates.yaml
 
 logger:
   level: INFO
@@ -86,14 +89,15 @@ api:
   # with or without HA, so that safety reboot is disabled.
   reboot_timeout: 0s
 
+# A list: updates.yaml adds the http_request platform its updates install with.
 ota:
-  platform: esphome
-  id: ota_esphome
-  # Empty when compiled (see ota_password in substitutions: above), yet
-  # present: that compiles in the password check, and device-settings.yaml
-  # sets the stored password (random until one is set) at boot. With an API
-  # key set, an upload holding the key (Home Assistant's) needs no password.
-  password: ${ota_password}
+  - platform: esphome
+    id: ota_esphome
+    # Empty when compiled (see ota_password in substitutions: above), yet
+    # present: that compiles in the password check, and device-settings.yaml
+    # sets the stored password (random until one is set) at boot. With an API
+    # key set, an upload holding the key (Home Assistant's) needs no password.
+    password: ${ota_password}
 
 # A local web UI at http://pool-controller.local/ -- the same controls and
 # readings as the Home Assistant entities card, served by the device itself,
@@ -115,7 +119,8 @@ ota:
 #   (setup mode), so a new controller can be set up from it.
 # - No firmware upload from the page: that would take an
 #   `ota: - platform: web_server` entry, deliberately not added, so OTA
-#   stays on the password-protected esphome platform above.
+#   stays on the password-protected esphome platform above, plus
+#   updates.yaml's, which only installs a release from GitHub Pages.
 # Sections mirror the HA entities card in POOL-CONTROLLER.md; each entity
 # below opts into one with `web_server: {sorting_group_id: ...}`.
 web_server:
