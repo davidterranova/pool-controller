@@ -31,7 +31,7 @@ Target:
 | 5 | CI: releases carry the firmware, manifest + files on GitHub Pages | 2 (for a real build) | ci/wp5-firmware-releases | done (publishing waits for WP2 and the owner) | #29 (merged) |
 | 6 | Firmware: updates (http_request OTA + update entity + auto-update) | 1, 5 (manifest URL) | feat/wp6-updates | in progress (hardware checks left) | |
 | 7 | Install page (ESP Web Tools) + docs | 5 | | todo | |
-| 8 | Automatic migration of an existing controller (`make migrate`: one OTA seeds its secrets.yaml settings) | 2 | feat/wp8-make-migrate | in progress (built and compiled; the run needs the hardware window) | |
+| 8 | Automatic migration of an existing controller (`make migrate`: one OTA seeds its secrets.yaml settings) | 2 | feat/wp8-make-migrate | done: the controller in service migrated 2026-11-18 (see the log) | |
 
 Parallel from day one: 0, 1, the mock-ups of 3 and 4, and 5's workflow (tested on a dummy build).
 
@@ -188,7 +188,7 @@ Timing: with the pump off, no manual override, no fill; someone stays on it unti
 - [ ] reboot and OTA keep every setting
 - [ ] a test release is found and installed: automatically on schedule, with « Installer » on the page, and from HA's Update entity
 - [ ] factory reset brings back setup mode
-- [ ] `make migrate` (WP8) on a controller in service: back within one reboot, `configured`, same API key, pool temperature reading
+- [x] `make migrate` (WP8) on a controller in service: back within one reboot, `configured`, same API key, pool temperature reading (2026-11-18, see the log)
 
 ## Decisions
 - Audience: anyone with the hardware (CI-built firmware, browser install page).
@@ -252,6 +252,11 @@ Flash % is of the 1,835,008 B app slot. The firmware builds unchanged on 2026.11
 - A failed check only sets the component's error (no state publish): Update Status settles 20 s after a check (`http_request` timeout 4.5 s), reading `status_has_error()`. A failed install publishes `AVAILABLE` with the error: « erreur (installation) », and Auto Update retries at the next scheduled check, not in a loop.
 - `ota:` in `pool-controller.yaml` became a list, so the package's `http_request` entry joins it (a mapping would be replaced).
 - Fill = the water meter's rate > 0; `pulse_meter`'s 5 min timeout means an install waits up to 5 min after the last litre.
+
+**2026-11-18, WP8 window (hardware, the controller in service).** `make migrate` from `feat/secret-free-firmware` (14eb0f5, ESPHome 2026.11.0b6), pump off between two filtration blocks, the v1.3.1 rollback built beforehand (same firmware as the v1.3.0 the controller ran; same partition table and Arduino framework as the new build). Preflight on the old firmware passed (entity names as in v1.3.1); upload over the old OTA with the plaintext password took 16.6 s; the controller came back on the new firmware with the same API key, Setup State `configured`, Pool Return Temperature reading, Schedule Waiting For `--`; Home Assistant reconnected without a prompt (Status on again within the reboot), every entity id unchanged, the plan's next change back within 17 s. Seeded and confirmed in HA: Wi-Fi (no hotspot), latitude/longitude, Timezone + Timezone Name, the three probe roles. `.ota-password` written. Found on the device:
+- **Auto Update read off** although #39 made it on by default: a template switch defaults to `restore_mode: ALWAYS_OFF`, so its `turn_off_action` ran at boot and saved « off » into the global, at every boot. Fixed with `restore_mode: DISABLED` (the global holds the choice). The controller's saved value is now off: turn it on once after flashing the fix.
+- **HA's Firmware entity read « update available »** before any check: `gated_update` left the latest version empty, which HA counts as different from the installed one. It now reports the installed version as the latest until a check says otherwise.
+- The fill flow reads `unknown` (not 0) until the first pulse; harmless for the gate (`> 0` is false) and the card.
 
 **2026-11-18, WP8 build (no hardware).** `make migrate-build` with a made-up secrets.yaml, ESPHome 2026.11.0b6: the migration build compiles, **Flash 1,061,655 B (57.9 %), RAM 56,180 B (31.1 %)**, no warning from our code (WP2's normal build: 57.7 % / 31.0 %). Read from that version's sources (`esphome/core/`, `components/{globals,wifi,api,esp32}/`), then compiled:
 - **An `on_boot` at 800 isn't guaranteed to run after the globals' restore.** Both are setup priority 800 (`HARDWARE`); `Application::setup()` sorts with a stable insertion sort, so a tie keeps registration order, and that order comes from codegen's coroutines: `_add_automations` (`CoroPriority.AUTOMATION` = 30) registers each `on_boot` trigger, then awaits its automation, which waits for the ids its lambdas use, here the globals (`globals.to_code`, `CoroPriority.LATE` = -100). In the generated `main.cpp` the first trigger of the merged list (device-settings.yaml's 700) registers before every global, the others after them; a probe build with the seeding at 800 put it after the globals, but only because it is not first in the list. Had it run first, a global set there is overwritten if NVS holds one, and if not, `setup()` takes the set value as its last-saved copy, so the 1 s poll never writes it: the next firmware wouldn't have it. **The seeding runs at 750**, strictly between the restore (800) and WP2's apply (700), so no tie decides anything. (WP2's 700 and 590 don't tie with anything that matters.)
