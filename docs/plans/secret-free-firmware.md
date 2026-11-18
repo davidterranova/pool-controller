@@ -29,7 +29,7 @@ Target:
 | 3 | Controller's page: setup wizard, « Contrôleur » sections | contract below (UI on the mock); 2 to finish | | todo | |
 | 4 | Card: Firmware section on the update entity, position/timezone from HA | contract below; 6 to finish | | todo | |
 | 5 | CI: releases carry the firmware, manifest + files on GitHub Pages | 2 (for a real build) | ci/wp5-firmware-releases | done (publishing waits for WP2 and the owner) | #29 (merged) |
-| 6 | Firmware: updates (http_request OTA + update entity + auto-update) | 1, 5 (manifest URL) | | todo | |
+| 6 | Firmware: updates (http_request OTA + update entity + auto-update) | 1, 5 (manifest URL) | feat/wp6-updates | in progress (hardware checks left) | |
 | 7 | Install page (ESP Web Tools) + docs | 5 | | todo | |
 | 8 | Automatic migration of an existing controller (`make migrate`: one OTA seeds its secrets.yaml settings) | 2 | | todo | |
 
@@ -75,11 +75,12 @@ These are agreed up front, so 3, 4 and the mock can proceed before 2 and 6. Name
 | Pool Probe, Pad Probe, Outdoor Probe | select | options = `none` + detected addresses (+ a role's address the bus didn't answer for); one role per probe; HA sees options a rescan added once it reconnects |
 | Rescan Probes | button | |
 | Schedule Waiting For | text_sensor | why the plan isn't computed: `position`, `timezone`, `clock`, `pool probe`, `pool temperature`, `sunrise/sunset`; `--` when it is |
-| Auto Update | switch | restored (WP6) |
-| Update Check Interval | select (WP6) | « À la demande / 6 h / 24 h / 7 j », default 24 h, restored |
-| Firmware | update (http_request) | installed / latest / release URL; install action; behind our own gate (WP6) |
-| Update Status | text_sensor (WP6) | the gate's state, e.g. « en attente » while a manual override or a fill runs |
-| Check for Update | button | |
+| Auto Update | switch | restored (global `auto_update_enabled`), off by default; acts on scheduled checks only: an update a manual check finds, or any with « À la demande », waits for an explicit install (WP6) |
+| Update Check Interval | select (WP6) | « À la demande / 6 h / 24 h / 7 j », default 24 h, restored (global `update_check_hours`) |
+| Firmware | update (`gated_update`, in front of an internal http_request one) | installed / latest / release URL; install action; behind our own gate (WP6): an install from HA or the page waits like any other |
+| Update Status | text_sensor (WP6) | `non vérifié`, `vérification`, `à jour`, `disponible`, `en attente (mode manuel)`, `en attente (remplissage)`, `installation`, `erreur (vérification)`, `erreur (installation)`: exact strings, the card (WP4) parses them |
+| Check for Update | button | a manual check: never installs by itself, Auto Update or not |
+| Cancel Update | button (WP6) | drops an install waiting at the gate (Update Status back to `disponible`); does nothing otherwise. The page shows « Annuler la demande » only while Update Status is `en attente (…)` |
 | Factory Reset | button | page asks for confirmation; selective erase (Rules) |
 
 ## Work packages
@@ -134,9 +135,12 @@ For the WPs that build on it:
 - WP7: the install page in `docs/install/` reaches Pages with the next release's deploy (or add a `workflow_dispatch` path to the `pages` job then). Its ESP Web Tools manifest is `../firmware/manifest.json`; it sets `new_install_prompt_erase` and `home_assistant_domain: esphome`.
 
 ### WP6: updates
-- [ ] new package `updates.yaml`: `http_request:` (verify_ssl), `ota: platform: http_request`, `update: platform: http_request` (source = Pages manifest, `update_interval: never`)
-- [ ] a 1-min `interval:` checks every Update Check Interval hours; with Auto Update on, it installs, deferred while a manual override or a fill runs; each step logged
-- [ ] HA's native Update entity installs too; the page gets « Vérifier » / « Installer »
+- [x] new package `updates.yaml`: `http_request:` (verify_ssl), `ota: platform: http_request`, `update: platform: http_request` (source = Pages manifest from the `firmware_repo_owner/_name` substitutions, `update_interval: never`, internal)
+- [x] a 1-min `interval:` checks every Update Check Interval hours; with Auto Update on, what a scheduled check finds installs, deferred while a manual override or a fill runs; each step logged
+- [x] Cancel Update drops an install waiting at the gate; the page's « Annuler la demande » while Update Status is `en attente (…)`
+- [x] HA's native Update entity installs too, through the same gate (« Firmware » is a local `gated_update` platform, `components/gated_update/`); the page gets « Vérifier » / « Installer », Auto Update and the interval
+- [x] mock simulates it (a release waiting, install with deferral and cancel, Auto Update on scheduled checks only, a reboot that drops the page's stream); `make firmware-test` (host tests of `updates.h`, also in validate.yml); `make validate` / `build` / `mock-ui-check` / `ha-dashboard-check`
+- [ ] on hardware: see « WP6 adds » under the spike log's hardware checks
 
 ### WP7: install page + docs
 - [ ] `docs/install/index.html` on Pages: ESP Web Tools (Chrome/Edge, USB), Improv Wi-Fi, then « ouvrez http://pool-controller.local pour terminer »
@@ -182,6 +186,9 @@ Before it runs: confirm that a value seeded at priority 800 survives into WP2's 
 - API key without HA: generated and kept by the firmware (Generate API Key), never in the browser; Forget API Key to hand over to HA.
 - Updates (WP6): Update Check Interval is a select « À la demande / 6 h / 24 h / 7 j » (24 h); every install, HA's Update entity included, waits for a manual override or a fill to end (our own gate around `update.http_request`), with an Update Status text_sensor.
 - Integration branch: WP2, WP3 and WP6 merge into `feat/secret-free-firmware`; it reaches main once the firmware is usable end to end.
+- The install gate (WP6): « Firmware » is our own update entity (`components/gated_update/`, an external component in the repo) mirroring an `internal:` http_request one; its install runs an automation. Not a hook on the stock entity: the API and web_server both call the entity's virtual `perform()`, `HttpRequestUpdate` is `final`, there is no template update platform, and entities can't be added at run time (counts are compiled in). `make ota` and the ESPHome dashboard's upload (`ota: esphome`) stay ungated: a developer's call.
+- Auto Update (WP6) acts on scheduled checks only: a manual « Vérifier » / Check for Update, or the « À la demande » interval, finds an update that then waits for an explicit install (page, HA, card). Turning Auto Update on later doesn't install what an earlier check found.
+- A pending install is cancellable (WP6): Cancel Update drops an install waiting for a Manual Override or a fill to end; Update Status goes back to `disponible`.
 - This file: `docs/plans/`, updated by each WP's PR.
 - Migration (2026-11-18): automatic, to keep uptime. One `make migrate` OTA seeds every current setting (Wi-Fi, API key, passwords, position, timezone, probe roles) from secrets.yaml into NVS, with nothing to set up and no re-pairing; manual steps are only the fallback (WP8).
 - Hardware: there is no spare ESP32. The hardware checks run on the controller in service, in one planned window right after `make migrate`, with the last secrets.yaml build kept as the rollback. A spare ESP32 with DS18B20s would move them off it; recommended, not required.
@@ -223,6 +230,13 @@ Flash % is of the 1,835,008 B app slot. The firmware builds unchanged on 2026.11
 - **on_boot in a package**: packages merge lists by concatenation but a mapping replaces, so `pool-controller.yaml`'s `on_boot` became a list, which the package's entries join.
 - `make ota` passes the OTA password with `-s ota_password …` to `esphome upload` only (`ota: password: ${ota_password}`, empty when compiled), from `OTA_PASSWORD` or the untracked `.ota-password`.
 
+**2026-11-18, WP6 build (no hardware).** ESPHome 2026.11.0b6, the whole firmware with `updates.yaml` (+ `device-settings.yaml`): compiles with no warning from our code. **Flash 1,176,519 B (64.1 %), RAM 57,660 B (31.9 %)**, vs WP2's 57.7 % / 31.0 %: the update path costs ~117 KB of flash and ~1.6 KB of RAM, as the spike projected (~119 KB). What WP6 learned from the sources:
+- **Intercepting HA's install**: `APIConnection::on_update_command_request` and web_server's `/update/<name>/install` both call `UpdateEntity::perform()` on the entity they name; `HttpRequestUpdate` is `final` and entities are `StaticVector`s sized at compile time, so the only clean interception is a second entity class: `gated_update` (≈60 lines). It mirrors the source's state and info (progress included) through `add_on_state_callback`, forwards `check()`, and turns `perform()` into an `on_install` trigger; it reports the project version as installed from boot.
+- **web_server's update JSON has no progress** (state, latest as `value`; installed, title, summary, release_url with `detail=all` only), and `OtaHttpRequestComponent::flash()` downloads on the main loop: the page and HA see « installation », then the device is gone until it reboots. The page says so.
+- A failed check only sets the component's error (no state publish): Update Status settles 20 s after a check (`http_request` timeout 4.5 s), reading `status_has_error()`. A failed install publishes `AVAILABLE` with the error: « erreur (installation) », and Auto Update retries at the next scheduled check, not in a loop.
+- `ota:` in `pool-controller.yaml` became a list, so the package's `http_request` entry joins it (a mapping would be replaced).
+- Fill = the water meter's rate > 0; `pulse_meter`'s 5 min timeout means an install waits up to 5 min after the last litre.
+
 **web auth.**
 - 2026.11: `Credentials` holds `const char *` pointers (« point to string literals in generated code; nothing is copied »), and every request reads them (`GuardMiddlewareHandler::check_auth_`): `username == nullptr` means no auth. So a null username is setup mode, and a password set from the page applies on the next request, no reboot. The pointer must outlive the call: point it at a global `std::string`'s `c_str()` and set it again after each change. YAML `auth:` still requires a non-empty username and password, hence placeholders.
 - 2026.7.2: `std::string` copies, and auth is decided once per handler when web_server registers it (`add_handler`, at its setup, priority 249): an empty username then means no auth **until reboot**. Password changes apply live; leaving setup mode needs a reboot. `nullptr` compiles there but is undefined behaviour (`std::string(nullptr)`): use `""`.
@@ -259,7 +273,14 @@ Flash % is of the 1,835,008 B app slot. The firmware builds unchanged on 2026.11
 - API: HA pairs and sets the key (Setup State drops `api_key`); API Key paste, Generate API Key, Forget API Key each behave;
 - Factory Reset: back to setup mode on the hotspot, roles/position/timezone/history kept; `make ota` with `.ota-password` uploads.
 
+**WP6 adds** (same: a spare ESP32 or the WP8 window; a test manifest on any HTTPS host or the Pages site):
+- Check for Update reads the manifest over HTTPS with the certificate bundle (GitHub Pages' chain is in ESP-IDF's common bundle); Update Status `vérification` → `disponible`/`à jour`; a wrong URL → `erreur (vérification)`;
+- Install from the page, from HA's Update entity, and by Auto Update after a scheduled check: each waits while Manual Override ≠ Auto or the meter counts (`en attente (…)`), then installs and reboots on the new version, every setting kept; Cancel Update while it waits → `disponible`, nothing installed; a manual check with Auto Update on installs nothing; a bad md5 → `erreur (installation)`, the old firmware keeps running;
+- HA's Update entity shows the installed version before any check, the release notes link, and progress if the API gets it out during the download;
+- RAM: the check's TLS session runs in its own task (8 KB stack) next to the web server and API: watch the free heap during a check and an install.
+
 ## Open questions
 - ~~Does HA 2026.11 provision a keyless device's API key by itself? (WP1)~~ Yes, from its source (spike log); to see on hardware.
 - ~~Timezone parser: write our own small one, or have the page send the parsed fields? (WP2, WP3)~~ Our own (WP2): the page sends a POSIX string, the device parses and validates it.
 - Enabling GitHub Pages on the repo (owner's call, WP5): Settings › Pages › Source: GitHub Actions, and the repository variable `PUBLISH_FIRMWARE_PAGES` = `true` (README › Releases). Worth doing once a release carries a firmware (after WP2), since WP6 and WP7 need the URL.
+- ~~Should a pending install be cancellable? (WP6)~~ Yes: Cancel Update (Decisions).
