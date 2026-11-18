@@ -129,8 +129,14 @@ export class EspHass extends EventTarget {
   connect() {
     const es = new EventSource("/events");
     es.addEventListener("open", () => this._setLink(true));
-    // EventSource retries on its own; until then the controller is unreachable from here.
-    es.addEventListener("error", () => this.connected && this._setLink(false));
+    // EventSource retries on its own; until then the controller is unreachable from here. It gives up
+    // for good on an answer other than 200, such as the 401 of a page password set or changed since:
+    // a plain request lets the browser ask for the login, then a new stream starts.
+    es.addEventListener("error", () => {
+      if (this.connected) this._setLink(false);
+      if (es.readyState !== EventSource.CLOSED) return;
+      setTimeout(() => fetch("/", { cache: "no-store" }).catch(() => {}).finally(() => this.connect()), 5000);
+    });
     es.addEventListener("ping", (ev) => {
       this.lastEventAt = Date.now();
       const data = JSON.parse(ev.data || "{}");
