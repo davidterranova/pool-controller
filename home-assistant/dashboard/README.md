@@ -50,8 +50,10 @@ pop-up; the tile is the card's own:
 The panel has three tabs, the controller's own page's, so the pop-up needs no dashboard behind it:
 
 - « Contrôle »: state, today's plan, the pool's temperature (24 h to a year), Auto/Manuel, then the fill
-  water today, this month, and by day, week or month. The fill water needs the `volume` entity and the
-  recorder; without them it isn't there (`variant: water` draws it alone);
+  water today, this month, and by day, week or month. The fill water needs the `volume` entity, the
+  recorder, and Fill Meter on (`fillEnabled`); without them it isn't there (`variant: water` draws it alone,
+  and hides itself while the meter is off). A fill running longer than Fill Alarm After adds a banner with
+  « Acquitter »;
 - « Réglages »: today's plan in detail with « Recalculer », the probes with « Relire » (a tap on one opens
   Home Assistant's more-info, with its history), « Filtration et hors gel », every setting with its Apply
   gate, then the last 7 days of filtration against the plan. On a screen, two columns cut after
@@ -72,7 +74,9 @@ changes every minute), amber when it goes quiet or has been offline for less tha
 header it says when the controller was last heard and opens Home Assistant's device page for the controller
 (Paramètres › Appareils et services › ESPHome › Pool Controller), where its link, Wi-Fi signal and
 disconnections are; `more_path` leads elsewhere instead. `controller_light: false` drops it;
-`controller_health: { warn: 3, alert: 15, beat: 4 }` sets its minutes before amber and red.
+`controller_health: { warn: 3, alert: 15, beat: 4 }` sets its minutes before amber and red. While a fill runs
+too long and nobody has acknowledged it, the light is amber and keeps pulsing (steady with reduced motion),
+reads « Remplissage depuis 1 h 12 », and leads to the banner in « Contrôle » instead.
 
 What this dashboard adds to the card: the three probes' curves and their 90-day daily means, the
 pump's plan against reality over the last days, and the fill water with Home Assistant's own cards.

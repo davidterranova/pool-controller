@@ -192,6 +192,15 @@ last heard: green while it talks, amber when it goes quiet or has just gone
 offline, red after 15 min; each new message sends a ring out of it. In the
 panel, it opens Home Assistant's device page for the controller (its link,
 Wi-Fi signal and disconnections).
+The fill meter is optional ([POOL-CONTROLLER.md, Fill meter](POOL-CONTROLLER.md#fill-meter)):
+with Fill Meter off, the fill water is gone from « Contrôle » and `water`
+hides. A fill running longer than Fill Alarm After puts a banner in
+« Contrôle » with « Acquitter » (Acknowledge Fill Alarm), and until someone
+acknowledges it the light turns amber and keeps pulsing, the tile and the
+header read « Remplissage depuis 1 h 12 », and the header's light leads to
+the banner. Its order: red (controller lost) > pulsing amber (fill alarm) >
+amber > green. The meter's settings are not the card's: the device's page in
+Home Assistant (Configuration), or the controller's own page.
 It's a plain custom element, no framework and no build step, in French.
 
 It lives here because it's written against this firmware's entities, and
@@ -218,6 +227,11 @@ What it needs from Home Assistant, besides the entities:
 - the long-term statistics of the fill meter (Piscine - Volume total
   remplissage, `total_increasing`), for the fill water in « Contrôle ».
   Without the meter or the recorder, it isn't there;
+- Fill Meter, Fill Running, Fill Running Too Long, Fill Alarm Acknowledged,
+  Acknowledge Fill Alarm and Fill Alarm After
+  ([fill-meter.yaml](fill-meter.yaml), 1.9.0), for hiding the fill water
+  and for the alarm. A firmware without them counts the meter always and has
+  no alarm;
 - the Device Clock ([wifi-setup.yaml](wifi-setup.yaml)), which changes every
   minute: the light's heartbeat. Without it, the light only follows the link;
 - the firmware's update entity (Firmware, with Check for Update, Cancel

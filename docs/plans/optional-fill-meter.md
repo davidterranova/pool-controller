@@ -124,7 +124,7 @@ Whether the meter is proven (`detected`) is kept in a restored global (`fill_met
 | WP | What | Depends on | Branch | Status | PR |
 |---|---|---|---|---|---|
 | F1 | Firmware: switch, alarm + acknowledgement, detection, gating of the counters | — | feat/optional-fill-meter-f1-firmware | done | #49 |
-| F2 | Card: hide « Remplissage », alarm banner, pulsing light | contract above | | todo | |
+| F2 | Card: hide « Remplissage », alarm banner, pulsing light | contract above | feat/optional-fill-meter-f2-card | review | #50 |
 | F3 | Controller's page + mock: « Remplissage », Capteurs rows, « Compteur d'eau », wizard | contract; F1's YAML for the mock | | todo | |
 | F4 | HA side: blueprint, dashboard, `ha-dashboard-check` | F1 (ids for `ha-dashboard-check`) | | todo | |
 | F5 | Documentation pass: every file in « Documentation » below agrees with what merged | F1–F4 merged | | todo | |
@@ -177,27 +177,28 @@ Done as a package, like `updates.yaml`: the logic is pure C++ in `fill_meter.h`,
   - YAML comments on each new entity and global, in the file's style
 
 ### F2: card (`home-assistant/piscine-card.js`)
-- [ ] `DEFAULT_ENTITIES` gains, with a fresh install's ids (`…pool_controller_…`, like the settings and updates block):
+- [x] `DEFAULT_ENTITIES` gains, with a fresh install's ids (`…pool_controller_…`, like the settings and updates block):
   - `fillEnabled`, `fillRunning`, `fillTooLong`, `fillAck`, `fillAcked`, and `fillAlarmAfter` for the banner's « plus de N min »;
   - not Detect Fill Meter, Status or Last Pulse: the card shows no fill setting (see « Where the settings are »)
-- [ ] `_fillOff()`: true only when `fillEnabled` exists and is `off`. While it is true:
+- [x] `_fillOff()`: true only when `fillEnabled` exists and is `off`. While it is true:
   - `_waterShown()` is false: no fill section in « Contrôle », and `variant: water` hides its host (`display:none`, `getCardSize` 0);
   - no fill alarm, whatever the sensors say
-- [ ] `_hold()` (« Installer » asks first during a fill): Fill Running when the entity exists, else a non-zero flow (an older firmware), as F1's gate
-- [ ] alarm banner in « Contrôle »'s alerts, after the stuck override, while `fillTooLong` is on:
+- [x] `_hold()` (« Installer » asks first during a fill): Fill Running when the entity exists, else a non-zero flow (an older firmware), as F1's gate
+- [x] alarm banner in « Contrôle »'s alerts, after the stuck override, while `fillTooLong` is on:
   - amber `.alert`: « Remplissage en cours depuis HH:MM (plus de N min) : vérifiez le robinet de remplissage. », with « Acquitter » (`button.press` on `fillAck`);
   - once `fillAcked`, the button gives way to « Alarme acquittée : plus de rappel jusqu'à la fin de ce remplissage. »;
   - the controller's page shows the same banner: its « Contrôle » is this panel, fed by the ESP32, so it works with HA down
-- [ ] **status light:**
+- [x] **status light:**
   - `_light()` returns `h: "alarm"` when the alarm is on and not acknowledged, unless the controller is `lost`;
   - `.led.alarm` / `.clink.alarm`: `--c: var(--amber)` plus a continuous pulse (`@keyframes fillpulse`, ~1.6 s, the dot scaling and its ring fading out, like `ping` but looping);
   - no heartbeat ping while pulsing;
   - tooltip, header text and the tile's second line: « Remplissage depuis 1 h 12 »;
   - the header button selects « Contrôle » and scrolls the banner into view, instead of opening the device page;
   - the tile's dot follows (it shares `_renderLight`)
-- [ ] fill section (`WATER_PANE`, so the panel and `variant: water`): « En cours depuis HH:MM » under the readings while `fillRunning` is on, amber while the alarm is on
-- [ ] VERSION: the feature branch's (1.9.0)
-- [ ] **Docs:** the card's header comment (the hidden fill section, the banner, the light's new state and its order, the fill entities); the README.md « Home Assistant card » and dashboard README « The card as a tile with a pop-up » items in « Documentation »
+- [x] fill section (`WATER_PANE`, so the panel and `variant: water`): « En cours depuis HH:MM » under the readings while `fillRunning` is on, amber while the alarm is on
+- [x] VERSION: the feature branch's (1.9.0)
+- [x] checked in a headless-Chrome harness with a fake `hass`: alarm, acknowledged, meter off, a fill running; the light's button from « Réglages » back to the banner, and « Acquitter » pressing Acknowledge Fill Alarm
+- [x] **Docs:** the card's header comment (the hidden fill section, the banner, the light's new state and its order, the fill entities); the README.md « Home Assistant card » and dashboard README « The card as a tile with a pop-up » items in « Documentation »
 
 ### F3: controller's page (`webui/`) and the mock
 - [ ] `esphome-hass.js` `E`: the nine contract entities, so they aren't listed under « Autres entités »; the card's fill keys mapped in the panel's and the water variant's `entities`
