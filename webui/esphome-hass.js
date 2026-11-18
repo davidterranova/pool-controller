@@ -67,6 +67,9 @@ export const E = {
   fillToday: "sensor/Fill Water Today",
   fillDays: "text_sensor/Fill Water Days",
   fillMonths: "text_sensor/Fill Water Months",
+  // Write-only, a one-off tool Home Assistant drives (its history into the record above): known, so the page lists
+  // it nowhere (not under Capteurs internes › Autres entités).
+  fillImport: "text/Fill Water Import",
   fwVersion: "text_sensor/Firmware Version",
   esphomeVersion: "text_sensor/ESPHome Version",
   // From updates.yaml: the page falls back to comparing with GitHub on a firmware without them.
