@@ -14,7 +14,7 @@
  *   settings_tab: false  # optional: no « Réglages » nor « Réglages contrôleur » tab, so no tab bar
  *   controller_light: false                            # optional: no light for the controller (tile, header)
  *   controller_health: { warn: 3, alert: 15, beat: 4 }  # optional: its minutes before amber, before red; seconds between beats
- *   more_path: /config/…  # optional: where the light leads without the Réglages tabs
+ *   more_path: /config/…  # optional: where the light leads instead of the controller's device page
  *   # temperatures: deprecated since 1.7.0, accepted and ignored (the probes are in « Réglages » › Sondes)
  *
  * The card never writes the controller's Manual Override select itself:
@@ -53,8 +53,9 @@
  * Three tabs, the controller's own page's (mock-up v17, 2026-11-18): « Contrôle » | « Réglages » | « Réglages
  * contrôleur ». `settings_tab: false` keeps « Contrôle » alone, without a tab bar (the device's page has its own two).
  *
- * The controller's light (a dot on the tile; in the panel's header a button that opens « Réglages contrôleur »;
- * without that tab, `more_path` if given):
+ * The controller's light (a dot on the tile; in the panel's header a button that opens Home Assistant's own device
+ * page for the controller, /config/devices/device/<device_id of the `online` entity>: its link, Wi-Fi signal and
+ * disconnections; `more_path` when given leads there instead; without a device id, « Réglages contrôleur »):
  * when the controller was last heard, from the newest update of any of its entities. Green while it talks; amber
  * when it has been quiet for `warn` min, or offline for less than `alert` (a restart, an OTA, a Wi-Fi drop usually
  * end on their own); red beyond. Each new message pops the dot and sends a ring out of it (every `beat` s at most).
@@ -75,7 +76,7 @@
  *
  * « Réglages » and « Réglages contrôleur »: between them, every control the controller has, as on its own page, so
  * the pop-up needs no dashboard behind it. « Réglages », read in this order: today's plan with « Recalculer », the
- * probes with « Relire », « Filtration et hors gel »
+ * probes with « Relire » (a tap on one opens Home Assistant's more-info, its history), « Filtration et hors gel »
  * (the same rows as `variant: settings`), then the last 7 days of filtration against the plan (Daily History).
  * « Réglages contrôleur »: « Position », the controller's latitude, longitude and time zone, and « Utiliser la
  * position et le fuseau de Home Assistant », which writes hass.config's, rounded to 0.01°, the zone as its IANA name
@@ -230,12 +231,15 @@ const PLAN_ROWS = [
   { key: "recomputed", label: "Plan calculé à", icon: "calendar-clock", val: (c) => stamp(c._s("recomputed")) },
   { key: "recompute", label: "Recalculer le plan maintenant", icon: "refresh", button: "Recalculer", ok: "Plan du jour recalculé" },
 ];
-/** Panel, tab « Réglages » › Sondes: the probes, as the device page's Capteurs internes › Capteurs. */
+/**
+ * Panel, tab « Réglages » › Sondes: the probes, as the device page's Capteurs internes › Capteurs. `more`: a tap opens
+ * Home Assistant's more-info for that sensor, with its history.
+ */
 const PROBE_ROWS = [
-  { key: "water", label: "Eau (retour filtre)", icon: "thermometer-water", val: degC("water"),
+  { key: "water", label: "Eau (retour filtre)", icon: "thermometer-water", val: degC("water"), more: true,
     sub: (c) => (c._commanded() === "Off" ? "Pompe arrêtée : la sonde lit le tuyau" : "Pompe en marche : l'eau du bassin") },
-  { key: "pad", label: "Local technique", icon: "home-thermometer-outline", val: degC("pad") },
-  { key: "outdoor", label: "Extérieur", icon: "weather-partly-cloudy", val: degC("outdoor") },
+  { key: "pad", label: "Local technique", icon: "home-thermometer-outline", val: degC("pad"), more: true },
+  { key: "outdoor", label: "Extérieur", icon: "weather-partly-cloudy", val: degC("outdoor"), more: true },
   { key: "updateTemps", label: "Relire les sondes de température", icon: "thermometer", button: "Relire", ok: "Sondes relues" },
 ];
 
@@ -1815,12 +1819,18 @@ class PiscineCard extends HTMLElement {
       let sect = null;
       for (const def of defs) {
         if (def.sect) { sect = document.createElement("div"); sect.className = "esect"; sect.textContent = def.sect; host.appendChild(sect); continue; }
-        const row = document.createElement("div"); row.className = "erow";
+        const row = document.createElement("div"); row.className = def.more ? "erow more" : "erow";
         row.innerHTML = `<span class="ic"></span><span class="name"><span></span><small></small></span>`
-          + (def.button ? `<button class="btn"></button>` : `<span class="val num"></span>`);
+          + (def.button ? `<button class="btn"></button>` : `<span class="val num"></span>`)
+          + (def.more ? `<span class="chev">${svg("chevron")}</span>` : "");
         row.querySelector(".name span").textContent = def.label;
         const r = { def, row, sect, val: row.querySelector(".val"), sub: row.querySelector("small"), btn: row.querySelector("button"), icon: null };
         if (r.btn) { r.btn.textContent = def.button; r.btn.addEventListener("click", () => this._press(r.btn, def.key, def.ok)); }
+        if (def.more) {
+          Object.assign(row, { tabIndex: 0, title: "Ouvrir dans Home Assistant" }); row.setAttribute("role", "button");
+          row.addEventListener("click", () => this._moreInfo(def.key));
+          row.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); this._moreInfo(def.key); } });
+        }
         host.appendChild(row);
         this._paneRows.push(r);
       }
@@ -1887,6 +1897,13 @@ class PiscineCard extends HTMLElement {
     if (v === "panel") this._wirePanel(); else if (v === "settings") this._wireSettings(); else if (v === "water") this._wireWater(); else this._wireTile();
   }
 
+  /** Where the light leads: `more_path`, else the controller's device page in Home Assistant (null without a device id). */
+  _lightPath() {
+    if (this._config.more_path) return this._config.more_path;
+    const dev = this._hass && this._hass.entities && this._hass.entities[this._e.online]?.device_id;
+    return dev ? `/config/devices/device/${encodeURIComponent(dev)}` : null;
+  }
+  /** Home Assistant's own navigation (its navigate()): a history entry, then « location-changed » for its router. */
   _navigate(path, replace = false) {
     history[replace ? "replaceState" : "pushState"](null, "", path);
     window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace } }));
@@ -1901,12 +1918,16 @@ class PiscineCard extends HTMLElement {
 
   _wirePanel() {
     this._$("close").addEventListener("click", () => this._navigate(location.pathname + location.search, true));
-    // The light: « Réglages contrôleur »; without that tab, more_path if given
+    // The light: Home Assistant's device page for the controller (its link, Wi-Fi signal, disconnections), or
+    // more_path; without a device id, « Réglages contrôleur »
     this._$("ctlLink").addEventListener("click", () => {
-      if (!this._config.settings_tab) { if (this._config.more_path) this._navigate(this._config.more_path); return; }
+      const path = this._lightPath();
+      if (path) { this._navigate(path); return; }
+      const tab = this.shadowRoot.querySelector('#tabs [data-tab="controller"]');
+      if (this._$("tabs").hidden || tab.hidden) return;
       this._tab = "controller"; this._update();
       this._$("tabs").scrollIntoView({ block: "nearest" });
-      this.shadowRoot.querySelector('#tabs [data-tab="controller"]').focus({ preventScroll: true });
+      tab.focus({ preventScroll: true });
     });
     // without the recorder only Daily History's 7 days exist: no range to choose
     this._$("tRange").hidden = !this._config.recorder;
