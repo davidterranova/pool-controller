@@ -145,7 +145,10 @@ can come after.
    step per item Setup State lists (see
    [Controller settings](#controller-settings)). Set the page password
    first: until then anyone on the network can open the page. A step left
-   for later reopens where it was.
+   for later reopens where it was. Sondes also asks about the fill meter,
+   optional and never blocking: « J'ai un compteur » runs its pulse test
+   (open the fill tap), « Pas de compteur » turns Fill Meter off (see
+   [Fill meter](#fill-meter)).
 4. **Home Assistant**, at the wizard's last step: add the controller
    (Settings › Devices & Services › ESPHome; it is usually discovered), and
    Home Assistant sets its encryption key itself (see
@@ -202,8 +205,8 @@ Reset** button), after a confirmation. A selective erase, not ESPHome's:
 - **erased**: the page and OTA passwords, the saved Wi-Fi, the API key
   (Home Assistant loses the link);
 - **kept**: the probe roles, the position and timezone (so the filtration
-  plan and freeze protection go on), the filtration, freeze and update
-  settings, the history kept on the controller, and the firmware.
+  plan and freeze protection go on), the filtration, freeze, fill meter and
+  update settings, the history kept on the controller, and the firmware.
 
 It reboots into setup mode on its open hotspot `pool-controller`: join it
 and open http://192.168.4.1, where the wizard asks only for what was
@@ -791,9 +794,9 @@ card's own:
 
 | Tab | What's in it |
 |---|---|
-| **Contrôle** (`#controle`) | The pool card's panel (pump state, today's plan timeline, the pool's temperature over the last 7 days, Auto/Manuel, forced speed and duration), and Remplissage: the fill water from the device's own record (Fill Water Today, Days, Months): today, this month, the flow, litres by day over 30 days or by month over 12 (the pool card's water variant) |
+| **Contrôle** (`#controle`) | The pool card's panel (pump state, today's plan timeline, the pool's temperature over the last 7 days, Auto/Manuel, forced speed and duration, and the long-fill alarm's banner with « Acquitter »), and Remplissage: the fill water from the device's own record (Fill Water Today, Days, Months): today, this month, the flow, litres by day over 30 days or by month over 12 (the pool card's water variant). With Fill Meter off, no Remplissage: Filtration takes the width |
 | **Réglages** (`#reglages`) | Today's plan in detail, the device's sensors, « Filtration et hors gel »: the filtration settings with their Apply gate, boost pulses and freeze-protection threshold (the pool card's settings variant, as in Home Assistant), the last 7 days (Daily History) |
-| **Réglages contrôleur** (`#reglages-controleur`) | Wi-Fi: the connection and its statistics, joining another network (see "Wi-Fi and the fallback hotspot" below). Position, Sondes. Firmware: the version it runs, ESPHome's, and its updates (« Vérifier », « Installer », Auto Update, the check interval, Update Status, « Annuler la demande »; see [Updates](#updates)). Accès (page and OTA passwords), Home Assistant, Réinitialiser (see [Controller settings](#controller-settings)). Its live log (Journal). |
+| **Réglages contrôleur** (`#reglages-controleur`) | Wi-Fi: the connection and its statistics, joining another network (see "Wi-Fi and the fallback hotspot" below). Position, Sondes, Compteur d'eau (Fill Meter Oui | Non; while on, the pulse test « Tester » with Fill Meter Status, the last pulse, « Alarme après » in minutes, 0 = never; see [Fill meter](#fill-meter)). Firmware: the version it runs, ESPHome's, and its updates (« Vérifier », « Installer », Auto Update, the check interval, Update Status, « Annuler la demande »; see [Updates](#updates)). Accès (page and OTA passwords), Home Assistant, Réinitialiser (see [Controller settings](#controller-settings)). Its live log (Journal). |
 
 The tabs' old addresses still land: `#avance` on Réglages, `#controleur` and
 `#wifi` on Réglages contrôleur, `#remplissage` on Contrôle at its Remplissage.
