@@ -1093,7 +1093,7 @@ class PiscineCard extends HTMLElement {
       : /^(installing|downloading|writing|installation|téléchargement)/i.test(head) ? "installing"
       : /^(checking|vérification)/i.test(head) ? "checking" : "";
     const why = /override|manuel/i.test(rest) ? "override en cours" : /fill|rempl/i.test(rest) ? "remplissage en cours"
-      : kind === "failed" && /v[ée]rif|check/i.test(rest) ? "la vérification n'a pas abouti"
+      : kind === "failed" && /v[ée]rif|check/i.test(rest) ? "la vérification n'a pas abouti (pas de réseau, ou aucune version publiée pour l'instant)"
       : kind === "failed" && /install/i.test(rest) ? "l'installation n'a pas abouti" : rest;
     return { kind, why: kind ? why : "" };
   }
