@@ -573,6 +573,10 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .tabs button { padding:10px 10px; }
 .water { display:flex; flex-direction:column; gap:6px; }
 .water .readings { margin-bottom:12px; grid-template-columns:repeat(3,minmax(0,1fr)); }
+/* three narrow tiles on a phone: a label that wraps (« Rempli aujourd'hui ») must not push its value below the others'.
+   The tiles share the row's height; labels stay on top (two lines at most), values sit on the bottom line. */
+.water .reading { justify-content:space-between; }
+.water .reading .l { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; overflow:hidden; overflow-wrap:anywhere; }
 ha-card.water-card { display:block; color:var(--fg); padding:16px; container-type:inline-size; }
 ha-card.water-card.plain { background:var(--card); border:1px solid var(--ha-card-border-color,var(--line)); border-radius:var(--ha-card-border-radius,12px); }
 .reading.live .v { color:var(--acc); }
