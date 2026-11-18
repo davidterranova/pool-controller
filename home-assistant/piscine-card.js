@@ -61,13 +61,20 @@
  * end on their own); red beyond. Each new message pops the dot and sends a ring out of it (every `beat` s at most).
  * Its heartbeat is the Device Clock (wifi-setup.yaml, entity `clock`), which changes every minute; without it a
  * still night leaves every value as it was, so only the link counts. Offline, the light replaces the pump's state.
+ * A fill running too long (Fill Running Too Long, fill-meter.yaml) and not yet acknowledged (Fill Alarm Acknowledged)
+ * turns it amber and pulsing, over the controller's health unless that is red: red > pulsing amber > amber > green. The
+ * header and the tile then read « Remplissage depuis 1 h 12 », and the header's button leads to the banner below.
  *
  * Fill water (« Contrôle », after Pilotage, under its chart's « Eau de remplissage »; recorder only, so not in the
  * device page's panel; mock-up 2026-11-17). The water meter on the fill line (Piscine - Volume total remplissage,
  * total_increasing) as HA's statistics `change`: 30 j one bar a day, 90 j one a week (13 weeks from a Monday, HA's
  * weeks), 12 mois one a month, the period's total above. The running day/week/month adds what the meter counted
  * since the last compiled hour (the live state against that hour's `state`; after a reboot the meter restarts from
- * 0). Above it, today, this month so far and the flow.
+ * 0). Above it, today, this month so far and the flow, and while a fill runs (Fill Running) since when.
+ * The meter is optional (fill-meter.yaml, 1.9.0): with Fill Meter (`fillEnabled`) off, there is no fill water, in the
+ * panel or as `variant: water` (hidden). A fill longer than Fill Alarm After puts a banner in « Contrôle », with
+ * « Acquitter » (Acknowledge Fill Alarm), then « acquittée » until the fill ends. The meter's settings are not the
+ * card's: Home Assistant's device page, the controller's own page. A firmware without these entities counts always.
  *
  *   type: custom:piscine-card
  *   variant: water       # the same, alone. With `recorder: false` (the device's page) from the controller's own
@@ -164,6 +171,15 @@ const DEFAULT_ENTITIES = {
   longitude: "number.pool_controller_longitude",
   timezone: "text.pool_controller_timezone",
   timezoneName: "text.pool_controller_timezone_name",
+  // The fill meter as an option (fill-meter.yaml, 1.9.0): on or off, and its long-fill alarm. Its settings are not the
+  // card's (Home Assistant's device page, the controller's own page). A firmware without them counts the meter always
+  // and has no alarm.
+  fillEnabled: "switch.pool_controller_fill_meter",
+  fillAlarmAfter: "number.pool_controller_fill_alarm_after",
+  fillRunning: "binary_sensor.pool_controller_fill_running",
+  fillTooLong: "binary_sensor.pool_controller_fill_running_too_long",
+  fillAck: "button.pool_controller_acknowledge_fill_alarm",
+  fillAcked: "binary_sensor.pool_controller_fill_alarm_acknowledged",
   sForce: "script.piscine_forcer_vitesse",
   sAuto: "script.piscine_retour_auto",
 };
@@ -386,6 +402,12 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
   background:color-mix(in srgb,var(--c) 75%,transparent); box-shadow:0 0 0 2.5px color-mix(in srgb,var(--c) 16%,transparent); }
 .led.late, .clink.late { --c:var(--amber); }
 .led.lost, .clink.lost { --c:var(--danger); }
+/* A fill running too long, not yet acknowledged (fill-meter.yaml): amber, and the dot keeps pulsing, its ring going out
+   again and again, until someone acknowledges it or the fill ends. Reduced motion (the rule at the end): steady amber. */
+.led.alarm, .clink.alarm { --c:var(--amber); }
+.led.alarm { animation:fillpulse 1.6s ease-in-out infinite; }
+.led.alarm::after { animation:ping 1.6s cubic-bezier(.15,.6,.3,1) infinite; }
+@keyframes fillpulse { 30% { transform:scale(1.35); } 60% { transform:scale(1); } }
 .led::after { content:""; position:absolute; inset:-1px; border-radius:50%; border:2px solid var(--c); opacity:0; pointer-events:none; }
 .led.ping { animation:beat .45s ease-out; }
 .led.ping::after { animation:ping 1.3s cubic-bezier(.15,.6,.3,1); }
@@ -432,6 +454,7 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .alert .act { flex-basis:100%; margin-left:28px; margin-top:-2px; }
 .alert .act button { height:34px; border-radius:17px; border:0; padding:0 14px; cursor:pointer; font-weight:500; background:var(--danger); color:#fff; }
 .alert .act button:disabled { opacity:.5; cursor:not-allowed; }
+.alert.amber .act button { background:var(--amber); }
 
 /* day plan timeline */
 .plan { display:flex; flex-direction:column; gap:6px; }
@@ -565,6 +588,8 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 /* three narrow tiles on a phone: a label that wraps (« Rempli aujourd'hui ») must not push its value below the others'.
    The tiles share the row's height; labels stay on top (two lines at most), values sit on the bottom line. */
 .water .reading { justify-content:space-between; }
+.water .run { font-size:13px; color:var(--muted); margin:-6px 2px 6px; }
+.water .run.warn { color:var(--amber); font-weight:500; }
 .water .reading .l { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; overflow:hidden; overflow-wrap:anywhere; }
 ha-card.water-card { display:block; color:var(--fg); padding:16px; container-type:inline-size; }
 ha-card.water-card.plain { background:var(--card); border:1px solid var(--ha-card-border-color,var(--line)); border-radius:var(--ha-card-border-radius,12px); }
@@ -702,6 +727,7 @@ const WATER_PANE = `
       <div class="reading"><span class="l">Ce mois-ci</span><span class="v num" id="wMonth"></span></div>
       <div class="reading" id="wFlowBox"><span class="l">Débit</span><span class="v num" id="wFlow"></span></div>
     </div>
+    <p class="run num" id="wRun" hidden></p>
     <div class="temp-h">
       <p class="lbl">Eau de remplissage</p>
       <div class="seg mini" role="radiogroup" aria-label="Période du graphique" id="wRange">
@@ -775,6 +801,7 @@ const PANEL_HTML = `
   <div class="alert cool" id="freezeAlert" hidden>${svg("snow")}<span id="freezeTxt"></span></div>
   <div class="alert amber" id="planAlert" hidden>${svg("alert")}<span>Plan du jour non calculé : le contrôleur n'a pas pu lire la température ou le lever du soleil. La pompe peut rester arrêtée.</span></div>
   <div class="alert" id="stuckAlert" hidden>${svg("alert")}<span id="stuckTxt"></span><div class="act"><button id="stuckBtn">Revenir en Auto</button></div></div>
+  <div class="alert amber" id="fillAlert" hidden>${svg("alert")}<span id="fillTxt"></span><div class="act" id="fillAct"><button id="fillAckBtn">Acquitter</button></div></div>
   <div class="power">
     <button class="pbtn" id="autoBtn" hidden>${svg("auto")}<span id="autoBtnTxt">Revenir en Auto</span></button>
     <div class="confirm" id="confirm" hidden>
@@ -897,7 +924,10 @@ class PiscineCard extends HTMLElement {
   }
   disconnectedCallback() { clearInterval(this._timer); clearTimeout(this._toastTimer); this._ro?.disconnect(); }
 
-  getCardSize() { return { panel: 15, settings: 9, water: 6 }[this._config.variant] || 1; }
+  getCardSize() {
+    if (this._config.variant === "water" && this._hass && this._fillOff()) return 0;
+    return { panel: 15, settings: 9, water: 6 }[this._config.variant] || 1;
+  }
   getGridOptions() {
     if (this._config.variant !== "tile") return { columns: "full", rows: "auto" };
     return this._config.layout === "vertical" ? { columns: 4, rows: "auto", min_columns: 3 } : { columns: 12, rows: "auto", min_columns: 6 };
@@ -1035,15 +1065,16 @@ class PiscineCard extends HTMLElement {
   /**
    * The light: {h, seen (ms), quiet (min since seen), off (min offline, null online)}. h: live = a message within
    * `warn` min; late = quiet for longer, or offline for less than `alert` min (a restart, an OTA, a Wi-Fi drop end on
-   * their own); lost = beyond. Without the Device Clock nothing changes every minute (a still night can leave every
+   * their own); lost = beyond; alarm = a fill running too long, not acknowledged (unless lost). Without the Device Clock nothing changes every minute (a still night can leave every
    * value as it was), so quiet means nothing there and only the link counts.
    */
   _light() {
     const H = this._config.health, now = Date.now(), seen = this._lastSeen(), quiet = seen ? (now - seen) / M_MS : Infinity;
     const o = this._st("online"), off = this._online() ? null : o ? (now - Date.parse(o.last_changed)) / M_MS : Infinity;
     const beats = !!this._st("clock");
-    const h = off !== null ? (off >= H.alert ? "lost" : "late") : beats && quiet >= H.alert ? "lost" : beats && quiet >= H.warn ? "late" : "live";
-    return { h, seen, quiet, off };
+    const health = off !== null ? (off >= H.alert ? "lost" : "late") : beats && quiet >= H.alert ? "lost" : beats && quiet >= H.warn ? "late" : "live";
+    const fill = this._fillAlarm(), h = health !== "lost" && fill && !fill.acked ? "alarm" : health;
+    return { h, seen, quiet, off, fill };
   }
   /** The firmware's version (Firmware Version) and ESPHome's (its entity, else Home Assistant's device registry). */
   _fw() {
@@ -1112,7 +1143,8 @@ class PiscineCard extends HTMLElement {
       const until = this._ovrUntil();
       return { long: `override manuel en cours (${SPEEDS[this._override()]}${until ? `, retour en Auto à ${fmtT(until)}` : ", sans fin"})`, ovr: true };
     }
-    return this._n("flow") > 0 ? { long: "remplissage en cours", ovr: false } : null;
+    const run = this._st("fillRunning"); // as the firmware's gate; before it (1.9.0), a non-zero flow
+    return (run ? run.state === "on" : this._n("flow") > 0) ? { long: "remplissage en cours", ovr: false } : null;
   }
   /** The update entity as « Réglages contrôleur » › Firmware shows it; null without one (a firmware before WP6). */
   _updModel() {
@@ -1256,6 +1288,7 @@ class PiscineCard extends HTMLElement {
   /** « Hors ligne depuis 6 min », « Contrôleur muet depuis 5 min », else `live`. */
   _lightText(L, live = `Contrôleur · ${agoTxt(L.quiet)}`, mute = "Contrôleur muet") {
     if (L.off !== null) return Number.isFinite(L.off) ? `Hors ligne depuis ${fmtD(L.off)}` : "Hors ligne";
+    if (L.h === "alarm") return this._fillText(L.fill);
     return L.h === "live" ? live : `${mute} depuis ${fmtD(L.quiet)}`;
   }
   /** The light on the tile and in the panel's header. A message newer than the last one drawn: one heartbeat. */
@@ -1266,9 +1299,11 @@ class PiscineCard extends HTMLElement {
     if (!on) return;
     const L = this._light();
     const tip = L.off !== null ? `Contrôleur hors ligne${L.seen ? ` : dernier message à ${stampMs(L.seen)}` : ""}`
-      : `Dernier message du contrôleur à ${stampMs(L.seen)}, ${agoTxt(L.quiet)}`;
+      : (L.h === "alarm" ? `${this._fillText(L.fill, "Remplissage en cours")}, alarme non acquittée. ` : "")
+        + `Dernier message du contrôleur à ${stampMs(L.seen)}, ${agoTxt(L.quiet)}`;
     for (const el of leds) {
-      const cls = `led ${L.h}${el.classList.contains("ping") ? " ping" : ""}`; // a redraw must not cut a heartbeat short
+      // a redraw must not cut a heartbeat short; the alarm's own pulse replaces it
+      const cls = `led ${L.h}${el.classList.contains("ping") && L.h !== "alarm" ? " ping" : ""}`;
       if (el.className !== cls) el.className = cls;
       if (el.title !== tip) { el.title = tip; el.setAttribute("aria-label", tip); }
     }
@@ -1298,6 +1333,23 @@ class PiscineCard extends HTMLElement {
     const d = new Date(v.replace(" ", "T")); return isNaN(d) ? null : d;
   }
   _stuck() { return this._inOvr() && this._s("stuck") === "on"; }
+  /** Fill Meter turned off (fill-meter.yaml): no fill water, no alarm. A firmware without the switch counts always. */
+  _fillOff() { return this._s("fillEnabled") === "off"; }
+  /**
+   * The long-fill alarm, Fill Running Too Long: null, or {since (the fill's start, a Date, or null), min (how long it
+   * has run, at least), acked (Fill Alarm Acknowledged)}. The start is Fill Running's last change, unless that came
+   * later than an alarm allows (Home Assistant restarted, the page was opened, during the fill): then only « more than
+   * Fill Alarm After » is known.
+   */
+  _fillAlarm() {
+    if (this._fillOff() || this._s("fillTooLong") !== "on") return null;
+    const after = this._n("fillAlarmAfter", 0), run = this._st("fillRunning");
+    const t = run && run.state === "on" ? Date.parse(run.last_changed) : NaN;
+    const since = Number.isFinite(t) && Date.now() - t >= (after - 1) * M_MS ? new Date(t) : null;
+    return { since, min: since ? (Date.now() - t) / M_MS : after, acked: this._s("fillAcked") === "on" };
+  }
+  /** « Remplissage depuis 1 h 12 », « … depuis plus de 1 h ». */
+  _fillText(f, what = "Remplissage") { return `${what} depuis ${f.since ? "" : "plus de "}${fmtD(f.min)}`; }
   _timeoutMin() { const m = this._n("timeout"); return Number.isFinite(m) ? Math.round(m) : 60; }
   _durChoice() { const m = this._timeoutMin(); const d = DURATIONS.find(([, v]) => v === m); return d ? d : [fmtD(m), m]; }
   _commanded() { const s = this._s("commanded"); return SPEEDS[s] ? s : "Off"; }
@@ -1652,8 +1704,12 @@ class PiscineCard extends HTMLElement {
     return out;
   }
 
-  /** The panel's water block shows in « Contrôle » with a recorder and a water meter; the variant always. */
-  _waterShown() { return this._config.variant === "water" || (this._config.recorder && !!this._st("volume")); }
+  /** The panel's water block shows in « Contrôle » with a recorder and a water meter; the variant always. Neither while
+   * Fill Meter is off. */
+  _waterShown() {
+    if (this._fillOff()) return false; // the meter turned off: no fill water anywhere
+    return this._config.variant === "water" || (this._config.recorder && !!this._st("volume"));
+  }
   _renderWater() {
     const box = this._$("wChart");
     if (!box || !this._waterShown() || (this._config.variant === "panel" && this._tab !== "pump")) return;
@@ -1669,6 +1725,15 @@ class PiscineCard extends HTMLElement {
     this._$("wMonth").innerHTML = months ? unit(fmtL(months[months.length - 1].value)) : "…";
     this._$("wFlow").innerHTML = `${fmt1(flow)}<small>L/min</small>`;
     this._$("wFlowBox").classList.toggle("live", flow > 0);
+    // Fill Running (fill-meter.yaml): since when, and past the alarm's time
+    const run = this._st("fillRunning"), fa = this._fillAlarm(), wr = this._$("wRun");
+    wr.hidden = !run || run.state !== "on";
+    if (!wr.hidden) {
+      const txt = fa ? `${this._fillText(fa, "En cours")} : au-delà de l'alarme (${fmtD(this._n("fillAlarmAfter", 0))})`
+        : `En cours depuis ${fmtT(new Date(Date.parse(run.last_changed)))}`;
+      if (wr.textContent !== txt) wr.textContent = txt;
+      wr.classList.toggle("warn", !!fa);
+    }
 
     const W = box.clientWidth, H = box.clientHeight;
     if (!W) return;
@@ -1939,6 +2004,12 @@ class PiscineCard extends HTMLElement {
     // The light: Home Assistant's device page for the controller (its link, Wi-Fi signal, disconnections), or
     // more_path; without a device id, « Réglages contrôleur »
     this._$("ctlLink").addEventListener("click", () => {
+      if (this._light().h === "alarm") { // a fill running too long: « Contrôle », at its banner and « Acquitter »
+        this._tab = "pump"; this._update();
+        this._$("fillAlert").scrollIntoView({ block: "nearest", behavior: "smooth" });
+        this._$("fillAckBtn").focus({ preventScroll: true });
+        return;
+      }
       const path = this._lightPath();
       if (path) { this._navigate(path); return; }
       const tab = this.shadowRoot.querySelector('#tabs [data-tab="controller"]');
@@ -1960,6 +2031,8 @@ class PiscineCard extends HTMLElement {
     };
     this._$("autoBtn").addEventListener("click", backToAuto);
     this._$("stuckBtn").addEventListener("click", backToAuto);
+    this._$("fillAckBtn").addEventListener("click", (e) =>
+      this._press(e.currentTarget, "fillAck", "Alarme acquittée : plus de rappel jusqu'à la fin de ce remplissage"));
 
     this.shadowRoot.querySelectorAll("#modeSeg button").forEach((b) => b.addEventListener("click", () => {
       if (this._pending()) return;
@@ -2085,7 +2158,7 @@ class PiscineCard extends HTMLElement {
     const v = this._config.variant;
     if (v === "panel") { this._loadHistory(); this._trackLive(); this._updatePanel(); }
     else if (v === "settings") this._updateSettings();
-    else if (v === "water") this._renderWater();
+    else if (v === "water") { this.style.display = this._fillOff() ? "none" : ""; this._renderWater(); }
     else this._updateTile();
   }
 
@@ -2094,6 +2167,8 @@ class PiscineCard extends HTMLElement {
     const hrs = `${fmt1(this._n("hoursToday"))} h / ${fmt1(this._n("hoursPlanned"))} h`;
     if (P) return ["Envoi au contrôleur…", "s"];
     if (!this._online()) { const L = this._light(); return [this._lightText(L), L.h === "lost" ? "s bad" : "s warn"]; }
+    const fill = this._fillAlarm();
+    if (fill && !fill.acked) return [this._fillText(fill), "s warn"];
     if (this._freeze()) return [`Hors gel · Low · ${hrs}`, "s"];
     if (this._stuck()) return [`Override ${SPEEDS[this._override()]} depuis ${fmtD(this._ovrAgeMin())}`, "s bad"];
     if (this._inOvr()) { const u = this._ovrUntil(); return [`Manuel ${SPEEDS[this._override()]} · ${u ? "Auto à " + fmtT(u) : "sans limite"}`, "s warn"]; }
@@ -2202,6 +2277,14 @@ class PiscineCard extends HTMLElement {
     this._$("stuckAlert").hidden = !stuck || !online;
     this._$("stuckTxt").textContent = `Override ${SPEEDS[this._override()]} depuis ${fmtD(this._ovrAgeMin())} : la pompe ne suit plus son plan de filtration.`;
     this._$("stuckBtn").disabled = !!P;
+    const fill = this._fillAlarm();
+    this._$("fillAlert").hidden = !fill || !online;
+    if (fill) {
+      const txt = `Remplissage en cours depuis ${fill.since ? `${fmtT(fill.since)} (${fmtD(fill.min)})` : `plus de ${fmtD(fill.min)}`}`
+        + (fill.acked ? " : alarme acquittée, plus de rappel jusqu'à la fin de ce remplissage." : " : vérifiez le robinet de remplissage.");
+      if (this._$("fillTxt").textContent !== txt) this._$("fillTxt").textContent = txt;
+      this._$("fillAct").hidden = fill.acked || !this._st("fillAck");
+    }
 
     const seen = this._drawTimeline();
     this._$("legOvr").innerHTML = ["Off", "Low", "Medium", "High"].filter((v) => seen.has(v))
