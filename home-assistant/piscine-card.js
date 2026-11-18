@@ -71,9 +71,10 @@
  *                        # Months), 30 j and 12 mois.
  *
  * « Avancé » and « Réglages » (mock-up 2026-11-17): between them, every control the controller has, as on its
- * own page's Avancé tab, so the pop-up needs no dashboard behind it. « Avancé »: today's plan with « Recalculer »,
- * the last 7 days of filtration against the plan (Daily History), the controller (its link, its Wi-Fi signal in
- * dBm, % and words), the probes with « Relire », and the firmware (mock-up 2026-11-18, plan WP4).
+ * own page's Avancé tab, so the pop-up needs no dashboard behind it. « Avancé », in the device page's order: today's
+ * plan with « Recalculer », the controller (its link, its Wi-Fi signal in dBm, % and words) and the probes with
+ * « Relire » (the page's « Capteurs internes »), the firmware (mock-up 2026-11-18, plan WP4), then the last 7 days of
+ * filtration against the plan (Daily History).
  * A firmware with updates (WP6: ESPHome's `update` platform on the release manifest) has an update entity,
  * « Firmware », and the section runs on it: installed version (with ESPHome's version and build time), latest
  * version and its release notes, « Vérifier » (Check for Update) and « Installer » (update.install, with its
@@ -599,8 +600,10 @@ ha-card.water-card.plain { background:var(--card); border:1px solid var(--ha-car
 .ptile .p { font-size:14px; font-weight:500; overflow-wrap:anywhere; }
 .ptile .s { font-size:13px; color:var(--muted); }
 
-/* tab « Avancé »: today's plan, the last 7 days, the controller and its probes; tab « Réglages »: the settings
-   (together, the device page's Avancé). Each column is a container, so its rows wrap at its own width. */
+/* tab « Avancé », read in the device page's Avancé order: today's plan, the controller and its probes (its « Capteurs
+   internes »), the firmware, the last 7 days; one column on a phone, the first three on the left when wide. Tab
+   « Réglages »: the settings (together, the device page's Avancé). Each column is a container, so its rows wrap at its
+   own width. */
 .advpane, .setpane { display:flex; flex-direction:column; gap:22px; }
 .setpane { container-type:inline-size; }
 .sp-col { display:flex; flex-direction:column; gap:22px; min-width:0; container-type:inline-size; }
@@ -736,12 +739,12 @@ const PANEL_HTML = `
   <div class="advpane" role="tabpanel">
     <div class="sp-col">
       <section><h4 class="sp-h">Plan du jour</h4><div id="planRows"></div></section>
-      <section><h4 class="sp-h">7 derniers jours</h4><div class="days" id="days"></div></section>
-    </div>
-    <div class="sp-col">
       <section><h4 class="sp-h">Contrôleur</h4><div id="ctlRows"></div></section>
       <section><h4 class="sp-h">Sondes</h4><div id="probeRows"></div></section>
+    </div>
+    <div class="sp-col">
       <section><h4 class="sp-h">Firmware</h4><div id="fwRows"></div><div id="updRows"></div></section>
+      <section><h4 class="sp-h">7 derniers jours</h4><div class="days" id="days"></div></section>
     </div>
   </div>
   <div class="setpane" role="tabpanel">
@@ -1856,7 +1859,7 @@ class PiscineCard extends HTMLElement {
     for (const sc of this._sects) sc.el.hidden = sc.rows.every((r) => r.row.hidden);
   }
 
-  /* ---------- panel, tab « Avancé »: Plan du jour, 7 derniers jours, Contrôleur, Sondes (and « Réglages »' rows) ---------- */
+  /* ---------- panel, tab « Avancé »: Plan du jour, Contrôleur, Sondes, Firmware, 7 derniers jours (and « Réglages »' rows) ---------- */
   _wireSetPane() {
     this._wireSettingRows();
     for (const [host, defs] of [[this._$("planRows"), PLAN_ROWS], [this._$("ctlRows"), CTL_ROWS], [this._$("probeRows"), PROBE_ROWS], [this._$("fwRows"), FW_ROWS]]) {
