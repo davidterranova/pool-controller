@@ -13,6 +13,7 @@
 import { EspHass, E } from "./esphome-hass.js";
 import { ICONS } from "./icons.js";
 import { mountSetup } from "./setup.js";
+import { WAITING_FOR } from "./setup-model.js";
 
 const hass = new EspHass();
 const $ = (id) => document.getElementById(id);
@@ -288,7 +289,8 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
     value: () => (s(E.nextAt) && s(E.nextAt) !== "--:--" ? `${s(E.nextAt)} → ${SPEED_FR[s(E.nextTo)] || s(E.nextTo)}` : "Plus rien aujourd'hui") });
   valueRow(host, { id: E.nextBoostStart, label: "Prochaine impulsion", value: range(E.nextBoostStart, E.nextBoostEnd) });
   valueRow(host, { id: E.recomputed, label: "Plan calculé à", value: () => stamp(s(E.recomputed)) });
-  valueRow(host, { id: E.notComputed, label: "Plan du jour", problem: "Non calculé" });
+  valueRow(host, { id: E.notComputed, label: "Plan du jour", problem: "Non calculé",
+    sub: () => (s(E.notComputed) === "on" && WAITING_FOR[s(E.waitingFor)] ? `Attend ${WAITING_FOR[s(E.waitingFor)]}` : "") });
   valueRow(host, { id: E.overrideActive, label: "Override sans limite", problem: "Depuis plus de 30 min" });
   buttonRow(host, { id: E.recompute, label: "Recalculer le plan maintenant", text: "Recalculer", ok: "Plan du jour recalculé" });
 }
