@@ -4,3 +4,4 @@ secrets.yaml
 .vscode/
 webui/dist/
 __pycache__/
+.migrate/
