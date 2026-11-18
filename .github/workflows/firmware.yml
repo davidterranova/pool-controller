@@ -48,8 +48,8 @@ permissions:
   contents: read
 
 env:
-  # The ESPHome the firmware is built and released with. Bump it here only.
-  ESPHOME_IMAGE: ghcr.io/esphome/esphome:2026.7.2
+  # The ESPHome the firmware is built and released with is the Makefile's
+  # (ESPHOME_VERSION there, the one place it is pinned).
   CONFIG: pool-controller.yaml
   # Where ESPHome 2026.x puts the images (esphome: name: in $CONFIG).
   BUILD_DIR: .esphome/build/pool-controller/build
@@ -138,13 +138,13 @@ jobs:
         if: steps.version.outputs.release == 'true'
         run: test ! -e secrets.yaml
 
-      # `make build`: the page bundled by esbuild in node:22-alpine (make
+      # `make build` with the Makefile's ESPHome: the page bundled by esbuild in node:22-alpine (make
       # webui), then `esphome -s firmware_version <version> compile`.
       - name: Compile
         if: steps.guard.outputs.build == 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: make build ESPHOME_IMAGE="$ESPHOME_IMAGE" FW_VERSION="$VERSION"
+        run: make build FW_VERSION="$VERSION"
 
       - name: Images and manifest
         id: collect

@@ -3,7 +3,9 @@
 
 One file serves both readers:
   - ESP Web Tools (the browser install page) flashes `builds[].parts`, the
-    factory image, at offset 0;
+    factory image, at offset 0. No `new_install_prompt_erase`: a new install
+    always erases the board, without asking, then goes straight to Wi-Fi
+    (Improv);
   - ESPHome's `update: platform: http_request` reads `version` and the
     `builds[].ota` block, then OTA-installs `ota.path` after checking its md5.
 
@@ -66,7 +68,6 @@ def main(argv):
         "name": args.name,
         "version": args.version,
         "home_assistant_domain": "esphome",
-        "new_install_prompt_erase": True,
         "builds": [
             {
                 "chipFamily": args.chip_family,

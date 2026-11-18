@@ -11,26 +11,23 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v4
 
-      # pool-controller.yaml reads Wi-Fi/API/OTA credentials via !secret from
-      # secrets.yaml, which is gitignored and never committed. These values
-      # are placeholders good enough for schema validation only -- nothing
-      # here needs to be a real credential. pool_controller_api_key still has
-      # to decode as a base64 32-byte key, since ESPHome validates that shape.
-      - name: Create placeholder secrets.yaml
-        run: |
-          cat > secrets.yaml <<'EOF'
-          wifi_ssid: "placeholder"
-          wifi_password: "placeholder"
-          pool_controller_api_key: "bK1YlLBsY0Ouxeekl8eHkLoQ6TORbg4RbocsLsXDqvQ="
-          pool_controller_ota_password: "placeholder"
-          pool_controller_web_password: "placeholder"
-          pool_latitude: "0.0"
-          pool_longitude: "0.0"
-          pool_timezone: "UTC"
-          EOF
+      # No secrets.yaml: the firmware reads none (device-settings.yaml holds
+      # what it used to), and the guard keeps it that way.
+      - name: No !secret in the firmware's sources
+        run: python3 tools/release/secret_guard.py pool-controller.yaml
 
+      # The firmware's manifest.json (tools/release/manifest.py), on made-up
+      # images: what the install page and the update check read.
+      - name: Release manifest tests
+        run: python3 -I tools/release/test_manifest.py
+
+      # With the Makefile's pinned ESPHome (ESPHOME_VERSION).
       - name: make validate
         run: make validate
+
+      # Host tests of the firmware's pure C++ helpers (tools/tests/).
+      - name: make firmware-test
+        run: make firmware-test
 
       # Prints the web UI layout and fails if pool-controller.yaml gains an
       # entity type the local mock (tools/webui-mock/) can't render, so the
@@ -38,8 +35,18 @@ jobs:
       - name: make mock-ui-check
         run: make mock-ui-check
 
+      # The pages' pure modules: the web UI's (setup wizard logic, time zone
+      # table) and the install page's (docs/install/install-model.js).
+      - name: make webui-test
+        run: make webui-test
+
       # The Home Assistant dashboard components (home-assistant/dashboard/) name the firmware's entities
       # the way a fresh install does: fail when one no longer exists, or when the pool card there misses
       # an entity the card has gained, so the dashboard can't silently fall behind the firmware.
       - name: make ha-dashboard-check
         run: make ha-dashboard-check
+
+      # make migrate's generator and checks (tools/migrate/), on made-up
+      # values: never a secrets.yaml or a controller here.
+      - name: make migrate-test
+        run: make migrate-test

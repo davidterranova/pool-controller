@@ -1,10 +1,14 @@
 CONFIG := pool-controller.yaml
-# The latest ESPHome image by default; CI's firmware build pins a version
-# (ESPHOME_IMAGE in .github/workflows/firmware.yml).
-ESPHOME_IMAGE ?= ghcr.io/esphome/esphome
+# The ESPHome every target below runs in, and so CI's builds and checks
+# (firmware.yml, validate.yml): bump it here only. The firmware needs 2026.11
+# (runtime web login, set_global_tz; see docs/plans/secret-free-firmware.md).
+# 2026.11.0b6 is a beta: move to 2026.11.x stable once it's out, before the
+# feat/secret-free-firmware branch reaches main.
+ESPHOME_VERSION ?= 2026.11.0b6
+ESPHOME_IMAGE ?= ghcr.io/esphome/esphome:$(ESPHOME_VERSION)
 ESPHOME := docker run --rm -v "$(CURDIR):/config" $(ESPHOME_IMAGE)
 # The commit the firmware is built from, as its Firmware Version entity reports it
-# (the pool card compares it with main on GitHub): v1.3.0, v1.3.0-4-g1a2b3c4, …-dirty.
+# (the pool card and the controller's page show it): v1.3.0, v1.3.0-4-g1a2b3c4, …-dirty.
 FW_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_DIR := .esphome/build/pool-controller/build
 ESPTOOL := /Users/davidterranova/.espressif/tools/python/v6.0.2/venv/bin/esptool
@@ -20,7 +24,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build flash status kill-port ota ip logs webui mock-ui mock-webui mock-ui-check ha-dashboard-check clean
+.PHONY: validate build firmware-test flash status kill-port ota ip logs webui webui-test mock-ui mock-webui mock-ui-check ha-dashboard-check migrate-build migrate migrate-check migrate-clean migrate-test clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate: webui
@@ -30,6 +34,14 @@ validate: webui
 # too, which `validate` alone can't since those are raw C++).
 build: webui
 	$(ESPHOME) -s firmware_version $(FW_VERSION) compile $(CONFIG)
+
+# Host tests of the firmware's pure C++ helpers (tools/tests/: updates.h's
+# schedule, install gate and Update Status; fill_import.h's Fill Water
+# Import), with the ESPHome image's g++.
+FIRMWARE_TESTS := updates_test fill_import_test
+firmware-test:
+	docker run --rm -v "$(CURDIR):/config" -w /config --entrypoint sh $(ESPHOME_IMAGE) -c \
+		'set -e; for t in $(FIRMWARE_TESTS); do g++ -std=c++20 -Wall -Wextra -Werror -o /tmp/$$t tools/tests/$$t.cpp; /tmp/$$t; done'
 
 # Flashes over UART via esptool (bundled with the ESP-IDF install), not through
 # Docker: Docker Desktop on macOS can't pass a host USB-serial device into the
@@ -63,10 +75,64 @@ kill-port:
 	fi
 
 # Pushes a rebuilt firmware over the network (port 3232) instead of USB --
-# only works once the device has already joined Wi-Fi.
+# only works once the device has already joined Wi-Fi. The upload needs the
+# controller's OTA Password (set on its page; nothing is compiled in): from
+# OTA_PASSWORD=... or the untracked file .ota-password (gitignored), given to
+# the upload only, never to the build.
+OTA_PASSWORD ?= $(shell cat .ota-password 2>/dev/null)
 ota: build
 	@test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
-	$(ESPHOME) upload $(CONFIG) --device $(HOST)
+	@test -n "$(OTA_PASSWORD)" || (echo "No OTA password: put the controller's OTA Password in .ota-password, or pass OTA_PASSWORD=..." && exit 1)
+	@$(ESPHOME) -s ota_password "$(OTA_PASSWORD)" upload $(CONFIG) --device $(HOST)
+
+# Moves a controller built with secrets.yaml (v1.3.x) to this firmware in one
+# OTA, with nothing to set up and no re-pairing in Home Assistant
+# (docs/plans/secret-free-firmware.md, WP8). migrate-build generates
+# $(MIGRATE_CONFIG): this firmware plus a boot step that fills every EMPTY
+# setting with what the controller was built with (secrets.yaml, and the probe
+# addresses of $(MIGRATE_FROM)), then compiles it. It holds the secrets, so it
+# and its build stay in $(MIGRATE_DIR)/ (gitignored, mode 700), never in a
+# release; migrate-clean deletes them. migrate then checks the controller is
+# idle, uploads with today's OTA password, waits for it and checks Setup State
+# `configured`, the pool temperature and the same API key; on a failure it
+# prints the rollback. Once migrated, it writes .ota-password (mode 600,
+# gitignored) for the next `make ota`, unless that file holds another password
+# (left alone, with a note). MIGRATE_FORCE=1 skips the idle check.
+# migrate-check repeats the checks alone. The secrets are read inside the
+# container only.
+MIGRATE_DIR := .migrate
+MIGRATE_CONFIG := $(MIGRATE_DIR)/migration.yaml
+MIGRATE_SECRETS ?= secrets.yaml
+# The last release built from secrets.yaml, i.e. what the controller runs: its
+# pool-controller.yaml gives the probe addresses, and it is the rollback.
+MIGRATE_FROM ?= v1.3.1
+MIGRATE_PY = docker run --rm -i -v "$(CURDIR):/config" -v "$(abspath $(MIGRATE_SECRETS)):/run/migrate/secrets.yaml:ro" --entrypoint python3 $(ESPHOME_IMAGE) -I -B /config/tools/migrate/migrate.py
+MIGRATE_DEVICE_ARGS = --secrets /run/migrate/secrets.yaml --host "$(HOST)" --from-ref "$(MIGRATE_FROM)" --expect-version "$(FW_VERSION)" --config $(MIGRATE_CONFIG) --ota-password-file /config/.ota-password $(if $(MIGRATE_FORCE),--force)
+migrate-need-secrets = @test -f "$(MIGRATE_SECRETS)" || (echo "No $(MIGRATE_SECRETS): make migrate reads the controller's settings from it (MIGRATE_SECRETS=path)." && exit 1)
+migrate-need-host = @test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
+
+migrate-build: webui
+	$(migrate-need-secrets)
+	@git cat-file -e "$(MIGRATE_FROM):pool-controller.yaml" 2>/dev/null || (echo "$(MIGRATE_FROM) has no pool-controller.yaml: set MIGRATE_FROM to the commit the controller was built from." && exit 1)
+	@mkdir -p $(MIGRATE_DIR) && chmod 700 $(MIGRATE_DIR)
+	@git show "$(MIGRATE_FROM):pool-controller.yaml" | $(MIGRATE_PY) generate --secrets /run/migrate/secrets.yaml --old-config - --from-ref "$(MIGRATE_FROM)" --out /config/$(MIGRATE_CONFIG) --out-display $(MIGRATE_CONFIG)
+	$(ESPHOME) -s firmware_version $(FW_VERSION) compile $(MIGRATE_CONFIG)
+
+migrate: migrate-build
+	$(migrate-need-host)
+	@$(MIGRATE_PY) run $(MIGRATE_DEVICE_ARGS)
+
+migrate-check:
+	$(migrate-need-secrets)
+	$(migrate-need-host)
+	@$(MIGRATE_PY) check $(MIGRATE_DEVICE_ARGS)
+
+migrate-clean:
+	rm -rf $(MIGRATE_DIR)
+
+# migrate.py's own tests: made-up values, no secrets.yaml, no controller.
+migrate-test:
+	docker run --rm -v "$(CURDIR):/config" --entrypoint python3 $(ESPHOME_IMAGE) -I -B /config/tools/migrate/test_migrate.py
 
 # Resolves the pool-controller's current IP via mDNS (same lookup `ota` uses).
 ip:
@@ -78,7 +144,7 @@ ip:
 # live sensor readings once the board's sealed up and USB isn't convenient.
 logs:
 	@test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
-	docker run --rm -it -v "$(CURDIR):/config" ghcr.io/esphome/esphome logs $(CONFIG) --device $(HOST) --states
+	docker run --rm -it -v "$(CURDIR):/config" $(ESPHOME_IMAGE) logs $(CONFIG) --device $(HOST) --states
 
 # Local mock of the device's web UI (tools/webui-mock/), for iterating on the
 # page without a build or a flash: http://localhost:$(MOCK_PORT)/. Serves the
@@ -89,7 +155,7 @@ logs:
 # wall clock rather than the container's UTC.
 MOCK_PORT ?= 8080
 MOCK_TZ ?= $(shell readlink /etc/localtime 2>/dev/null | sed -E 's|.*/zoneinfo/||')
-MOCK := docker run --rm -v "$(CURDIR):/config" -e TZ=$(MOCK_TZ) --entrypoint python3 ghcr.io/esphome/esphome /config/tools/webui-mock/mock_server.py
+MOCK := docker run --rm -v "$(CURDIR):/config" -e TZ=$(MOCK_TZ) --entrypoint python3 $(ESPHOME_IMAGE) /config/tools/webui-mock/mock_server.py
 
 mock-ui: webui
 	$(subst docker run --rm,docker run --rm -it -p $(MOCK_PORT):8080,$(MOCK)) $(if $(MOCK_INDEX),--index /config/$(MOCK_INDEX)) $(MOCK_ARGS) /config/$(CONFIG)
@@ -98,9 +164,12 @@ mock-ui: webui
 # and Wi-Fi tabs) against the same mock, rather than the bundle mock-ui
 # serves: its files are served and watched like the YAML, so saving one
 # reloads the page. MOCK_HOTSPOT=1 starts the device on its fallback
-# hotspot, with no clock, as a new install would.
+# hotspot, with no clock (a router outage). MOCK_FRESH=1 starts it as a new
+# install: not set up (Setup State lists everything), no network saved, on its
+# hotspot with no clock; once a Page Password is set, it asks for it.
+# MOCK_NO_RELEASE=1: no firmware published yet, every update check fails.
 mock-webui:
-	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot)"
+	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh) $(if $(MOCK_NO_RELEASE),--no-release)"
 
 # Prints the page layout (sections, order, which entities the simulation
 # drives) and fails if $(CONFIG) has an entity type the mock can't render.
@@ -111,7 +180,7 @@ mock-ui-check:
 # $(CONFIG): every controller entity id it names must exist, as a fresh install names it, and its
 # piscine-card must map every entity the card uses. Python in the ESPHome image, like the mock.
 ha-dashboard-check:
-	docker run --rm -v "$(CURDIR):/config" --entrypoint python3 ghcr.io/esphome/esphome /config/tools/ha-dashboard-check.py /config/$(CONFIG) /config/home-assistant/dashboard
+	docker run --rm -v "$(CURDIR):/config" --entrypoint python3 $(ESPHOME_IMAGE) /config/tools/ha-dashboard-check.py /config/$(CONFIG) /config/home-assistant/dashboard
 
 # The device's own page (webui/), bundled into the two files the firmware
 # embeds: web_server's js_include and css_include in $(CONFIG). Rebuilt only
@@ -128,5 +197,11 @@ webui/dist/device.js: $(WEBUI_SRC)
 webui/dist/device.css: webui/app.css
 	$(ESBUILD) webui/app.css --minify --log-level=warning --outfile=$@
 
+# Unit tests of the pages' pure modules (webui/test/: the setup's logic, the
+# time zone table; tools/tests/install-page.test.mjs: the install page's
+# states), with Node's own test runner, in the same node image.
+webui-test:
+	docker run --rm -v "$(CURDIR):/src" -w /src node:22-alpine node --test 'webui/test/*.test.mjs' 'tools/tests/*.test.mjs'
+
 clean:
-	rm -rf .esphome webui/dist
+	rm -rf .esphome webui/dist $(MIGRATE_DIR)

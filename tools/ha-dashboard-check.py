@@ -7,8 +7,10 @@ ESPHome entity <domain>.<device>_<entity name>, slugified, with the device's fri
 Controller"). This fails when
   - an id that names a controller entity (<domain>.pool_controller_…) matches no entity of the YAML
     (renamed, removed, internal, or a text_sensor written as text_sensor.… instead of sensor.…);
-  - a piscine-card in the dashboard leaves out an entity of the card's DEFAULT_ENTITIES, which are
-    one particular install's ids, not a fresh one's;
+  - a piscine-card in the dashboard leaves out an entity of the card's DEFAULT_ENTITIES that is one
+    particular install's id (most of them), not a fresh one's: a default that already is a fresh
+    install's id needn't be mapped, and one the YAML doesn't have yet (the firmware's updates before
+    they land) is only noted, since the card hides its rows;
   - a script the card calls isn't in scripts.yaml.
 --list prints every id a fresh install gets, to write the dashboard from.
 """
@@ -26,7 +28,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "web
 from mock_server import load_layout  # noqa: E402  (the mock's loader: ESPHome tags, packages)
 
 HA_DOMAIN = {"text_sensor": "sensor"}  # ESPHome text sensors are sensors in Home Assistant
-ID = re.compile(r"\b((?:sensor|binary_sensor|number|select|button|switch|fan|text|datetime|script|sun|input_[a-z_]+)\.[a-z0-9_]+)\b")
+ID = re.compile(r"\b((?:sensor|binary_sensor|number|select|button|switch|fan|text|datetime|update|script|sun|input_[a-z_]+)\.[a-z0-9_]+)\b")
 
 
 def slugify(text: str) -> str:
@@ -77,6 +79,7 @@ def main() -> int:
 
     root = os.path.dirname(os.path.abspath(config))
     defaults = card_defaults(os.path.join(root, "home-assistant", "piscine-card.js"))
+    fresh = {k for k, v in defaults.items() if v.split(".", 1)[1].startswith(device + "_")}
     with open(os.path.join(folder, "scripts.yaml"), encoding="utf-8") as f:
         scripts = {f"script.{k}" for k in (yaml.safe_load(f) or {})}
     errors = []
@@ -96,12 +99,16 @@ def main() -> int:
             elif i.startswith("script.") and i not in scripts:
                 errors.append(f"{name}: {i} is not defined in scripts.yaml")
         for card in cards(doc):
-            missing = sorted(set(defaults) - set(card.get("entities") or {}))
+            missing = sorted(set(defaults) - fresh - set(card.get("entities") or {}))
             if missing:
                 errors.append(f"{name}: a piscine-card leaves out entities {', '.join(missing)} "
                               "(its defaults are one install's ids: map every one)")
     for e in errors:
         print(f"ERROR {e}")
+    ahead = sorted(k for k in fresh if defaults[k] not in known)
+    if ahead:
+        print(f"NOTE piscine-card's defaults for {', '.join(ahead)} name no entity of {os.path.basename(config)}: "
+              "the card hides their rows until the firmware has them")
     print(f"{used} controller entity references checked against {len(known)} entities of {os.path.basename(config)}"
           f"{': OK' if not errors else f', {len(errors)} error(s)'}")
     return 1 if errors else 0

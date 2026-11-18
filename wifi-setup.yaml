@@ -2,18 +2,23 @@
 # pool-controller.yaml (packages: wifi_setup), which therefore has no
 # `reboot_timeout` of its own (see the interval at the bottom).
 #
+# The firmware compiles in no network: a controller joins the one saved by
+# Improv serial (the install page, over USB) or from its page, kept in NVS.
+#
 # What it adds:
-#   - a fallback hotspot, "pool-controller", started after 1 min without a
-#     Wi-Fi connection: a new device with no network, a router outage, a
-#     changed password. The device's page (web_server, still behind its
-#     login) answers on it at http://192.168.4.1. The device keeps trying
-#     its network meanwhile.
+#   - Improv serial: the install page sends the network over USB right after
+#     flashing.
+#   - a hotspot, "pool-controller": at once on a controller with no network
+#     saved yet, and after 1 min without a Wi-Fi connection otherwise (a
+#     router outage, a changed password). The device's page (web_server,
+#     behind its login once a Page Password is set) answers on it at
+#     http://192.168.4.1. The device keeps trying its network meanwhile.
 #     Deliberately NOT ESPHome's captive_portal: while the hotspot is up it
 #     answers every GET request itself, without auth, so the page would be
 #     unreachable on the hotspot.
 #   - a way to join a network from the page: New WiFi Network + New WiFi
 #     Password, then Join WiFi Network (wifi.configure: tries it, saves it on
-#     success; a saved network takes precedence over the one built in).
+#     success, in place of the network saved before).
 #   - Wi-Fi statistics: signal, network, router (BSSID), addresses, networks
 #     nearby, disconnections since boot, devices on the hotspot.
 #   - Device Clock, settable from the page: on the hotspot alone there's no
@@ -28,12 +33,17 @@ wifi:
   ap:
     ssid: "pool-controller"
     # Open, as asked: joining it gives nothing without the web_server login
-    # (and api/ota have their own keys). Anyone in range can still join and
-    # try that login; a WPA2 password here would stop that:
-    # password: !secret pool_controller_ap_password
+    # (and OTA has its own password, the API its key). Anyone in range can
+    # still join and try that login, and a controller still being set up
+    # (no Page Password, no API key yet) is open to them: a WPA2 password
+    # here would stop that, at the cost of one in the build (password: …).
     ap_timeout: 1min
   on_disconnect:
     - lambda: 'id(wifi_disconnects) += 1;'
+
+# The install page (ESP Web Tools) sends the network over USB: tried, then
+# saved like one joined from the page.
+improv_serial:
 
 time:
   - id: !extend local_time
@@ -162,13 +172,17 @@ button:
           password: !lambda 'return id(wifi_join_password);'
           save: true
           timeout: 30s
+          # Either way, Setup State (device-settings.yaml) says at once
+          # whether a network is saved: the setup wizard follows it.
           on_connect:
             - logger.log: "Wi-Fi: joined and saved"
+            - component.update: setup_state
           on_error:
             - logger.log:
                 level: WARN
                 format: "Wi-Fi: couldn't join '%s', keeping the previous network"
                 args: ['id(wifi_join_ssid).state.c_str()']
+            - component.update: setup_state
       - lambda: 'id(wifi_join_password).clear();'
 
 datetime:

@@ -12,8 +12,8 @@ Entities, names, icons, number ranges and sorting groups are read from
 pool-controller.yaml, and the page reloads itself whenever that file is saved,
 so layout changes show up without a build or a flash. Behind the entities sits
 a small simulation of the controller (daily plan, boosts, Manual Override and
-its timeout, the Apply gate, filtration hours) so the controls react the way
-they do on the device. It is an approximation for UI work only: the firmware
+its timeout, the Apply gate, filtration hours, firmware updates and their
+install gate) so the controls react the way they do on the device. It is an approximation for UI work only: the firmware
 in pool-controller.yaml is the source of truth for the control logic.
 
 Usage (from the repo root; `make mock-ui` wraps this):
@@ -21,19 +21,29 @@ Usage (from the repo root; `make mock-ui` wraps this):
     python3 tools/webui-mock/mock_server.py --index my-page.html pool-controller.yaml
     python3 tools/webui-mock/mock_server.py --check pool-controller.yaml
     python3 tools/webui-mock/mock_server.py --extra my-package.yaml [--hotspot] pool-controller.yaml
+    python3 tools/webui-mock/mock_server.py --fresh pool-controller.yaml
 
 The config's own `packages:` (`name: !include file.yaml`) are loaded like ESPHome
 does, for their entities and sorting groups. --extra loads one more package the
 same way, for designing against entities the firmware doesn't have yet.
 --hotspot starts the simulated device on its fallback hotspot, with no clock.
+--no-release has no firmware published yet, so every update check fails (the
+manifest on GitHub Pages is a 404), as before a project's first release.
+--fresh starts it as a controller straight out of the install: nothing set up
+(Setup State lists everything), no network saved, so on its hotspot with no
+clock. Once a Page Password is set, the mock asks for it (digest, user admin),
+as the device does; the configured mock (no --fresh) never asks.
 
 Needs PyYAML, and the `esphome` package for the device's index page -- both present in
 the ghcr.io/esphome/esphome image the Makefile runs this in.
 """
 
 import argparse
+import base64
+import binascii
 import functools
 import gzip
+import hashlib
 import json
 import math
 import os
@@ -53,12 +63,12 @@ import yaml
 
 # Domains the mock renders, in the order ESPHome's entity iterator sends them.
 SUPPORTED_DOMAINS = ["binary_sensor", "fan", "sensor", "switch", "button", "text_sensor", "number", "datetime",
-                     "text", "select"]
+                     "text", "select", "update"]
 # Entity domains ESPHome has that the mock doesn't simulate; --check fails on them
 # so a new one can't silently go missing from the mock.
 UNSUPPORTED_DOMAINS = [
     "alarm_control_panel", "climate", "cover", "event", "light", "lock",
-    "media_player", "update", "valve", "water_heater",
+    "media_player", "valve", "water_heater",
 ]
 NUMBER_MODES = {"auto": 0, "box": 1, "slider": 2}
 TEXT_MODES = {"text": 0, "password": 1}
@@ -70,7 +80,7 @@ SENSOR_DEFAULTS = {
 }
 
 # Mock sun times (seconds after local midnight). The real ones come from the
-# sun: component and the pool's coordinates, which stay in secrets.yaml.
+# sun: component and the pool's coordinates (Latitude, Longitude).
 MOCK_SUNRISE = 7 * 3600 + 45 * 60
 MOCK_SUNSET = 17 * 3600 + 15 * 60
 
@@ -252,6 +262,7 @@ N = {
     "fill_today": "Fill Water Today",
     "fill_days": "Fill Water Days",
     "fill_months": "Fill Water Months",
+    "fill_import": "Fill Water Import",
     "fw_version": "Firmware Version",
     "esphome_version": "ESPHome Version",
 }
@@ -272,7 +283,50 @@ W = {
     "clock": "Device Clock",
     "clock_source": "Clock Source",
 }
-SIMULATED = set(N.values()) | set(W.values())
+# The controller's settings (device-settings.yaml, a package of the config).
+S = {
+    "setup_state": "Setup State",
+    "page_password": "Page Password",
+    "ota_password": "OTA Password",
+    "api_key": "API Key",
+    "generate_key": "Generate API Key",
+    "forget_key": "Forget API Key",
+    "latitude": "Latitude",
+    "longitude": "Longitude",
+    "timezone": "Timezone",
+    "timezone_name": "Timezone Name",
+    "detected": "Detected Probes",
+    "pool_probe": "Pool Probe",
+    "pad_probe": "Pad Probe",
+    "outdoor_probe": "Outdoor Probe",
+    "rescan": "Rescan Probes",
+    "factory_reset": "Factory Reset",
+    "waiting_for": "Schedule Waiting For",
+}
+# Firmware updates (updates.yaml, a package of the config).
+U = {
+    "firmware": "Firmware",
+    "status": "Update Status",
+    "auto": "Auto Update",
+    "interval": "Update Check Interval",
+    "check": "Check for Update",
+    "cancel": "Cancel Update",
+}
+SIMULATED = set(N.values()) | set(W.values()) | set(S.values()) | set(U.values())
+
+# The simulated probe bus: made-up addresses, as ESPHome writes them (family
+# code 28 last), and what each probe measures. A fourth one hangs loose on the
+# bus, so the role selects have one more option than roles.
+PROBES = {
+    "8a00000012345628": "pool_temp",
+    "3f0000006789ab28": "pad_temp",
+    "c1000000abcdef28": "outdoor_temp",
+    "5e0000004242c028": "spare",
+}
+ROLES = {"pool_probe": "pool_temp", "pad_probe": "pad_temp", "outdoor_probe": "outdoor_temp"}
+NO_PROBE = "none"
+PAGE_USER = "admin"
+REALM = "Login Required"
 
 # What the simulated device "sees" around it: (ssid, rssi dBm, bssid). Joining
 # one of the last three fails, as it would with a wrong password.
@@ -290,10 +344,11 @@ JOIN_SECONDS = 5
 class WifiSim:
     """The proposed Wi-Fi setup: station or fallback hotspot, joining a network, and the clock."""
 
-    def __init__(self, log, hotspot: bool):
+    def __init__(self, log, hotspot: bool, saved: bool = True):
         self.log = log
         self.mode = "Hotspot" if hotspot else "Connected"
         self.network = None if hotspot else NEARBY[0]
+        self.saved = saved  # a network saved in NVS (Setup State's `wifi`)
         self.rssi = float(NEARBY[0][1])
         self.disconnects = 0
         self.join_ssid = ""
@@ -343,6 +398,7 @@ class WifiSim:
             match = next((n for n in NEARBY if n[0] == ssid), None)
             if match and ssid not in UNJOINABLE and len(password) >= 8:
                 self.mode, self.network, self.rssi = "Connected", match, float(match[1])
+                self.saved = True
                 self.log(f"Wi-Fi: joined '{ssid}' and saved it")
                 if self.clock_source != "SNTP":
                     self.clock_source, self.clock_offset = "SNTP", 0.0
@@ -353,6 +409,12 @@ class WifiSim:
         if self.mode == "Connected" and now - self.last_drift > 10:
             self.last_drift = now
             self.rssi = min(-45.0, max(-90.0, self.rssi + random.uniform(-2, 2)))
+
+    def forget(self):
+        """Factory Reset: no network saved, so the device reboots onto its hotspot, with no clock."""
+        self.saved = False
+        self.mode, self.network, self.joining = "Hotspot", None, None
+        self.clock_source, self.clock_offset = "None", 0.0
 
     def snapshot(self) -> dict:
         connected = self.mode == "Connected"
@@ -375,6 +437,123 @@ class WifiSim:
         }
 
 
+def _posix_of(zone: str) -> str:
+    """The POSIX TZ string of an IANA zone: the footer line of its TZif file."""
+    try:
+        with open(os.path.join("/usr/share/zoneinfo", zone), "rb") as f:
+            footer = f.read().rstrip(b"\n").rsplit(b"\n", 1)[-1].decode()
+        return footer if footer and not footer.startswith("TZif") else "UTC0"
+    except (OSError, UnicodeDecodeError):
+        return "UTC0"
+
+
+def _valid_posix(text: str) -> bool:
+    try:
+        from aioesphomeapi.posix_tz import parse_posix_tz  # noqa: PLC0415 -- in the ESPHome image
+
+        parse_posix_tz(text)
+        return True
+    except ImportError:
+        return bool(re.fullmatch(r"(<[^>]+>|[A-Za-z]{3,})[-+]?\d[\d:]*([A-Za-z<].*)?", text))
+    except ValueError:
+        return False
+
+
+def _api_key_ok(text: str) -> bool:
+    """Base64 of 32 bytes, not all zero: what the device's API Key accepts."""
+    if not re.fullmatch(r"[A-Za-z0-9+/]{43}=", text or ""):
+        return False
+    try:
+        raw = base64.b64decode(text, validate=True)
+    except binascii.Error:
+        return False
+    return len(raw) == 32 and any(raw)
+
+
+class SettingsSim:
+    """device-settings.yaml: the page login, API key, position, timezone, probe roles, Setup State."""
+
+    def __init__(self, log, fresh: bool):
+        self.log = log
+        # The login the mock asks for: only one set during this run (a configured mock never asks).
+        self.page_password: str | None = None
+        self.page_password_set = not fresh
+        self.api_key_set = not fresh
+        self.key_generated = False  # Generate API Key's: nobody holds it, so Home Assistant never connects
+        self.bus = list(PROBES)
+        if fresh:
+            self.latitude = self.longitude = None
+            self.timezone = self.timezone_name = ""
+            self.roles = {role: None for role in ROLES}
+        else:
+            # A public place, not anyone's pool: the mock's sun times are fixed anyway.
+            self.latitude, self.longitude = 48.85, 2.35
+            self.timezone_name = os.environ.get("TZ") or "Europe/Paris"
+            self.timezone = _posix_of(self.timezone_name)
+            self.roles = {role: next(a for a, what in PROBES.items() if what == measured)
+                          for role, measured in ROLES.items()}
+
+    @property
+    def position_ok(self) -> bool:
+        return self.latitude is not None and self.longitude is not None and bool(self.timezone)
+
+    def options(self) -> list[str]:
+        known = self.bus + [a for a in self.roles.values() if a and a not in self.bus]
+        return [NO_PROBE] + known
+
+    def set_role(self, name: str, option: str):
+        role = next(r for r in ROLES if S[r] == name)
+        address = None if option == NO_PROBE else option
+        for other in ROLES:  # one role per probe: taking it from another role clears that one
+            if other != role and address and self.roles[other] == address:
+                self.roles[other] = None
+                self.log(f"'{S[other]}' set to none (its probe went to '{name}')")
+        self.roles[role] = address
+
+    def set_position(self, name: str, value: float):
+        value = round(value, 2)
+        if name == S["latitude"]:
+            self.latitude = value
+        else:
+            self.longitude = value
+
+    def setup_state(self, wifi_saved: bool) -> str:
+        missing = [item for item, ok in (
+            ("page_password", self.page_password_set),
+            ("wifi", wifi_saved),
+            ("position", self.position_ok),
+            ("probes", bool(self.roles["pool_probe"])),
+            ("api_key", self.api_key_set),
+        ) if not ok]
+        return ",".join(missing) or "configured"
+
+    def detected(self, temps: dict) -> str:
+        known = self.options()[1:]
+        if not known:
+            return "--"
+        reading = lambda a: f"{temps[PROBES[a]]:.1f}" if a in self.bus and PROBES.get(a) in temps else "--"  # noqa: E731
+        return ", ".join(f"{a}: {reading(a)}" for a in known)
+
+    def factory_reset(self):
+        """Access and network go; roles, position and timezone stay."""
+        self.page_password, self.page_password_set, self.api_key_set = None, False, False
+        self.key_generated = False
+
+    def snapshot(self, wifi_saved: bool, temps: dict) -> dict:
+        return {
+            S["setup_state"]: self.setup_state(wifi_saved),
+            S["page_password"]: "",  # write-only: never echoed, as on the device
+            S["ota_password"]: "",
+            S["api_key"]: "",
+            S["latitude"]: self.latitude,
+            S["longitude"]: self.longitude,
+            S["timezone"]: self.timezone,
+            S["timezone_name"]: self.timezone_name,
+            S["detected"]: self.detected(temps),
+            **{S[role]: address or NO_PROBE for role, address in self.roles.items()},
+        }
+
+
 def _hhmm(ts: int) -> str:
     return datetime.fromtimestamp(ts).strftime("%H:%M") if ts else "--:--"
 
@@ -383,23 +562,141 @@ def _stamp(ts: float) -> str:
     return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
 
 
+class UpdateSim:
+    """updates.yaml: the Firmware entity behind its install gate, the checks, Update Status.
+
+    The device's timings, shortened: the first check a few seconds after start (a minute on the
+    device), a check answers in 2 s, an install takes 15 s, then the controller "reboots" on the new
+    version (the page's event stream drops, as on the device). A release is always waiting at start.
+    Auto Update acts on scheduled checks only (updates.h's auto_update_step), and Cancel Update drops
+    an install waiting at the gate.
+    """
+
+    LATEST = "v1.5.0"
+    RELEASE_URL = "https://github.com/davidterranova/pool-controller/releases/tag/v1.5.0"
+    CHECK_S = 2
+    INSTALL_S = 15
+
+    def __init__(self, log, installed: str = "v1.4.0", released: bool = True):
+        self.log = log
+        self.installed = installed
+        self.released = released  # False: no manifest on GitHub Pages yet, every check fails
+        self.latest: str | None = None
+        self.state = "UNKNOWN"  # as web_server sends it: UNKNOWN, NO UPDATE, UPDATE AVAILABLE, INSTALLING
+        self.error = False
+        self.last_op = None  # "check" | "install": which one failed
+        self.checking_until = 0.0
+        self.next_check = time.time() + 5
+        self.pending_origin: str | None = None
+        self.waiting_for: str | None = None
+        self.installing_until = 0.0
+        self.auto_armed = False  # a scheduled check ran and Auto Update hasn't acted on it yet
+
+    def check(self, origin: str, scheduled: bool = False):
+        """A manual check disarms Auto Update: what it finds waits for an explicit install."""
+        self.log(f"Checking for update ({origin}): https://pool-controller.kitesize.fr/firmware/manifest.json")
+        self.checking_until = time.time() + self.CHECK_S
+        self.last_op = "check"
+        self.auto_armed = scheduled
+
+    def cancel(self):
+        if not self.pending_origin:
+            self.log("Cancel Update: no install waiting")
+            return
+        self.log(f"Install of {self.latest} cancelled ({self.pending_origin}; was waiting: {self.waiting_for})")
+        self.pending_origin = self.waiting_for = None
+
+    def install_request(self, origin: str, blocker: str | None):
+        if self.state == "INSTALLING" or self.pending_origin:
+            self.log(f"Install ({origin}): already under way")
+        elif self.state != "UPDATE AVAILABLE":
+            self.log(f"Install ({origin}): no update available; check first")
+        else:
+            self.log(f"Install of {self.latest} requested ({origin})")
+            self.pending_origin, self.waiting_for = origin, None
+            self.gate(blocker)
+
+    def gate(self, blocker: str | None):
+        if not self.pending_origin:
+            return
+        if blocker:
+            if blocker != self.waiting_for:
+                self.log(f"Install of {self.latest} waits: {blocker} in progress")
+            self.waiting_for = blocker
+            return
+        self.log(f"Installing {self.latest} ({self.pending_origin}), then rebooting")
+        self.pending_origin = self.waiting_for = None
+        self.state, self.last_op = "INSTALLING", "install"
+        self.installing_until = time.time() + self.INSTALL_S
+
+    def tick(self, auto: bool, hours: float, blocker: str | None) -> bool:
+        """Advances checks and installs; True when the controller reboots onto the new firmware."""
+        now = time.time()
+        if self.checking_until and now >= self.checking_until and not self.released:
+            self.checking_until, self.error = 0.0, True
+            self.log("Update check failed: HTTP 404 (no release published yet)")
+        if self.checking_until and now >= self.checking_until:
+            self.checking_until = 0.0
+            self.latest, self.error = self.LATEST, False
+            self.state = "NO UPDATE" if self.latest == self.installed else "UPDATE AVAILABLE"
+            self.log(f"Firmware {self.latest} available (installed: {self.installed})" if self.state == "UPDATE AVAILABLE"
+                     else f"Firmware up to date ({self.installed})")
+        if hours and now >= self.next_check:
+            self.next_check = now + hours * 3600
+            self.check(f"every {hours:g} h", scheduled=True)
+        if self.auto_armed and not self.checking_until:  # the scheduled check has answered
+            self.auto_armed = False
+            if auto and not self.pending_origin and self.state == "UPDATE AVAILABLE":
+                self.install_request("Auto Update", blocker)
+        self.gate(blocker)
+        if self.state == "INSTALLING" and now >= self.installing_until:
+            self.installed, self.state = self.latest, "NO UPDATE"
+            return True
+        return False
+
+    def status(self, blocker: str | None) -> str:
+        """Update Status, as updates.h's status_text() words it."""
+        if self.state == "INSTALLING":
+            return "installation"
+        if self.pending_origin and blocker:
+            return f"en attente ({blocker})"
+        if self.pending_origin:
+            return "installation"
+        if self.checking_until:
+            return "vérification"
+        if self.error:
+            return "erreur (installation)" if self.last_op == "install" else "erreur (vérification)"
+        return {"UPDATE AVAILABLE": "disponible", "NO UPDATE": "à jour"}.get(self.state, "non vérifié")
+
+    def entity(self) -> dict:
+        return {"state": self.state, "latest": self.latest or "", "installed": self.installed,
+                "release_url": self.RELEASE_URL if self.latest else ""}
+
+
 class PoolSim:
     """A pocket version of evaluate_speed and friends, driven by wall-clock time."""
 
-    def __init__(self, log, hotspot: bool = False):
+    def __init__(self, log, hotspot: bool = False, fresh: bool = False, released: bool = True):
         self.log = log
-        self.wifi = WifiSim(log, hotspot)
+        # A fresh controller has no network saved: it starts on its hotspot.
+        self.wifi = WifiSim(log, hotspot or fresh, saved=not fresh)
+        self.settings = SettingsSim(log, fresh)
+        self.updates = UpdateSim(log, released=released)
+        self.rebooted = False  # set by an install: the server drops the page's event stream
         self.started = time.time()
         self.numbers: dict[str, float] = {}
-        self.selects: dict[str, str] = {}
+        self.selects: dict[str, str] = {U["interval"]: "24 h"}
         self.static: dict[str, object] = {}  # values for entities the sim doesn't model
-        self.temps = {"pool_temp": 26.4, "pad_temp": 21.8, "outdoor_temp": 17.5}
+        # What each probe on the simulated bus measures (PROBES); Pool Return Temperature & co. read
+        # the one their role holds (reading()).
+        self.temps = {"pool_temp": 26.4, "pad_temp": 21.8, "outdoor_temp": 17.5, "spare": 19.2}
         self.flow = 0.0
         self.volume = 18342.0
         self.active: dict[str, float] = {}
         self.blocks = (0, 0, 0, 0)
         self.sunset = 0
         self.computed_day = None
+        self.seeded = False  # Filtration Hours Today started where the first plan would have it
         self.last_recompute = 0.0
         self.override_since: float | None = None
         self.commanded = "Off"
@@ -432,7 +729,11 @@ class PoolSim:
         self.fill_days = days[:]
         self.fill_days[12] = None  # a day the device was off
         self.fill_months = [23, 30, 9538, 2913, None, None, None, None, None, None, None, None]  # this month's closed days first
+        if fresh:  # straight out of the install: no day closed yet
+            self.history = []
+            self.fill_days, self.fill_months = [None] * 30, [None] * 12
         self.fill_today = 0.0
+        self.fill_import_state = ""  # Fill Water Import: what the last import did, never the line
         self.last_tick = time.time()
         self.last_drift = time.time()
 
@@ -441,6 +742,8 @@ class PoolSim:
     def adopt(self, entities):
         """Seed values for entities seen for the first time (keeps existing ones across reloads)."""
         for e in entities:
+            if e.name in SIMULATED and e.name in S.values():
+                continue  # SettingsSim holds them
             if e.domain == "number" and e.name not in self.numbers:
                 self.numbers[e.name] = float(e.get("initial_value", e.get("min_value", 0)))
             elif e.domain == "select" and e.name not in self.selects:
@@ -449,6 +752,7 @@ class PoolSim:
             elif e.name not in SIMULATED and e.name not in self.static:
                 self.static[e.name] = {"sensor": 0.0, "binary_sensor": False, "fan": False,
                                        "switch": False, "text_sensor": "--"}.get(e.domain)
+        self.static.setdefault(U["auto"], True)  # Auto Update: on by default, as the firmware
         if not self.active:
             self.active = {k: self.num(k) for k in ("min", "max", "warm", "offset")}
 
@@ -459,10 +763,31 @@ class PoolSim:
     def override(self) -> str:
         return self.selects.get(N["override"], "Auto")
 
+    def reading(self, key: str) -> float | None:
+        """A temperature sensor's value (pool_temp, ...): what the probe its role holds measures, so a
+        probe given the wrong role reads the wrong place; unknown while the role has none, as on the device."""
+        address = self.settings.roles[next(role for role, sensor in ROLES.items() if sensor == key)]
+        return self.temps.get(PROBES.get(address)) if address else None
+
+    def waiting_for(self) -> str | None:
+        """Schedule Waiting For: why today's plan isn't computed, None once it is."""
+        st = self.settings
+        if st.latitude is None or st.longitude is None:
+            return "position"
+        if not st.timezone:
+            return "timezone"
+        if not self.wifi.clock_ok:
+            return "clock"
+        if self.computed_day == datetime.fromtimestamp(time.time()).date():
+            return None
+        return "pool probe" if not st.roles["pool_probe"] else "pool temperature"
+
     # -- schedule
 
     def recompute(self, now: float):
-        temp = self.temps["pool_temp"]
+        temp = self.reading("pool_temp")
+        if temp is None or not self.settings.position_ok:
+            return  # as evaluate_speed: no plan without a pool reading, a position and a timezone
         hours = min(max(temp / 2.0, self.active["min"]), self.active["max"]) + self.active["offset"]
         midnight = int(datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
         sunrise, sunset = midnight + MOCK_SUNRISE, midnight + MOCK_SUNSET
@@ -520,13 +845,14 @@ class PoolSim:
         return nbs, nbe, nxt, (self.plan_at(nxt) if nxt else "Off")
 
     def desired(self, now: int) -> str:
-        temp = self.temps["pool_temp"]
-        if temp < self.num("freeze_at", 3.0):  # Freeze Protection Temperature, as evaluate_speed
+        temp = self.reading("pool_temp")
+        if temp is not None and temp < self.num("freeze_at", 3.0):  # Freeze Protection Temperature
             return "Low"
         if self.override != "Auto":
             return self.override
         speed = self.plan_at(now)
-        if speed == "Off" and self.sunset and (now < self.blocks[0] or now >= self.sunset) and temp > 28.0:
+        if (speed == "Off" and self.sunset and (now < self.blocks[0] or now >= self.sunset)
+                and temp is not None and temp > 28.0):
             return "Low"
         return speed
 
@@ -534,6 +860,7 @@ class PoolSim:
 
     def tick(self):
         self.wifi.tick()
+        self.tick_updates()
         now = time.time()
         today = datetime.fromtimestamp(now).date()
         if not self.wifi.clock_ok:
@@ -542,9 +869,10 @@ class PoolSim:
             self.evaluate()
             return
         if self.computed_day != today:
-            first = self.computed_day is None
-            self.recompute(now)
-            if first:
+            first = not self.seeded
+            self.recompute(now)  # a no-op until there's a pool reading, a position and a timezone
+            if first and self.computed_day == today:
+                self.seeded = True
                 # Start "Filtration Hours Today" where today's plan would have it.
                 midnight = int(datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0).timestamp())
                 self.filtration_s = sum(60 for t in range(midnight, int(now), 60) if self.plan_at(t) != "Off")
@@ -559,6 +887,8 @@ class PoolSim:
             self.log(f"Manual Override '{self.override}' expired after {timeout:.0f} min -- back to Auto")
             self.set_override("Auto")
         # Filtration runtime.
+        if self.counted_day is None:
+            self.counted_day = today
         if self.counted_day != today:
             b1s, b1e, b2s, b2e = self.blocks
             self.history = [(self.counted_day, self.filtration_s, self.water_lo, self.water_hi,
@@ -598,6 +928,26 @@ class PoolSim:
                 self.run_started = None if desired == "Off" else time.time()
             self.commanded = desired
 
+    # -- firmware updates (updates.yaml)
+
+    @property
+    def update_blocker(self) -> str | None:
+        """What an install waits for (updates.h's gate_blocker): the override first, then a fill."""
+        if self.override != "Auto":
+            return "mode manuel"
+        return "remplissage" if self.flow > 0 else None
+
+    def tick_updates(self):
+        hours = {"À la demande": 0, "6 h": 6, "24 h": 24, "7 j": 168}.get(self.selects.get(U["interval"]), 24)
+        online = self.wifi.mode == "Connected"  # the releases are on the internet
+        if self.updates.tick(bool(self.static.get(U["auto"])), hours if online else 0, self.update_blocker):
+            self.log(f"Rebooted on {self.updates.installed}")
+            self.started = time.time()
+            self.rebooted = True
+
+    def install(self, origin: str):
+        self.updates.install_request(origin, self.update_blocker)
+
     # -- actions (what the REST endpoints call)
 
     def set_override(self, option: str):
@@ -613,9 +963,33 @@ class PoolSim:
             self.recompute(time.time())
         elif name == W["join"]:
             self.wifi.join()
+        elif name == U["cancel"]:
+            self.updates.cancel()
+        elif name == U["check"]:
+            if self.wifi.mode == "Connected":
+                self.updates.check("on request")
+            else:
+                self.log("Check for update (on request): no network")
         elif name == N["update_temps"]:
             for k in self.temps:
                 self.temps[k] += random.uniform(-0.1, 0.1)
+        elif name == S["generate_key"]:
+            if self.settings.api_key_set:
+                self.log("Generate API Key: a key is already set; Forget API Key first")
+            else:
+                self.settings.api_key_set = self.settings.key_generated = True
+                self.log("API key generated and saved")
+        elif name == S["forget_key"]:
+            self.settings.api_key_set = self.settings.key_generated = False
+            self.log("API key forgotten")
+        elif name == S["rescan"]:
+            self.log(f"Probe scan: {len(self.settings.bus)} on the bus")
+        elif name == S["factory_reset"]:
+            self.log("Factory reset: forgetting the page and OTA passwords, the API key and the saved Wi-Fi")
+            self.settings.factory_reset()
+            self.wifi.forget()
+            self.started = time.time()  # the reboot
+            self.log("Rebooted into setup mode, on the hotspot")
         self.evaluate()
 
     def set_number(self, name: str, value: float):
@@ -631,6 +1005,23 @@ class PoolSim:
         self.set_override("Low" if on else "Off")
 
     # -- what each entity shows right now
+
+    def import_fill(self, text: str):
+        """Fill Water Import (fill_import.h): writes a Fill Water Days / Months line into the record, as the firmware
+        does, and says what it did -- the entity's state, never the line."""
+        today = datetime.now().date()
+        try:
+            line = parse_fill_line(text)
+            done = apply_fill_line(line, today, self.fill_days, self.fill_months)
+        except ValueError as err:
+            self.log(f"Fill water import refused ({len(text)} characters): {err}")
+            self.fill_import_state = f"refusé : {err}"
+            return
+        self.log(f"Fill water import: {done['written']} {'months' if line[0] else 'days'} written, {done['unknown']} unknown, "
+                 f"{done['open']} open (today / this month), {done['outside']} older than the record, "
+                 f"{done['clamped']} capped at 65534 L; this month's closed days: {self.fill_months[0]} L")
+        unit = "mois" if line[0] else "jours" if done["written"] > 1 else "jour"
+        self.fill_import_state = f"importé : {done['written']} {unit}"
 
     def snapshot(self) -> dict:
         now = time.time()
@@ -660,26 +1051,39 @@ class PoolSim:
             N["next_boost_start"]: _hhmm(nbs),
             N["next_boost_end"]: _hhmm(nbe),
             N["last_recompute"]: _stamp(self.last_recompute) if self.last_recompute else "Never",
-            N["not_computed"]: b1s == 0 and b2s == 0 and now - self.started > 300,
+            N["not_computed"]: b1s == 0 and b2s == 0 and (now - self.started > 300
+                                                           or self.waiting_for() in ("position", "timezone")),
             N["pending"]: any(abs(self.num(k) - self.active[k]) > 0.01 for k in self.active),
-            N["pool_temp"]: round(self.temps["pool_temp"], 2),
-            N["pad_temp"]: round(self.temps["pad_temp"], 2),
-            N["outdoor_temp"]: round(self.temps["outdoor_temp"], 2),
-            N["status"]: self.wifi.mode == "Connected",  # the API link to HA needs the home network
+            N["pool_temp"]: _round(self.reading("pool_temp")),
+            N["pad_temp"]: _round(self.reading("pad_temp")),
+            N["outdoor_temp"]: _round(self.reading("outdoor_temp")),
+            # The API link to HA: the home network, and a key HA holds (it sets one as it pairs, or was given it).
+            N["status"]: (self.wifi.mode == "Connected" and self.settings.api_key_set
+                          and not self.settings.key_generated),
             N["flow"]: self.flow,
             N["volume"]: round(self.volume),
             N["fill_today"]: round(self.fill_today),
             N["fill_days"]: _fill_line(self.counted_day - timedelta(days=1) if self.counted_day else None, self.fill_days),
             N["fill_months"]: _fill_line(datetime.now().strftime("%Y-%m"), self.fill_months),
-            # A real commit of the repo, so the page's « Vérifier » gets a real answer from GitHub.
-            N["fw_version"]: "v1.2.1-37-g9d79cd5",
+            N["fill_import"]: self.fill_import_state,
+            # The release it runs: Firmware below updates it (updates.yaml).
+            N["fw_version"]: self.updates.installed,
             N["esphome_version"]: "2026.7.2 2026-11-17 18:05:00 +0000",
         }
         values.update(self.wifi.snapshot())
+        values.update(self.settings.snapshot(self.wifi.saved, self.temps))
+        values[S["waiting_for"]] = self.waiting_for() or "--"
+        values[U["firmware"]] = self.updates.entity()
+        values[U["status"]] = self.updates.status(self.update_blocker)
+        values[U["auto"]] = bool(self.static.get(U["auto"]))
         values.update(self.static)
         values.update(self.numbers)
         values.update(self.selects)
         return values
+
+
+def _round(value: float | None) -> float | None:
+    return None if value is None else round(value, 2)
 
 
 def _fill_line(head, values) -> str:
@@ -687,6 +1091,60 @@ def _fill_line(head, values) -> str:
     if head is None:
         return "--"
     return f"{head}: " + " ".join("-" if v is None else str(v) for v in values)
+
+
+FILL_DAYS, FILL_MONTHS, FILL_DAY_MAX = 30, 12, 0xFFFE
+
+
+def parse_fill_line(text: str):
+    """A Fill Water Days / Months line -> (months?, newest date, [litres or None]), with fill_import.h's parse() rules;
+    ValueError(reason, in the firmware's words) otherwise."""
+    m = re.fullmatch(r" *(\d{4})-(\d{2})(?:-(\d{2}))?:((?: +\S+)+) *", text or "")
+    if not m:
+        raise ValueError("format (attendu « 2026-11-17: 0 19 - 940 » ou « 2026-11: 23 950 »)")
+    months = m.group(3) is None
+    try:
+        date = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3) or 1)).date()
+    except ValueError:
+        raise ValueError("date invalide") from None
+    if date.year < 2000:
+        raise ValueError("date invalide")
+    tokens = m.group(4).split()
+    if len(tokens) > (FILL_MONTHS if months else FILL_DAYS):
+        raise ValueError("trop de valeurs (30 jours ou 12 mois au plus)")
+    values = []
+    for tok in tokens:
+        if tok != "-" and not (re.fullmatch(r"\d{1,10}", tok) and int(tok) < 0xFFFFFFFF):
+            raise ValueError("valeur invalide (litres entiers >= 0, ou -)")
+        values.append(None if tok == "-" else int(tok))
+    return months, date, values
+
+
+def apply_fill_line(line, today, days: list, months: list) -> dict:
+    """fill_import.h's apply() on the mock's record, which is always dated yesterday (days) and this month (months):
+    every closed day or month of the line, then this month's total as its closed days. ValueError for a future line."""
+    is_months, date, values = line
+    yesterday = today - timedelta(days=1)
+    month_no = lambda d: d.year * 12 + d.month - 1  # noqa: E731
+    if (month_no(date) > month_no(today)) if is_months else date > today:
+        raise ValueError("date dans le futur")
+    done = {"written": 0, "unknown": 0, "open": 0, "outside": 0, "clamped": 0}
+    for k, v in enumerate(values):
+        idx = month_no(today) - (month_no(date) - k) if is_months else (yesterday - (date - timedelta(days=k))).days
+        if (idx == 0) if is_months else idx < 0:
+            done["open"] += 1
+        elif v is None:
+            done["unknown"] += 1
+        elif idx >= (FILL_MONTHS if is_months else FILL_DAYS):
+            done["outside"] += 1
+        else:
+            if not is_months and v > FILL_DAY_MAX:
+                v, done["clamped"] = FILL_DAY_MAX, done["clamped"] + 1
+            (months if is_months else days)[idx] = v
+            done["written"] += 1
+    months[0] = sum(v or 0 for i, v in enumerate(days) if (yesterday - timedelta(days=i)).month == today.month
+                    and (yesterday - timedelta(days=i)).year == today.year)
+    return done
 
 
 def _history_day(day, sec, lo, hi) -> str:
@@ -713,9 +1171,10 @@ def _step_decimals(step: float) -> int:
     return len(text.split(".")[1]) if "." in text else 0
 
 
-def entity_json(e: Entity, value, detail_all: bool) -> dict:
-    """The JSON the device sends for an entity -- see web_server.cpp's *_json_ methods."""
-    out = {"name_id": f"{e.domain}/{e.name}", "id": f"{e.domain}-{e.object_id}"}
+def entity_json(e: Entity, value, detail_all: bool, options: list | None = None) -> dict:
+    """The JSON the device sends for an entity -- see web_server.cpp's *_json_ methods. `options`: a
+    select's options when they're set at run time (the probe roles), rather than the YAML's."""
+    out = {"id": f"{e.domain}/{e.name}"}  # ESPHome 2026.11: "domain/Name" in `id`, no `name_id` any more
     if detail_all:
         out.update(domain=e.domain, name=e.name, icon=e.get("icon", ""),
                    entity_category={"config": 1, "diagnostic": 2}.get(e.get("entity_category", ""), 0))
@@ -739,7 +1198,10 @@ def entity_json(e: Entity, value, detail_all: bool) -> dict:
         step = float(e.get("step", 1))
         acc = _step_decimals(step)
         uom = e.get("unit_of_measurement", "")
-        out.update(value=_fmt(value, acc), state=f"{_fmt(value, acc)} {uom}".strip())
+        if value is None or (isinstance(value, float) and math.isnan(value)):
+            out.update(value="NaN", state="NA")
+        else:
+            out.update(value=_fmt(value, acc), state=f"{_fmt(value, acc)} {uom}".strip())
         if detail_all:
             out.update(min_value=_fmt(float(e.get("min_value", 0)), acc),
                        max_value=_fmt(float(e.get("max_value", 100)), acc),
@@ -749,7 +1211,7 @@ def entity_json(e: Entity, value, detail_all: bool) -> dict:
     elif e.domain == "select":
         out.update(value=value, state=value)
         if detail_all:
-            out["option"] = list(e.get("options", []))
+            out["option"] = list(options if options is not None else e.get("options", []))
     elif e.domain == "text":
         mode = TEXT_MODES.get(str(e.get("mode", "text")).lower(), 0)
         # Password mode masks `state` only; `value` is sent as-is (hence the firmware never publishes one).
@@ -760,6 +1222,13 @@ def entity_json(e: Entity, value, detail_all: bool) -> dict:
             out["mode"] = mode
     elif e.domain == "datetime":
         out.update(value=value, state=value)
+    elif e.domain == "update":
+        # web_server's update_json_: the latest version and the state with every event, the rest on connect.
+        value = value or {}
+        out.update(value=value.get("latest", ""), state=value.get("state", "UNKNOWN"))
+        if detail_all:
+            out.update(current_version=value.get("installed", ""), title="Pool Controller", summary="",
+                       release_url=value.get("release_url", ""))
 
     if detail_all and e.weight is not None:
         out["sorting_weight"] = e.weight
@@ -814,7 +1283,7 @@ def device_index(web: dict) -> str:
 
 class MockServer:
     def __init__(self, config_path: str, index_path: str | None, extras: list[str] | None = None,
-                 hotspot: bool = False):
+                 hotspot: bool = False, fresh: bool = False, released: bool = True):
         self.config_path = config_path
         self.index_path = index_path
         self.extras = extras or []
@@ -822,7 +1291,7 @@ class MockServer:
         self.clients: list[queue.Queue] = []
         self.reload_clients: list[queue.Queue] = []
         self.event_id = 0
-        self.sim = PoolSim(self.log, hotspot)
+        self.sim = PoolSim(self.log, hotspot, fresh, released)
         self.layout = load_layout(config_path, self.extras)
         self.sim.adopt(self.layout.entities)
         self.sim.tick()
@@ -832,6 +1301,13 @@ class MockServer:
 
     def entity(self, domain: str, name: str) -> Entity | None:
         return next((e for e in self.layout.entities if e.domain == domain and e.name == name), None)
+
+    def options(self, e: Entity) -> list | None:
+        """A select's options when the device sets them at run time (the probe role selects)."""
+        return self.sim.settings.options() if e.domain == "select" and e.name in (S[r] for r in ROLES) else None
+
+    def json(self, e: Entity, value, detail_all: bool) -> dict:
+        return entity_json(e, value, detail_all, self.options(e))
 
     def next_id(self) -> int:
         self.event_id += 1
@@ -852,7 +1328,7 @@ class MockServer:
             for e in self.layout.entities:
                 value = snapshot.get(e.name)
                 if self.sent.get(e.name) != value:
-                    self.broadcast(sse("state", json.dumps(entity_json(e, value, False))))
+                    self.broadcast(sse("state", json.dumps(self.json(e, value, False))))
             self.sent = snapshot
 
     def assets(self) -> list[str]:
@@ -885,7 +1361,7 @@ class MockServer:
             events = [sse("ping", json.dumps(config), self.next_id(), retry=30000)]
             events += [sse("sorting_group", json.dumps({"name": n, "sorting_weight": w})) for n, w in self.layout.groups]
             snapshot = self.sim.snapshot()
-            events += [sse("state", json.dumps(entity_json(e, snapshot.get(e.name), True))) for e in self.layout.entities]
+            events += [sse("state", json.dumps(self.json(e, snapshot.get(e.name), True))) for e in self.layout.entities]
             return events
 
     # -- REST actions: (status, body)
@@ -901,12 +1377,15 @@ class MockServer:
                 self.sim.press(name)
             elif domain == "select" and action == "set":
                 option = arg("option")
-                if option not in e.get("options", []):
+                options = self.options(e)
+                if option not in (options if options is not None else e.get("options", [])):
                     self.log(f"'{name}': invalid option {option!r}")
                     return 200  # the device also answers 200 and rejects it in the call
                 self.log(f"'{name}' set to {option}")
                 if name == N["override"]:
                     self.sim.set_override(option)
+                elif options is not None:
+                    self.sim.settings.set_role(name, option)
                 else:
                     self.sim.selects[name] = option
             elif domain == "number" and action == "set":
@@ -919,7 +1398,11 @@ class MockServer:
                     self.log(f"'{name}': value {value} out of range [{lo}, {hi}] -- ignored")
                     return 200
                 self.log(f"'{name}' set to {value:g}")
-                self.sim.set_number(name, value)
+                if name in (S["latitude"], S["longitude"]):
+                    self.sim.settings.set_position(name, value)
+                    self.sim.computed_day = None  # recomputed with it, as plan_settings_changed
+                else:
+                    self.sim.set_number(name, value)
             elif domain == "fan" and action in ("turn_on", "turn_off", "toggle"):
                 self.log(f"'{name}' {action}")
                 if name == N["pump"]:
@@ -928,14 +1411,41 @@ class MockServer:
                     self.sim.static[name] = {"turn_on": True, "turn_off": False}.get(action, not self.sim.static.get(name))
             elif domain == "text" and action == "set":
                 value = arg("value") or ""
-                if len(value) > int(e.get("max_length", 255)):
+                if not int(e.get("min_length", 0)) <= len(value) <= int(e.get("max_length", 255)):
+                    self.log(f"'{name}': length {len(value)} out of range -- ignored")
                     return 200
-                if name == W["join_password"]:
+                settings = self.sim.settings
+                if name == S["page_password"]:
+                    settings.page_password, settings.page_password_set = value, True
+                    self.log(f"'{name}' set; the page now asks for it (user {PAGE_USER})")  # never echo it
+                elif name == S["ota_password"]:
+                    self.log(f"'{name}' set")
+                elif name == S["api_key"]:
+                    if _api_key_ok(value):
+                        settings.api_key_set, settings.key_generated = True, False
+                        self.log("API key saved")
+                    else:
+                        self.log("API key refused: not base64 of 32 bytes, or all zero")
+                elif name == S["timezone"]:
+                    if _valid_posix(value):
+                        settings.timezone = value
+                        self.sim.computed_day = None
+                        self.log(f"Timezone: {value}")
+                    else:
+                        self.log(f"Timezone refused, not a POSIX TZ string: {value!r}")
+                elif name == S["timezone_name"]:
+                    if re.fullmatch(r"[A-Za-z0-9/_+-]{1,64}", value):
+                        settings.timezone_name = value
+                    else:
+                        self.log(f"Timezone name refused: {value!r}")
+                elif name == W["join_password"]:
                     self.log(f"'{name}' set")  # never echo it
                     self.sim.wifi.join_password = value
                 elif name == W["join_ssid"]:
                     self.log(f"'{name}' set to {value!r}")
                     self.sim.wifi.join_ssid = value
+                elif name == N["fill_import"]:
+                    self.sim.import_fill(value)
                 else:
                     self.sim.static[name] = value
             elif domain == "datetime" and action == "set":
@@ -948,6 +1458,10 @@ class MockServer:
                     self.sim.static[name] = value
             elif domain == "switch" and action in ("turn_on", "turn_off", "toggle"):
                 self.sim.static[name] = {"turn_on": True, "turn_off": False}.get(action, not self.sim.static.get(name))
+                if name == U["auto"]:
+                    self.log(f"Auto Update {'on' if self.sim.static[name] else 'off'}")
+            elif domain == "update" and action == "install":
+                self.sim.install("Home Assistant ou la page")
             else:
                 return 404
         self.publish_changes()
@@ -961,6 +1475,12 @@ class MockServer:
             time.sleep(1)
             with self.lock:
                 self.sim.tick()
+                rebooted, self.sim.rebooted = self.sim.rebooted, False
+            if rebooted:
+                self.broadcast(None)  # the reboot: every page loses its stream and reconnects
+                with self.lock:
+                    self.sent = self.sim.snapshot()
+                continue
             self.publish_changes()
             if time.time() - last_ping >= 10:
                 last_ping = time.time()
@@ -991,6 +1511,23 @@ class MockServer:
                 self.sent = self.sim.snapshot()
             print(f"[mock] reloaded: {len(layout.entities)} entities", flush=True)
             self.broadcast(sse("reload", "{}"), reload=True)
+
+
+def _digest_ok(header: str | None, method: str, password: str) -> bool:
+    """RFC 2617 digest (MD5, qop auth), user admin: what the device checks. Any nonce goes: it's a mock."""
+    if not header or not header.startswith("Digest "):
+        return False
+    p = {k: q or v for k, q, v in re.findall(r'(\w+)=(?:"([^"]*)"|([^,\s]*))', header[7:])}
+    if p.get("username") != PAGE_USER:
+        return False
+    md5 = lambda text: hashlib.md5(text.encode()).hexdigest()  # noqa: E731, S324 -- digest auth is MD5
+    ha1 = md5(f"{PAGE_USER}:{p.get('realm', REALM)}:{password}")
+    ha2 = md5(f"{method}:{p.get('uri', '')}")
+    if p.get("qop"):
+        expected = md5(f"{ha1}:{p.get('nonce')}:{p.get('nc')}:{p.get('cnonce')}:{p['qop']}:{ha2}")
+    else:
+        expected = md5(f"{ha1}:{p.get('nonce')}:{ha2}")
+    return p.get("response") == expected
 
 
 def make_handler(mock: MockServer):
@@ -1024,6 +1561,8 @@ def make_handler(mock: MockServer):
                         payload = q.get(timeout=15)
                     except queue.Empty:
                         payload = b": keep-alive\n\n"
+                    if payload is None:  # the simulated controller rebooted
+                        break
                     self.wfile.write(payload)
                     self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError, OSError):
@@ -1032,9 +1571,25 @@ def make_handler(mock: MockServer):
                 clients.remove(q)
                 self.close_connection = True
 
+        def authorized(self, path: str) -> bool:
+            """The device's digest login, once a Page Password is set during this run; else a 401 is sent."""
+            password = mock.sim.settings.page_password
+            if password is None or path.startswith("/__mock/"):
+                return True
+            if _digest_ok(self.headers.get("Authorization"), self.command, password):
+                return True
+            nonce, opaque = os.urandom(16).hex(), os.urandom(16).hex()
+            self.send_response(401)
+            self.send_header("WWW-Authenticate", f'Digest realm="{REALM}", qop="auth", nonce="{nonce}", opaque="{opaque}"')
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return False
+
         def do_GET(self):  # noqa: N802 -- http.server API
             url = urlsplit(self.path)
             path = unquote(url.path)
+            if not self.authorized(path):
+                return None
             if path in ("/", "/index.html"):
                 return self.send_body(200, mock.index_html().encode(), "text/html; charset=utf-8")
             if path == "/events":
@@ -1056,7 +1611,7 @@ def make_handler(mock: MockServer):
                     e = mock.entity(*parts)
                     if e:
                         detail_all = parse_qs(url.query).get("detail") == ["all"]
-                        body = json.dumps(entity_json(e, mock.sim.snapshot().get(e.name), detail_all))
+                        body = json.dumps(mock.json(e, mock.sim.snapshot().get(e.name), detail_all))
                         return self.send_body(200, body.encode(), "application/json")
             return self.send_body(404)
 
@@ -1064,6 +1619,8 @@ def make_handler(mock: MockServer):
             url = urlsplit(self.path)
             length = int(self.headers.get("Content-Length") or 0)
             body = self.rfile.read(length).decode() if length else ""
+            if not self.authorized(unquote(url.path)):
+                return
             params = {**parse_qs(body), **parse_qs(url.query)}
             parts = [unquote(p) for p in url.path.strip("/").split("/")]
             status = mock.act(*parts, params) if len(parts) == 3 else 404
@@ -1107,6 +1664,10 @@ def main() -> int:
                         help="also load this YAML package's entities (repeatable), e.g. wifi-setup.yaml")
     parser.add_argument("--hotspot", action="store_true",
                         help="start on the fallback hotspot, with no clock")
+    parser.add_argument("--no-release", action="store_true",
+                        help="no firmware published yet (no manifest on GitHub Pages): every update check fails")
+    parser.add_argument("--fresh", action="store_true",
+                        help="start as a controller not set up yet (on its hotspot, nothing set)")
     args = parser.parse_args()
 
     if args.check:
@@ -1115,13 +1676,14 @@ def main() -> int:
     # PID 1 in the container ignores SIGTERM by default, so `docker stop` would
     # otherwise wait out its timeout and SIGKILL.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    mock = MockServer(args.config, args.index, args.extra, args.hotspot)
+    mock = MockServer(args.config, args.index, args.extra, args.hotspot, args.fresh, not args.no_release)
     threading.Thread(target=mock.ticker, daemon=True).start()
     threading.Thread(target=mock.watcher, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(mock))
     server.daemon_threads = True
     print(f"[mock] {mock.layout.title}: {len(mock.layout.entities)} entities, serving on port {args.port}"
-          f" ({'custom page ' + args.index if args.index else 'the page the firmware serves'}). Ctrl-C to stop.",
+          f" ({'custom page ' + args.index if args.index else 'the page the firmware serves'})"
+          f"{', fresh (not set up)' if args.fresh else ''}. Ctrl-C to stop.",
           flush=True)
     try:
         server.serve_forever()
