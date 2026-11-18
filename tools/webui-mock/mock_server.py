@@ -259,6 +259,7 @@ N = {
     "fill_today": "Fill Water Today",
     "fill_days": "Fill Water Days",
     "fill_months": "Fill Water Months",
+    "fill_import": "Fill Water Import",
     "fw_version": "Firmware Version",
     "esphome_version": "ESPHome Version",
 }
@@ -721,6 +722,7 @@ class PoolSim:
             self.history = []
             self.fill_days, self.fill_months = [None] * 30, [None] * 12
         self.fill_today = 0.0
+        self.fill_import_state = ""  # Fill Water Import: what the last import did, never the line
         self.last_tick = time.time()
         self.last_drift = time.time()
 
@@ -991,6 +993,23 @@ class PoolSim:
 
     # -- what each entity shows right now
 
+    def import_fill(self, text: str):
+        """Fill Water Import (fill_import.h): writes a Fill Water Days / Months line into the record, as the firmware
+        does, and says what it did -- the entity's state, never the line."""
+        today = datetime.now().date()
+        try:
+            line = parse_fill_line(text)
+            done = apply_fill_line(line, today, self.fill_days, self.fill_months)
+        except ValueError as err:
+            self.log(f"Fill water import refused ({len(text)} characters): {err}")
+            self.fill_import_state = f"refusé : {err}"
+            return
+        self.log(f"Fill water import: {done['written']} {'months' if line[0] else 'days'} written, {done['unknown']} unknown, "
+                 f"{done['open']} open (today / this month), {done['outside']} older than the record, "
+                 f"{done['clamped']} capped at 65534 L; this month's closed days: {self.fill_months[0]} L")
+        unit = "mois" if line[0] else "jours" if done["written"] > 1 else "jour"
+        self.fill_import_state = f"importé : {done['written']} {unit}"
+
     def snapshot(self) -> dict:
         now = time.time()
         b1s, b1e, b2s, b2e = self.blocks
@@ -1032,6 +1051,7 @@ class PoolSim:
             N["fill_today"]: round(self.fill_today),
             N["fill_days"]: _fill_line(self.counted_day - timedelta(days=1) if self.counted_day else None, self.fill_days),
             N["fill_months"]: _fill_line(datetime.now().strftime("%Y-%m"), self.fill_months),
+            N["fill_import"]: self.fill_import_state,
             # The release it runs: Firmware below updates it (updates.yaml).
             N["fw_version"]: self.updates.installed,
             N["esphome_version"]: "2026.7.2 2026-11-17 18:05:00 +0000",
@@ -1057,6 +1077,60 @@ def _fill_line(head, values) -> str:
     if head is None:
         return "--"
     return f"{head}: " + " ".join("-" if v is None else str(v) for v in values)
+
+
+FILL_DAYS, FILL_MONTHS, FILL_DAY_MAX = 30, 12, 0xFFFE
+
+
+def parse_fill_line(text: str):
+    """A Fill Water Days / Months line -> (months?, newest date, [litres or None]), with fill_import.h's parse() rules;
+    ValueError(reason, in the firmware's words) otherwise."""
+    m = re.fullmatch(r" *(\d{4})-(\d{2})(?:-(\d{2}))?:((?: +\S+)+) *", text or "")
+    if not m:
+        raise ValueError("format (attendu « 2026-11-17: 0 19 - 940 » ou « 2026-11: 23 950 »)")
+    months = m.group(3) is None
+    try:
+        date = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3) or 1)).date()
+    except ValueError:
+        raise ValueError("date invalide") from None
+    if date.year < 2000:
+        raise ValueError("date invalide")
+    tokens = m.group(4).split()
+    if len(tokens) > (FILL_MONTHS if months else FILL_DAYS):
+        raise ValueError("trop de valeurs (30 jours ou 12 mois au plus)")
+    values = []
+    for tok in tokens:
+        if tok != "-" and not (re.fullmatch(r"\d{1,10}", tok) and int(tok) < 0xFFFFFFFF):
+            raise ValueError("valeur invalide (litres entiers >= 0, ou -)")
+        values.append(None if tok == "-" else int(tok))
+    return months, date, values
+
+
+def apply_fill_line(line, today, days: list, months: list) -> dict:
+    """fill_import.h's apply() on the mock's record, which is always dated yesterday (days) and this month (months):
+    every closed day or month of the line, then this month's total as its closed days. ValueError for a future line."""
+    is_months, date, values = line
+    yesterday = today - timedelta(days=1)
+    month_no = lambda d: d.year * 12 + d.month - 1  # noqa: E731
+    if (month_no(date) > month_no(today)) if is_months else date > today:
+        raise ValueError("date dans le futur")
+    done = {"written": 0, "unknown": 0, "open": 0, "outside": 0, "clamped": 0}
+    for k, v in enumerate(values):
+        idx = month_no(today) - (month_no(date) - k) if is_months else (yesterday - (date - timedelta(days=k))).days
+        if (idx == 0) if is_months else idx < 0:
+            done["open"] += 1
+        elif v is None:
+            done["unknown"] += 1
+        elif idx >= (FILL_MONTHS if is_months else FILL_DAYS):
+            done["outside"] += 1
+        else:
+            if not is_months and v > FILL_DAY_MAX:
+                v, done["clamped"] = FILL_DAY_MAX, done["clamped"] + 1
+            (months if is_months else days)[idx] = v
+            done["written"] += 1
+    months[0] = sum(v or 0 for i, v in enumerate(days) if (yesterday - timedelta(days=i)).month == today.month
+                    and (yesterday - timedelta(days=i)).year == today.year)
+    return done
 
 
 def _history_day(day, sec, lo, hi) -> str:
@@ -1350,6 +1424,8 @@ class MockServer:
                 elif name == W["join_ssid"]:
                     self.log(f"'{name}' set to {value!r}")
                     self.sim.wifi.join_ssid = value
+                elif name == N["fill_import"]:
+                    self.sim.import_fill(value)
                 else:
                     self.sim.static[name] = value
             elif domain == "datetime" and action == "set":
