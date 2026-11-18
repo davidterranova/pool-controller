@@ -623,7 +623,7 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
 .esect { margin:12px 0 2px; font-size:12px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
 .esect:first-child { margin-top:4px; }
 .erow { display:flex; align-items:center; gap:14px; min-height:48px; padding:4px 0; }
-.erow .ic { width:40px; height:40px; flex:none; display:grid; place-items:center; color:var(--state-icon-color,var(--muted)); }
+.erow .ic { width:40px; height:40px; flex:none; display:grid; place-items:center; color:var(--muted); } /* not the theme's --state-icon-color: neutral, as on the device page */
 .erow .ic svg, .erow .ic ha-icon { width:24px; height:24px; --mdc-icon-size:24px; }
 .erow .name { flex:1; min-width:0; overflow-wrap:anywhere; }
 .erow .name span { display:block; }
