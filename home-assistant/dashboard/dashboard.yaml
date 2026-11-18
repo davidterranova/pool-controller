@@ -15,12 +15,12 @@ views:
     max_columns: 3
     sections:
       # ── Component: the pump ────────────────────────────────────────────────────────────────────────
-      # piscine-card's panel, four tabs, and a light in its header for the controller's link. « Pompe »:
-      # state, today's plan, the pool's temperature (24 h to 1 an), Auto/Manuel, and the outdoor and
-      # equipment-pad temperatures. « Remplissage »: fill water today, this month, per day, week or month.
-      # « Avancé »: today's plan in detail with « Recalculer », the last 7 days, the controller's link,
-      # Wi-Fi and firmware (its updates), the probes. « Réglages »: every setting, and the controller's
-      # position and time zone, with « Utiliser la position et le fuseau de Home Assistant ». Most of its
+      # piscine-card's panel, three tabs, and a light in its header that opens the controller's device page.
+      # « Contrôle »: state, today's plan, the pool's temperature (24 h to 1 an), Auto/Manuel, then fill
+      # water today, this month, per day, week or month. « Réglages »: today's plan in detail with
+      # « Recalculer », the probes, every setting, the last 7 days. « Réglages contrôleur »: the controller's
+      # position and time zone, with « Utiliser la position et le fuseau de Home Assistant », and its
+      # firmware (its updates). Most of its
       # defaults are one particular install's entity ids, so every entity is given here, once (&pool,
       # reused by the settings below); the firmware-update ones (firmware, checkUpdate, cancelUpdate,
       # autoUpdate, updateInterval, updateStatus) already default to a fresh install's. It calls the two
@@ -74,13 +74,10 @@ views:
               nextBoostEnd: sensor.pool_controller_next_boost_end
               recompute: button.pool_controller_recompute_schedule_now
               updateTemps: button.pool_controller_update_temperature_sensors_now
-              wifiSignal: sensor.pool_controller_wifi_signal       # these three: wifi-setup.yaml; rows hide without them
-              wifiSsid: sensor.pool_controller_wifi_ssid
-              wifiDisc: sensor.pool_controller_wifi_disconnects
-              clock: datetime.pool_controller_device_clock    # wifi-setup.yaml too: the light's heartbeat, every minute
+              clock: datetime.pool_controller_device_clock    # wifi-setup.yaml: the light's heartbeat, every minute
               fwVersion: sensor.pool_controller_firmware_version
               esphomeVersion: sensor.pool_controller_esphome_version
-              latitude: number.pool_controller_latitude      # these four: « Réglages » › Position
+              latitude: number.pool_controller_latitude      # these four: « Réglages contrôleur » › Position
               longitude: number.pool_controller_longitude
               timezone: text.pool_controller_timezone
               timezoneName: text.pool_controller_timezone_name
@@ -156,7 +153,7 @@ views:
 
       # ── Component: fill water ──────────────────────────────────────────────────────────────────────
       # The water meter on the fill line. Its total only grows, so its daily statistics (change) are exact.
-      # piscine-card's « Remplissage » tab draws the same, by day, week or month with the period's total;
+      # piscine-card's « Contrôle » draws the same, by day, week or month with the period's total;
       # this is the same meter with Home Assistant's own cards, for a dashboard without the card.
       - type: grid
         cards:
@@ -219,8 +216,8 @@ views:
 
       # ── Component: settings ────────────────────────────────────────────────────────────────────────
       # Everything the controller lets you tune: piscine-card's settings variant, the rows of the panel's
-      # « Réglages » tab and of the controller's own page (Avancé › Réglages), for a dashboard that wants
-      # them outside the pop-up, with a line under each name saying what it does. Home
+      # « Réglages » › « Filtration et hors gel » and of the controller's own page (the same, in its Réglages),
+      # for a dashboard that wants them outside the pop-up, with a line under each name saying what it does. Home
       # Assistant's entities card would cut the long names short on a phone and has no such line. The four
       # filtration-length settings wait for « Appliquer » (they reshape today's plan); the others apply at once.
       - type: grid

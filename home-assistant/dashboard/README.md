@@ -47,29 +47,32 @@ pop-up; the tile is the card's own:
       entities: { … }
 ```
 
-The panel has four tabs, so the pop-up needs no dashboard behind it:
+The panel has three tabs, the controller's own page's, so the pop-up needs no dashboard behind it:
 
-- « Pompe »: state, today's plan, the pool's temperature (24 h to a year), Auto/Manuel, and at its foot
-  the outdoor and equipment-pad temperatures (a tap opens Home Assistant's more-info, with their history);
-- « Remplissage »: the fill water today, this month, and by day, week or month. It needs the `volume`
-  entity and the recorder; without them the tab isn't there (`variant: water` draws it alone);
-- « Avancé », in the device page's order: today's plan in detail with « Recalculer », the controller's
-  link and Wi-Fi, the probes with « Relire », the firmware on its update entity (installed and latest
+- « Contrôle »: state, today's plan, the pool's temperature (24 h to a year), Auto/Manuel, then the fill
+  water today, this month, and by day, week or month. The fill water needs the `volume` entity and the
+  recorder; without them it isn't there (`variant: water` draws it alone);
+- « Réglages »: today's plan in detail with « Recalculer », the probes with « Relire » (a tap on one opens
+  Home Assistant's more-info, with its history), « Filtration et hors gel », every setting with its Apply
+  gate, then the last 7 days of filtration against the plan. On a screen, two columns cut after
+  « Appliquer »: « Filtration » on the left, « Impulsions et hors gel » on the right;
+- « Réglages contrôleur »: the controller's position and time zone, with « Utiliser la position et le
+  fuseau de Home Assistant » (Home Assistant's location rounded to 0.01°, its zone as the controller's
+  Timezone Name and its POSIX string), then the firmware on its update entity (installed and latest
   version, a tap opening Home Assistant's own update dialog with the release notes, « Vérifier »,
   « Installer », held by the firmware while a manual override or a fill runs: the card asks first, then
   says it waits, and the wait can be cancelled; automatic updates, what a scheduled check finds, and how
-  often to check), then the last 7 days of filtration against the plan. A firmware without the update
-  entity (before v1.4) has no firmware section. The controller's light opens it at « Contrôleur »;
-- « Réglages »: every setting, with its Apply gate, then the controller's position and time zone, with
-  « Utiliser la position et le fuseau de Home Assistant » (Home Assistant's location rounded to 0.01°,
-  its zone as the controller's Timezone Name and its POSIX string). `settings_tab: false` drops it and
-  « Avancé » (the light then opens `more_path`, if given); `temperatures: false` drops the temperatures
-  at the foot of « Pompe ».
+  often to check). A firmware without the update entity (before v1.4) has no firmware section.
+
+`settings_tab: false` drops both « Réglages » tabs, and with them the tab bar. `temperatures` (before
+1.7.0) is deprecated: accepted and ignored, the outdoor and equipment-pad probes are in « Réglages » › Sondes.
 
 Its header, and the tile, have a light for the controller: green while it talks (the Device Clock, `clock`,
 changes every minute), amber when it goes quiet or has been offline for less than 15 min, red beyond. In the
-header it says when the controller was last heard and opens « Avancé » › Contrôleur. `controller_light:
-false` drops it; `controller_health: { warn: 3, alert: 15, beat: 4 }` sets its minutes before amber and red.
+header it says when the controller was last heard and opens Home Assistant's device page for the controller
+(Paramètres › Appareils et services › ESPHome › Pool Controller), where its link, Wi-Fi signal and
+disconnections are; `more_path` leads elsewhere instead. `controller_light: false` drops it;
+`controller_health: { warn: 3, alert: 15, beat: 4 }` sets its minutes before amber and red.
 
 What this dashboard adds to the card: the three probes' curves and their 90-day daily means, the
 pump's plan against reality over the last days, and the fill water with Home Assistant's own cards.
@@ -109,14 +112,14 @@ the dashboard following.
   statistics: Filtration Hours Today resets at midnight, and a statistics day also counts the value
   it starts with, so a day that filtered less than the one before would show the day before's total.
 - **Fill water.** The meter's total only grows, so its statistics (`change`) are exact, over any
-  span. The card's « Remplissage » tab shows them by day (30 days), by week (13 weeks) or by month
+  span. The card's « Contrôle » shows them by day (30 days), by week (13 weeks) or by month
   (12 months), with the period's total, its average and its largest bar; the running day, week or
   month adds what the meter counted since the last hour Home Assistant compiled. The component in
   the Piscine view draws the same with Home Assistant's own cards.
 - **Settings.** Everything the controller lets you tune, grouped by when it applies: the four
   filtration-length settings wait for « Appliquer » because they reshape today's plan; freeze
   protection and the boost pulses apply at once. The override's duration isn't one of them: it is
-  chosen with the override, in the panel's « Pompe » › Manuel. It is piscine-card's settings
+  chosen with the override, in the panel's « Contrôle » › Manuel. It is piscine-card's settings
   variant, not Home Assistant's entities card: the latter cuts a long name short on a phone
   (« Min filtration h… ») and has no line for what a setting does. The panel's « Réglages » tab and
-  the device's own page (Avancé › Réglages) draw the same rows, so all three read alike.
+  the device's own page (Réglages › Filtration et hors gel) draw the same rows, so all three read alike.

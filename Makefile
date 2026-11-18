@@ -160,8 +160,8 @@ MOCK := docker run --rm -v "$(CURDIR):/config" -e TZ=$(MOCK_TZ) --entrypoint pyt
 mock-ui: webui
 	$(subst docker run --rm,docker run --rm -it -p $(MOCK_PORT):8080,$(MOCK)) $(if $(MOCK_INDEX),--index /config/$(MOCK_INDEX)) $(MOCK_ARGS) /config/$(CONFIG)
 
-# The device's page from its sources in webui/ (piscine-card + the Avancé
-# and Wi-Fi tabs) against the same mock, rather than the bundle mock-ui
+# The device's page from its sources in webui/ (piscine-card + the Réglages
+# and Réglages contrôleur tabs) against the same mock, rather than the bundle mock-ui
 # serves: its files are served and watched like the YAML, so saving one
 # reloads the page. MOCK_HOTSPOT=1 starts the device on its fallback
 # hotspot, with no clock (a router outage). MOCK_FRESH=1 starts it as a new
