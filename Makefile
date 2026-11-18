@@ -194,10 +194,11 @@ webui/dist/device.js: $(WEBUI_SRC)
 webui/dist/device.css: webui/app.css
 	$(ESBUILD) webui/app.css --minify --log-level=warning --outfile=$@
 
-# Unit tests of the page's pure modules (webui/test/: the setup's logic, the
-# time zone table), with Node's own test runner, in the same node image.
+# Unit tests of the pages' pure modules (webui/test/: the setup's logic, the
+# time zone table; tools/tests/install-page.test.mjs: the install page's
+# states), with Node's own test runner, in the same node image.
 webui-test:
-	docker run --rm -v "$(CURDIR):/src" -w /src node:22-alpine node --test 'webui/test/*.test.mjs'
+	docker run --rm -v "$(CURDIR):/src" -w /src node:22-alpine node --test 'webui/test/*.test.mjs' 'tools/tests/*.test.mjs'
 
 clean:
 	rm -rf .esphome webui/dist $(MIGRATE_DIR)

@@ -30,7 +30,7 @@ Target:
 | 4 | Card: Firmware section on the update entity, position/timezone from HA | contract below; 6 to finish | feat/wp4-card-update-entity | in progress | |
 | 5 | CI: releases carry the firmware, manifest + files on GitHub Pages | 2 (for a real build) | ci/wp5-firmware-releases | done (publishing waits for WP2 and the owner) | #29 (merged) |
 | 6 | Firmware: updates (http_request OTA + update entity + auto-update) | 1, 5 (manifest URL) | feat/wp6-updates | in progress (hardware checks left) | |
-| 7 | Install page (ESP Web Tools) + docs | 5 | | todo | |
+| 7 | Install page (ESP Web Tools) + docs | 5 | feat/wp7-install-page | review (the fresh-board install check stays open: no spare ESP32) | |
 | 8 | Automatic migration of an existing controller (`make migrate`: one OTA seeds its secrets.yaml settings) | 2 | feat/wp8-make-migrate | done: the controller in service migrated 2026-11-18 (see the log) | |
 
 Parallel from day one: 0, 1, the mock-ups of 3 and 4, and 5's workflow (tested on a dummy build).
@@ -130,12 +130,12 @@ How it works (`.github/workflows/`):
 - `release.yml` (was `card.yml`): on main, a VERSION with no release calls `firmware.yml` with the tag, then releases. The card is released exactly as before; the firmware's three files are attached only when `firmware.yml` built a publishable release, after checking the manifest's version and md5.
 - `firmware.yml`: reusable (`workflow_call`), also run by hand or on a PR changing the build. `make build ESPHOME_IMAGE=… FW_VERSION=…` (webui bundle, then compile) with `ESPHOME_IMAGE: ghcr.io/esphome/esphome:2026.7.2`, the one place the version is pinned. `tools/release/manifest.py` writes the manifest (paths relative to it, `chipFamily: ESP32`, md5 + sha256).
 - The guard, `tools/release/secret_guard.py`: any `!secret` in `pool-controller.yaml`, its `!include`s or the `*.yaml` beside it means a release builds nothing (notice: the release carries the card only), and a development build uses validate.yml's placeholders, artifact `firmware-dev-<sha>-placeholder-secrets-not-a-release`. A release build also runs with no secrets.yaml, so a `!secret` the guard missed fails the compile.
-- `pages` job: only with `vars.PUBLISH_FIRMWARE_PAGES == 'true'`; deploys `/firmware/` (this release's three files) plus `docs/install/` as `/install/` when it exists. Each deploy replaces the site.
+- `pages` job: only with `vars.PUBLISH_FIRMWARE_PAGES == 'true'`; deploys `docs/install/`'s contents at the site's root (the install page, WP7) and `/firmware/` (this release's three files). Each deploy replaces the site. No `CNAME` file: with an Actions deployment the custom domain is a repository setting, and a CNAME in the artifact is ignored.
 
 For the WPs that build on it:
 - WP2: the manifest's `version` is the `firmware_version` string, the tag with its `v` (`v1.4.0`), so `esphome: project: version: ${firmware_version}` matches it exactly. Once no `!secret` is left, the next release carries the firmware with no change here.
 - WP6: `source: https://pool-controller.kitesize.fr/firmware/manifest.json`, the Pages site's custom domain (`firmware_site`; a fork without one: `https://<owner>.github.io/<repo>`). Relative `ota.path`, so no redirect, unlike release assets.
-- WP7: the install page in `docs/install/` reaches Pages with the next release's deploy (or add a `workflow_dispatch` path to the `pages` job then). Its ESP Web Tools manifest is `../firmware/manifest.json`; it sets `new_install_prompt_erase` and `home_assistant_domain: esphome`.
+- WP7: the install page in `docs/install/` reaches Pages with the next release's deploy, at the site's root (decided in WP7; a page-only change waits for a release). Its ESP Web Tools manifest is `firmware/manifest.json`; `home_assistant_domain: esphome`, and no `new_install_prompt_erase` (WP7: every install erases).
 
 ### WP6: updates
 - [x] new package `updates.yaml`: `http_request:` (verify_ssl), `ota: platform: http_request`, `update: platform: http_request` (source = Pages manifest from the `firmware_repo_owner/_name` substitutions, `update_interval: never`, internal)
@@ -146,8 +146,11 @@ For the WPs that build on it:
 - [ ] on hardware: see « WP6 adds » under the spike log's hardware checks
 
 ### WP7: install page + docs
-- [ ] `docs/install/index.html` on Pages: ESP Web Tools (Chrome/Edge, USB), Improv Wi-Fi, then « ouvrez http://pool-controller.local pour terminer »
-- [ ] README, POOL-CONTROLLER: first setup, updates, factory reset, dev builds (no secrets.yaml; `make ota` takes the OTA password from an untracked file); `secrets.yaml.template` goes
+- [x] `docs/install/index.html` on Pages, from the approved mock-up: ESP Web Tools 10.4.0 (pinned, unpkg; Chrome/Edge on a computer, USB), Improv Wi-Fi, then « ouvrez http://pool-controller.local » for the wizard, Home Assistant at its last step; the wiring table (`pool-controller.yaml`'s GPIOs); states: ready (manifest `version`), phone, no Web Serial, no HTTPS, none published (404), manifest unreachable, ESP Web Tools not loaded. Decisions in `install-model.js`, tested by `make webui-test`; checked in headless Chrome against a local server (the three manifest states, 380/1280 px, light/dark, the real ESP Web Tools from unpkg and blocked)
+- [x] the `pages` job serves it at the site's root, `/firmware/` beside it
+- [x] `manifest.py` drops `new_install_prompt_erase`: every install erases and goes straight to Wi-Fi (tests: `tools/release/test_manifest.py`, in validate.yml)
+- [x] README, POOL-CONTROLLER: first setup, updates, factory reset, dev builds (no secrets.yaml; `make ota` takes the OTA password from `.ota-password`, gitignored), `make migrate`; `secrets.yaml.template` is gone (already, since WP2)
+- [ ] a fresh board installed from the Pages page (Verification below): open, no spare ESP32 (owner's decision)
 
 ### WP8: migrating a controller built with secrets.yaml, automatically (one OTA, no setup, no re-pairing)
 The goal is uptime. One OTA carries every setting over, so the controller is back in about 15–20 s with nothing to set up. That is the same downtime as any `make ota`, and the pump keeps its plan through the reboot, as it does today.
@@ -184,7 +187,7 @@ Timing: with the pump off, no manual override, no fill; someone stays on it unti
 
 ## Verification (the WP closing each item ticks it)
 - [ ] each PR: `make validate`, `make mock-ui-check`, `make ha-dashboard-check`, CI green
-- [ ] fresh board: install from the Pages page, complete setup, pair with HA
+- [ ] fresh board: install from the Pages page, complete setup, pair with HA (left open: no spare ESP32, owner's decision 2026-11-18)
 - [ ] reboot and OTA keep every setting
 - [ ] a test release is found and installed: automatically on schedule, with « Installer » on the page, and from HA's Update entity
 - [ ] factory reset brings back setup mode
@@ -207,6 +210,7 @@ Timing: with the pump off, no manual override, no fill; someone stays on it unti
 - Migration (2026-11-18): automatic, to keep uptime. One `make migrate` OTA seeds every current setting (Wi-Fi, API key, passwords, position, timezone, probe roles) from secrets.yaml into NVS, with nothing to set up and no re-pairing; manual steps are only the fallback (WP8).
 - Hardware: there is no spare ESP32. The hardware checks run on the controller in service, in one planned window right after `make migrate`, with the last secrets.yaml build kept as the rollback. A spare ESP32 with DS18B20s would move them off it; recommended, not required.
 - Card without the update entity (WP4): a firmware before WP6 (the v1.3.x in service until WP8) keeps « Vérifier » on GitHub's compare (`checkFirmware`, `FIRMWARE_FILES`, now any `*.yaml` / `*.h` at the root and `webui/`), so a card update through HACS doesn't take its firmware rows away; the device page uses it too until WP6 replaces its section. It goes once no such firmware is left (after WP8).
+- Install page (WP7, 2026-11-18): at the root of the Pages site (`https://pool-controller.kitesize.fr/`), the firmware under `/firmware/` beside it; every install erases (no `new_install_prompt_erase`), straight to the Wi-Fi step; ESP Web Tools pinned to 10.4.0 from unpkg; desktop only (Chrome or Edge on a computer: a phone gets a note); no publish date, the version from the manifest; French with a short English note.
 - IANA → POSIX (WP4): one table, in the card (`TZ_POSIX`, every tzdata zone and link, 598 names over 94 rules, generated by `tools/tz-posix.py`; each string checked against `device_settings.h`'s parser), exposed as `PiscineCard.posixTz(iana)` so the controller's page (WP3) reuses it the way it reuses `parseVersion`.
 
 ## Spike log (WP1)

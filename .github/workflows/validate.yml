@@ -16,6 +16,11 @@ jobs:
       - name: No !secret in the firmware's sources
         run: python3 tools/release/secret_guard.py pool-controller.yaml
 
+      # The firmware's manifest.json (tools/release/manifest.py), on made-up
+      # images: what the install page and the update check read.
+      - name: Release manifest tests
+        run: python3 -I tools/release/test_manifest.py
+
       # With the Makefile's pinned ESPHome (ESPHOME_VERSION).
       - name: make validate
         run: make validate
@@ -30,7 +35,8 @@ jobs:
       - name: make mock-ui-check
         run: make mock-ui-check
 
-      # The web UI's pure modules (setup wizard logic, time zone table).
+      # The pages' pure modules: the web UI's (setup wizard logic, time zone
+      # table) and the install page's (docs/install/install-model.js).
       - name: make webui-test
         run: make webui-test
 
