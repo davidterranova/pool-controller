@@ -117,7 +117,7 @@ globals:
   - id: auto_update_enabled
     type: bool
     restore_value: true
-    initial_value: 'false'
+    initial_value: 'true'
   - id: update_check_hours
     type: uint32_t
     restore_value: true
@@ -271,7 +271,8 @@ text_sensor:
     entity_category: diagnostic
 
 switch:
-  # Installs what a check finds, through the gate. Off by default.
+  # Installs what a scheduled check finds, through the gate. On by default (the owner's
+  # decision: automatic, every 24 h); a controller that has saved a choice keeps it.
   - platform: template
     name: "Auto Update"
     id: auto_update_switch

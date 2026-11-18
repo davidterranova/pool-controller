@@ -739,6 +739,7 @@ class PoolSim:
             elif e.name not in SIMULATED and e.name not in self.static:
                 self.static[e.name] = {"sensor": 0.0, "binary_sensor": False, "fan": False,
                                        "switch": False, "text_sensor": "--"}.get(e.domain)
+        self.static.setdefault(U["auto"], True)  # Auto Update: on by default, as the firmware
         if not self.active:
             self.active = {k: self.num(k) for k in ("min", "max", "warm", "offset")}
 
