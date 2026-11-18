@@ -105,7 +105,7 @@
  * « Filtration » on the left, « Impulsions et hors gel » and 7 derniers jours on the right; « Réglages
  * contrôleur » is Position beside Firmware.
  */
-const VERSION = "1.8.0";
+const VERSION = "1.8.1";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",
@@ -1748,7 +1748,9 @@ class PiscineCard extends HTMLElement {
     if (this._config.icons) { const p = this._config.icons[name]; return p ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${p}"/></svg>` : ""; }
     return name ? `<ha-icon icon="mdi:${esc(name)}"></ha-icon>` : "";
   }
+  /** A setting's value with its unit; « — » while unknown (the controller offline: unavailable). */
   _numTxt(key, v) {
+    if (!isSet(v) || !Number.isFinite(+v)) return "—";
     const step = String(this._attr(key, "step") ?? 1), dec = step.includes(".") ? step.split(".")[1].length : 0;
     return `${(+v).toFixed(dec).replace(".", ",")} ${this._attr(key, "unit_of_measurement") || ""}`.trim();
   }
