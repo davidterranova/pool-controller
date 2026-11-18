@@ -24,6 +24,7 @@ on:
       - hacs.json
       - LICENSE
       - "*.yaml"
+      - "*.h"
       - webui/**
       - .github/workflows/release.yml
       - .github/workflows/firmware.yml
@@ -46,12 +47,13 @@ jobs:
         run: node --check home-assistant/piscine-card.js
 
       # What ships in a release: the card, and the firmware built from
-      # pool-controller.yaml, the packages beside it (any *.yaml at the root)
-      # and the device's page (webui/, which also bundles the card).
+      # pool-controller.yaml, the packages beside it (any *.yaml at the root),
+      # their C++ includes (*.h at the root) and the device's page (webui/,
+      # which also bundles the card).
       - name: A changed card or firmware has a new VERSION
         run: |
           git fetch --depth=1 origin "${{ github.base_ref }}"
-          changed=$(git diff --name-only FETCH_HEAD -- home-assistant/piscine-card.js webui ':(glob)*.yaml')
+          changed=$(git diff --name-only FETCH_HEAD -- home-assistant/piscine-card.js webui ':(glob)*.yaml' ':(glob)*.h')
           if [ -z "$changed" ]; then
             echo "Neither the card nor the firmware changed."
             exit 0
@@ -161,7 +163,7 @@ jobs:
               if [ -n "$FIRMWARE" ]; then
                 echo
                 echo "Changes to the firmware since $previous:"
-                git log --format='- %s' "$previous..HEAD" -- webui ':(glob)*.yaml'
+                git log --format='- %s' "$previous..HEAD" -- webui ':(glob)*.yaml' ':(glob)*.h'
               fi
             fi
           } > notes.md

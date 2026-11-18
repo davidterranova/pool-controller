@@ -17,7 +17,7 @@ repo itself — layout and tooling.
 |---|---|
 | `pool-controller.yaml` | The ESPHome device config — this *is* the firmware source. |
 | `wifi-setup.yaml` | Package included by `pool-controller.yaml`: fallback hotspot, joining a network from the page, Wi-Fi statistics, clock from the browser (see below). |
-| `secrets.yaml` | Wi-Fi credentials, API encryption key, OTA password. Gitignored — create your own (see below). |
+| `device-settings.yaml`, `device_settings.h` | Package included by `pool-controller.yaml`: the controller's settings, set at run time and kept on the device (page and OTA passwords, API key, position, timezone, probe roles, Setup State, Factory Reset). Nothing personal is compiled in. |
 | `Makefile` | Validate / build / flash / OTA / status tooling. |
 | `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS). `dashboard/`: dashboard components for these entities and the scripts the card calls, with a guide ([home-assistant/dashboard/README.md](home-assistant/dashboard/README.md)). |
 | `hacs.json` | Tells the Marketplace (HACS) which file this repo publishes: the card above, from each GitHub release. |
@@ -25,16 +25,16 @@ repo itself — layout and tooling.
 | `tools/release/` | Release helpers for CI: the guard that keeps secrets out of a published firmware, and the firmware's `manifest.json` (see [Releases](#releases)). |
 | `webui/` | The device's own web page, built around the same `piscine-card` (see below). `make webui` bundles it into `webui/dist/` (gitignored), which the firmware embeds. |
 | `docs/plans/` | Plans for work spanning several PRs, with their progress: [secret-free firmware and OTA updates](docs/plans/secret-free-firmware.md). |
-| `.gitignore` | Excludes `secrets.yaml`, `.esphome/` (build cache), `.vscode/`. |
+| `.gitignore` | Excludes `.ota-password` (see `make ota`), `secrets.yaml` (older builds), `.esphome/` (build cache), `.vscode/`. |
 | `LICENSE` | MIT. |
 
 ## Toolchain
 
 - **Docker** — `validate`, `build`, and `ota` run the official
   `ghcr.io/esphome/esphome` image, so no local Python/ESPHome install is
-  needed for those. The latest one by default; `make build
-  ESPHOME_IMAGE=ghcr.io/esphome/esphome:<version>` pins one, as CI's
-  release build does.
+  needed for those. The version is pinned once, `ESPHOME_VERSION` at the top
+  of the Makefile, and CI builds and checks with it too; `make build
+  ESPHOME_VERSION=<version>` tries another.
 - **esptool** (bundled with a local ESP-IDF install) — used only for the
   initial USB flash. Docker Desktop on macOS can't pass a host USB-serial
   device through to a Linux container, so `make flash` shells out to the
@@ -42,23 +42,9 @@ repo itself — layout and tooling.
 
 ## First-time setup
 
-1. Create `secrets.yaml` in this directory (gitignored, never commit it):
-
-   ```yaml
-   wifi_ssid: "..."
-   wifi_password: "..."
-   # Must be base64-encoded, 32 random bytes:
-   #   python3 -c "import os,base64; print(base64.b64encode(os.urandom(32)).decode())"
-   pool_controller_api_key: "..."
-   pool_controller_ota_password: "..."
-   # Local web UI at http://pool-controller.local/ (username: admin):
-   pool_controller_web_password: "..."
-   # Used by the autonomous filtration schedule for sunrise/sunset + local
-   # midnight -- decimal degrees and an IANA zone name:
-   pool_latitude: "..."
-   pool_longitude: "..."
-   pool_timezone: "Europe/Paris"
-   ```
+1. Nothing to fill in before building: the firmware compiles in no network,
+   key, password, position or probe address. Each controller is set up
+   after the flash, from its page (see 6.).
 
 2. Check the `substitutions:` block at the top of `pool-controller.yaml` —
    the four relay GPIO pins and the OneWire bus pin — match your own wiring.
@@ -72,6 +58,15 @@ repo itself — layout and tooling.
    several minutes; later builds are quick.
 
 5. Plug the board in over USB and `make flash`.
+
+6. Set it up: with no network saved, the controller opens its hotspot
+   `pool-controller` at once; join it and open http://192.168.4.1 (no login
+   yet). Setup State lists what's left: `page_password`, `wifi`, `position`
+   (Latitude, Longitude, Timezone), `probes` (which DS18B20 is the pool's),
+   `api_key` (Home Assistant sets it when you add the device). Until the
+   page's setup wizard exists, set the entities from the page's lists, or
+   over the REST API. Put the OTA Password you set in `.ota-password`
+   (gitignored) for `make ota`.
 
 6. Pair it with Home Assistant — see
    [POOL-CONTROLLER.md](POOL-CONTROLLER.md#home-assistant-configuration).
@@ -177,7 +172,8 @@ What it needs from Home Assistant, besides the entities:
 - Firmware Version and ESPHome Version, for « Avancé » › Firmware (before a
   firmware that has them, ESPHome's version comes from the device registry),
   and, for « Vérifier », a browser that reaches api.github.com. It only tells:
-  installing stays `make ota`, since the firmware carries your secrets.
+  installing stays `make ota` for now (updates from a release come with the
+  secret-free firmware plan, WP6).
 
 The temperature graph exists because the probe is on the return pipe: it
 reads the pool only while water flows, and with the pump stopped it drifts
@@ -333,8 +329,9 @@ same way:
   nearby or type it, give the password, « Se connecter ». The device tries
   for 30 s and saves the network only if it connects; otherwise it keeps the
   current one. The password is held on the device and never sent back to a
-  page or to HA. A network saved this way takes precedence over the one in
-  `secrets.yaml`, until it's replaced the same way.
+  page or to HA. The firmware compiles in no network, so the one saved this
+  way (or by Improv serial) is the controller's network, until it's replaced
+  the same way.
 - **Wi-Fi statistics:** signal (dBm, % and in words: bon, moyen, faible, as
   the pool card also says it), network, router (BSSID), IP and
   MAC addresses, disconnections since boot, devices on the hotspot.
@@ -369,9 +366,9 @@ publishes release `v<VERSION>`. Nobody tags or releases by hand.
 A release carries:
 
 - `piscine-card.js`, for the Marketplace (HACS), as above;
-- once the firmware holds no secret, the controller's firmware, built by
+- the controller's firmware, built by
   [.github/workflows/firmware.yml](.github/workflows/firmware.yml) with a
-  pinned ESPHome (`ESPHOME_IMAGE` there) and `-s firmware_version v<VERSION>`:
+  pinned ESPHome (the Makefile's `ESPHOME_VERSION`) and `-s firmware_version v<VERSION>`:
   - `firmware.ota.bin`: what an installed controller downloads to update;
   - `firmware.factory.bin`: a whole flash image, for a first install from a
     browser;
@@ -381,19 +378,19 @@ A release carries:
     wherever they sit together.
 
 **No firmware is released while it reads secrets.yaml.** A published
-firmware must hold nothing personal, and today's still compiles in the
-Wi-Fi credentials, keys, passwords and location (`!secret`).
-`tools/release/secret_guard.py` lists them; while it finds any, the release
-build makes nothing and the release carries the card only, with a notice
-saying why. The [secret-free firmware plan](docs/plans/secret-free-firmware.md)
-removes them (WP2). Until then, flash from a checkout (`make ota`).
+firmware must hold nothing personal. Since the
+[secret-free firmware plan](docs/plans/secret-free-firmware.md)'s WP2 it
+reads none (`!secret`): every such value is a setting kept on the controller
+(device-settings.yaml). `tools/release/secret_guard.py` keeps it that way:
+should it find a `!secret` again, the release build makes nothing and the
+release carries the card only, with a notice saying why.
 
 **Trying the build.** Actions › Firmware › Run workflow (or `gh workflow
 run firmware.yml --ref <branch>`) builds `dev-<commit>` as a workflow
-artifact, never a release. While the sources still read secrets.yaml it
-compiles with placeholder secrets, and the artifact is named
+artifact, never a release. (Should the sources read secrets.yaml again,
+it compiles with placeholder secrets and names the artifact
 `firmware-dev-<commit>-placeholder-secrets-not-a-release`: a test of the
-build, not something to install.
+build, not something to install.)
 
 **GitHub Pages (the owner's call).** Controllers will look for updates at a
 stable URL, `https://<owner>.github.io/<repo>/firmware/manifest.json`. The
@@ -417,7 +414,7 @@ install page exists.
 - **`make flash` says no port found**: check the board is plugged in and
   showing up under `ls /dev/cu.*`.
 - **Wi-Fi `4-Way Handshake Timeout` in the boot log**: almost always a wrong
-  password in `secrets.yaml` — the ESP32 finds and associates with the SSID
+  Wi-Fi password saved on the controller — the ESP32 finds and associates with the SSID
   fine, but the pairwise key derived from the password doesn't match what
   the AP expects.
 - **`make ota` can't resolve the hostname**: the device isn't on Wi-Fi yet

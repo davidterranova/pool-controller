@@ -1,7 +1,11 @@
 CONFIG := pool-controller.yaml
-# The latest ESPHome image by default; CI's firmware build pins a version
-# (ESPHOME_IMAGE in .github/workflows/firmware.yml).
-ESPHOME_IMAGE ?= ghcr.io/esphome/esphome
+# The ESPHome every target below runs in, and so CI's builds and checks
+# (firmware.yml, validate.yml): bump it here only. The firmware needs 2026.11
+# (runtime web login, set_global_tz; see docs/plans/secret-free-firmware.md).
+# 2026.11.0b6 is a beta: move to 2026.11.x stable once it's out, before the
+# feat/secret-free-firmware branch reaches main.
+ESPHOME_VERSION ?= 2026.11.0b6
+ESPHOME_IMAGE ?= ghcr.io/esphome/esphome:$(ESPHOME_VERSION)
 ESPHOME := docker run --rm -v "$(CURDIR):/config" $(ESPHOME_IMAGE)
 # The commit the firmware is built from, as its Firmware Version entity reports it
 # (the pool card compares it with main on GitHub): v1.3.0, v1.3.0-4-g1a2b3c4, …-dirty.
@@ -63,10 +67,15 @@ kill-port:
 	fi
 
 # Pushes a rebuilt firmware over the network (port 3232) instead of USB --
-# only works once the device has already joined Wi-Fi.
+# only works once the device has already joined Wi-Fi. The upload needs the
+# controller's OTA Password (set on its page; nothing is compiled in): from
+# OTA_PASSWORD=... or the untracked file .ota-password (gitignored), given to
+# the upload only, never to the build.
+OTA_PASSWORD ?= $(shell cat .ota-password 2>/dev/null)
 ota: build
 	@test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
-	$(ESPHOME) upload $(CONFIG) --device $(HOST)
+	@test -n "$(OTA_PASSWORD)" || (echo "No OTA password: put the controller's OTA Password in .ota-password, or pass OTA_PASSWORD=..." && exit 1)
+	@$(ESPHOME) -s ota_password "$(OTA_PASSWORD)" upload $(CONFIG) --device $(HOST)
 
 # Resolves the pool-controller's current IP via mDNS (same lookup `ota` uses).
 ip:
@@ -78,7 +87,7 @@ ip:
 # live sensor readings once the board's sealed up and USB isn't convenient.
 logs:
 	@test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
-	docker run --rm -it -v "$(CURDIR):/config" ghcr.io/esphome/esphome logs $(CONFIG) --device $(HOST) --states
+	docker run --rm -it -v "$(CURDIR):/config" $(ESPHOME_IMAGE) logs $(CONFIG) --device $(HOST) --states
 
 # Local mock of the device's web UI (tools/webui-mock/), for iterating on the
 # page without a build or a flash: http://localhost:$(MOCK_PORT)/. Serves the
@@ -89,7 +98,7 @@ logs:
 # wall clock rather than the container's UTC.
 MOCK_PORT ?= 8080
 MOCK_TZ ?= $(shell readlink /etc/localtime 2>/dev/null | sed -E 's|.*/zoneinfo/||')
-MOCK := docker run --rm -v "$(CURDIR):/config" -e TZ=$(MOCK_TZ) --entrypoint python3 ghcr.io/esphome/esphome /config/tools/webui-mock/mock_server.py
+MOCK := docker run --rm -v "$(CURDIR):/config" -e TZ=$(MOCK_TZ) --entrypoint python3 $(ESPHOME_IMAGE) /config/tools/webui-mock/mock_server.py
 
 mock-ui: webui
 	$(subst docker run --rm,docker run --rm -it -p $(MOCK_PORT):8080,$(MOCK)) $(if $(MOCK_INDEX),--index /config/$(MOCK_INDEX)) $(MOCK_ARGS) /config/$(CONFIG)
@@ -98,9 +107,11 @@ mock-ui: webui
 # and Wi-Fi tabs) against the same mock, rather than the bundle mock-ui
 # serves: its files are served and watched like the YAML, so saving one
 # reloads the page. MOCK_HOTSPOT=1 starts the device on its fallback
-# hotspot, with no clock, as a new install would.
+# hotspot, with no clock (a router outage). MOCK_FRESH=1 starts it as a new
+# install: not set up (Setup State lists everything), no network saved, on its
+# hotspot with no clock; once a Page Password is set, it asks for it.
 mock-webui:
-	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot)"
+	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh)"
 
 # Prints the page layout (sections, order, which entities the simulation
 # drives) and fails if $(CONFIG) has an entity type the mock can't render.
@@ -111,7 +122,7 @@ mock-ui-check:
 # $(CONFIG): every controller entity id it names must exist, as a fresh install names it, and its
 # piscine-card must map every entity the card uses. Python in the ESPHome image, like the mock.
 ha-dashboard-check:
-	docker run --rm -v "$(CURDIR):/config" --entrypoint python3 ghcr.io/esphome/esphome /config/tools/ha-dashboard-check.py /config/$(CONFIG) /config/home-assistant/dashboard
+	docker run --rm -v "$(CURDIR):/config" --entrypoint python3 $(ESPHOME_IMAGE) /config/tools/ha-dashboard-check.py /config/$(CONFIG) /config/home-assistant/dashboard
 
 # The device's own page (webui/), bundled into the two files the firmware
 # embeds: web_server's js_include and css_include in $(CONFIG). Rebuilt only
