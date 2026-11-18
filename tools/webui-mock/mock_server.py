@@ -27,6 +27,8 @@ The config's own `packages:` (`name: !include file.yaml`) are loaded like ESPHom
 does, for their entities and sorting groups. --extra loads one more package the
 same way, for designing against entities the firmware doesn't have yet.
 --hotspot starts the simulated device on its fallback hotspot, with no clock.
+--no-release has no firmware published yet, so every update check fails (the
+manifest on GitHub Pages is a 404), as before a project's first release.
 --fresh starts it as a controller straight out of the install: nothing set up
 (Setup State lists everything), no network saved, so on its hotspot with no
 clock. Once a Page Password is set, the mock asks for it (digest, user admin),
@@ -574,9 +576,10 @@ class UpdateSim:
     CHECK_S = 2
     INSTALL_S = 15
 
-    def __init__(self, log, installed: str = "v1.4.0"):
+    def __init__(self, log, installed: str = "v1.4.0", released: bool = True):
         self.log = log
         self.installed = installed
+        self.released = released  # False: no manifest on GitHub Pages yet, every check fails
         self.latest: str | None = None
         self.state = "UNKNOWN"  # as web_server sends it: UNKNOWN, NO UPDATE, UPDATE AVAILABLE, INSTALLING
         self.error = False
@@ -628,6 +631,9 @@ class UpdateSim:
     def tick(self, auto: bool, hours: float, blocker: str | None) -> bool:
         """Advances checks and installs; True when the controller reboots onto the new firmware."""
         now = time.time()
+        if self.checking_until and now >= self.checking_until and not self.released:
+            self.checking_until, self.error = 0.0, True
+            self.log("Update check failed: HTTP 404 (no release published yet)")
         if self.checking_until and now >= self.checking_until:
             self.checking_until = 0.0
             self.latest, self.error = self.LATEST, False
@@ -669,12 +675,12 @@ class UpdateSim:
 class PoolSim:
     """A pocket version of evaluate_speed and friends, driven by wall-clock time."""
 
-    def __init__(self, log, hotspot: bool = False, fresh: bool = False):
+    def __init__(self, log, hotspot: bool = False, fresh: bool = False, released: bool = True):
         self.log = log
         # A fresh controller has no network saved: it starts on its hotspot.
         self.wifi = WifiSim(log, hotspot or fresh, saved=not fresh)
         self.settings = SettingsSim(log, fresh)
-        self.updates = UpdateSim(log)
+        self.updates = UpdateSim(log, released=released)
         self.rebooted = False  # set by an install: the server drops the page's event stream
         self.started = time.time()
         self.numbers: dict[str, float] = {}
@@ -1263,7 +1269,7 @@ def device_index(web: dict) -> str:
 
 class MockServer:
     def __init__(self, config_path: str, index_path: str | None, extras: list[str] | None = None,
-                 hotspot: bool = False, fresh: bool = False):
+                 hotspot: bool = False, fresh: bool = False, released: bool = True):
         self.config_path = config_path
         self.index_path = index_path
         self.extras = extras or []
@@ -1271,7 +1277,7 @@ class MockServer:
         self.clients: list[queue.Queue] = []
         self.reload_clients: list[queue.Queue] = []
         self.event_id = 0
-        self.sim = PoolSim(self.log, hotspot, fresh)
+        self.sim = PoolSim(self.log, hotspot, fresh, released)
         self.layout = load_layout(config_path, self.extras)
         self.sim.adopt(self.layout.entities)
         self.sim.tick()
@@ -1644,6 +1650,8 @@ def main() -> int:
                         help="also load this YAML package's entities (repeatable), e.g. wifi-setup.yaml")
     parser.add_argument("--hotspot", action="store_true",
                         help="start on the fallback hotspot, with no clock")
+    parser.add_argument("--no-release", action="store_true",
+                        help="no firmware published yet (no manifest on GitHub Pages): every update check fails")
     parser.add_argument("--fresh", action="store_true",
                         help="start as a controller not set up yet (on its hotspot, nothing set)")
     args = parser.parse_args()
@@ -1654,7 +1662,7 @@ def main() -> int:
     # PID 1 in the container ignores SIGTERM by default, so `docker stop` would
     # otherwise wait out its timeout and SIGKILL.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    mock = MockServer(args.config, args.index, args.extra, args.hotspot, args.fresh)
+    mock = MockServer(args.config, args.index, args.extra, args.hotspot, args.fresh, not args.no_release)
     threading.Thread(target=mock.ticker, daemon=True).start()
     threading.Thread(target=mock.watcher, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(mock))

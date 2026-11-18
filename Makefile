@@ -167,8 +167,9 @@ mock-ui: webui
 # hotspot, with no clock (a router outage). MOCK_FRESH=1 starts it as a new
 # install: not set up (Setup State lists everything), no network saved, on its
 # hotspot with no clock; once a Page Password is set, it asks for it.
+# MOCK_NO_RELEASE=1: no firmware published yet, every update check fails.
 mock-webui:
-	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh)"
+	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh) $(if $(MOCK_NO_RELEASE),--no-release)"
 
 # Prints the page layout (sections, order, which entities the simulation
 # drives) and fails if $(CONFIG) has an entity type the mock can't render.
