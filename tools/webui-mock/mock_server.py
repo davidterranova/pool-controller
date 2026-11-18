@@ -475,6 +475,7 @@ class SettingsSim:
         self.page_password: str | None = None
         self.page_password_set = not fresh
         self.api_key_set = not fresh
+        self.key_generated = False  # Generate API Key's: nobody holds it, so Home Assistant never connects
         self.bus = list(PROBES)
         if fresh:
             self.latitude = self.longitude = None
@@ -532,6 +533,7 @@ class SettingsSim:
     def factory_reset(self):
         """Access and network go; roles, position and timezone stay."""
         self.page_password, self.page_password_set, self.api_key_set = None, False, False
+        self.key_generated = False
 
     def snapshot(self, wifi_saved: bool, temps: dict) -> dict:
         return {
@@ -959,10 +961,10 @@ class PoolSim:
             if self.settings.api_key_set:
                 self.log("Generate API Key: a key is already set; Forget API Key first")
             else:
-                self.settings.api_key_set = True
+                self.settings.api_key_set = self.settings.key_generated = True
                 self.log("API key generated and saved")
         elif name == S["forget_key"]:
-            self.settings.api_key_set = False
+            self.settings.api_key_set = self.settings.key_generated = False
             self.log("API key forgotten")
         elif name == S["rescan"]:
             self.log(f"Probe scan: {len(self.settings.bus)} on the bus")
@@ -1021,7 +1023,9 @@ class PoolSim:
             N["pool_temp"]: _round(self.reading("pool_temp")),
             N["pad_temp"]: _round(self.reading("pad_temp")),
             N["outdoor_temp"]: _round(self.reading("outdoor_temp")),
-            N["status"]: self.wifi.mode == "Connected",  # the API link to HA needs the home network
+            # The API link to HA: the home network, and a key HA holds (it sets one as it pairs, or was given it).
+            N["status"]: (self.wifi.mode == "Connected" and self.settings.api_key_set
+                          and not self.settings.key_generated),
             N["flow"]: self.flow,
             N["volume"]: round(self.volume),
             N["fill_today"]: round(self.fill_today),
@@ -1323,7 +1327,7 @@ class MockServer:
                     self.log(f"'{name}' set")
                 elif name == S["api_key"]:
                     if _api_key_ok(value):
-                        settings.api_key_set = True
+                        settings.api_key_set, settings.key_generated = True, False
                         self.log("API key saved")
                     else:
                         self.log("API key refused: not base64 of 32 bytes, or all zero")
