@@ -24,14 +24,14 @@ Target:
 | WP | What | Depends on | Branch | Status | PR |
 |---|---|---|---|---|---|
 | 0 | Card 1.3.1: parse ESPHome 2026.7's version string (« … (config hash …, built YYYY-MM-DD HH:MM:SS +0000) ») | — | fix/card-esphome-version-built | done | #28 (merged) |
-| 1 | Spike: confirm the runtime hooks on hardware with ESPHome 2026.11 | — | spike/wp1-runtime-hooks | done at compile level (hardware checks left, in the WP8 window) | #30 (merged) |
-| 2 | Firmware: settings package, no `!secret` left | 1 | feat/wp2-device-settings | done in `feat/secret-free-firmware` (hardware checks left, in the WP8 window; ESPHome beta) | #31 (merged) |
-| 3 | Controller's page: setup wizard, « Contrôleur » sections | contract below (UI on the mock); 2 to finish | feat/wp3-setup-wizard | in progress | |
-| 4 | Card: Firmware section on the update entity, position/timezone from HA | contract below; 6 to finish | feat/wp4-card-update-entity | in progress | |
-| 5 | CI: releases carry the firmware, manifest + files on GitHub Pages | 2 (for a real build) | ci/wp5-firmware-releases | done (publishing waits for WP2 and the owner) | #29 (merged) |
-| 6 | Firmware: updates (http_request OTA + update entity + auto-update) | 1, 5 (manifest URL) | feat/wp6-updates | in progress (hardware checks left) | |
-| 7 | Install page (ESP Web Tools) + docs | 5 | feat/wp7-install-page | review (the fresh-board install check stays open: no spare ESP32) | |
-| 8 | Automatic migration of an existing controller (`make migrate`: one OTA seeds its secrets.yaml settings) | 2 | feat/wp8-make-migrate | done: the controller in service migrated 2026-11-18 (see the log) | |
+| 1 | Spike: confirm the runtime hooks on hardware with ESPHome 2026.11 | — | spike/wp1-runtime-hooks | done (compile level #30; on hardware: the controller in service since 2026-11-18) | #30 (merged) |
+| 2 | Firmware: settings package, no `!secret` left | 1 | feat/wp2-device-settings | done, running on the controller in service since 2026-11-18 | #31 (merged) |
+| 3 | Controller's page: setup wizard, « Contrôleur » sections | contract below (UI on the mock); 2 to finish | feat/wp3-setup-wizard | done, running on the controller (page checked against it) | #34 (merged) |
+| 4 | Card: Firmware section on the update entity, position/timezone from HA | contract below; 6 to finish | feat/wp4-card-update-entity | done (card 1.6.0) | #35 (merged) |
+| 5 | CI: releases carry the firmware, manifest + files on GitHub Pages | 2 (for a real build) | ci/wp5-firmware-releases | done; Pages on `pool-controller.kitesize.fr`, first publish with v1.6.0 | #29 (merged) |
+| 6 | Firmware: updates (http_request OTA + update entity + auto-update) | 1, 5 (manifest URL) | feat/wp6-updates | done, running on the controller; an install from a published release is checked with v1.6.0 | #33 (merged) |
+| 7 | Install page (ESP Web Tools) + docs | 5 | feat/wp7-install-page | done (the fresh-board install check stays open: no spare ESP32) | #42 (merged) |
+| 8 | Automatic migration of an existing controller (`make migrate`: one OTA seeds its secrets.yaml settings) | 2 | feat/wp8-make-migrate | done: the controller in service migrated 2026-11-18 (see the log) | #36 (merged) |
 
 Parallel from day one: 0, 1, the mock-ups of 3 and 4, and 5's workflow (tested on a dummy build).
 
@@ -101,7 +101,7 @@ These are agreed up front, so 3, 4 and the mock can proceed before 2 and 6. Name
 
 ### WP2: firmware settings
 - [x] new package `device-settings.yaml` + `device_settings.h`: globals, contract entities, boot lambdas (`on_boot` 700: after globals restore and the bus scan, before dallas_temp, OTA and web_server; 590: right after dallas_temp, a role with no probe back to address 0; -200: first publishes); `pool-controller.yaml` / `wifi-setup.yaml` lose every `!secret` (the guard finds none)
-- [x] ESPHome pinned once (Makefile `ESPHOME_VERSION`, used by CI): **2026.11.0b6, a beta**: move to 2026.11.x stable before `feat/secret-free-firmware` reaches main; a POSIX TZ parser header for `time::set_global_tz()`; `web_server: local: false`; no `provisioning:`
+- [x] ESPHome pinned once (Makefile `ESPHOME_VERSION`, used by CI): **2026.11.0b6, a beta**: released on it (v1.6.0, the owner's call, 2026-11-18: the controller in service runs it), 2026.11.x stable comes as a patch release that controllers install by themselves; a POSIX TZ parser header for `time::set_global_tz()`; `web_server: local: false`; no `provisioning:`
 - [x] `esphome: project: {name: davidterranova.pool-controller, version: ${firmware_version}}`; `improv_serial:`
 - [x] the schedule waits for a position and timezone (Schedule Not Computed on at once, Schedule Waiting For says why); probes without a role read `unknown`
 - [x] webui mock simulates the contract (`MOCK_FRESH=1` = an unconfigured device, digest login once a Page Password is set); `make validate` / `build` / `mock-ui-check` / `ha-dashboard-check`
