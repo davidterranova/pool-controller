@@ -2,9 +2,9 @@
  * Time zones for the controller (docs/plans/secret-free-firmware.md): it applies a POSIX TZ string
  * (Timezone) and only shows the IANA name beside it (Timezone Name), so whoever sets one writes both.
  * Browsers know IANA names but not their POSIX rules, hence:
- *   - posixOf(), the one IANA -> POSIX conversion the page uses. It reads the table below for now; once
- *     the card's full table lands (WP4, PiscineCard.posixTz, generated from tzdata), it becomes a call
- *     to that, and nothing else changes;
+ *   - posixOf(), the one IANA -> POSIX conversion the page uses: the card's full table
+ *     (PiscineCard.posixTz, generated from tzdata by tools/tz-posix.py), which the page loads before
+ *     this module; the list below only when the card isn't there (unit tests);
  *   - TIMEZONES, the zones a pool owner here is likely to be in, with the rule in force (each zone
  *     file's footer line, tzdata 2025): the position form's dropdown. A zone posixOf() doesn't know is
  *     typed as a POSIX string, with its name.
@@ -68,7 +68,8 @@ export const TIMEZONES = [
 ];
 
 /** The POSIX string of an IANA name, or null when unknown. The page's only conversion: see the header. */
-export const posixOf = (name) => TIMEZONES.find(([iana]) => iana === name)?.[1] ?? null;
+export const posixOf = (name) =>
+  globalThis.customElements?.get("piscine-card")?.posixTz?.(name) ?? TIMEZONES.find(([iana]) => iana === name)?.[1] ?? null;
 
 /** A POSIX TZ string as the controller's parser takes it: std offset [dst [offset] [,rule,rule]]. */
 const NAME = "(?:<[+-]?[A-Za-z0-9]+>|[A-Za-z]{3,})";
