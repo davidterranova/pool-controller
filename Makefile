@@ -93,8 +93,11 @@ ota: build
 # release; migrate-clean deletes them. migrate then checks the controller is
 # idle, uploads with today's OTA password, waits for it and checks Setup State
 # `configured`, the pool temperature and the same API key; on a failure it
-# prints the rollback. MIGRATE_FORCE=1 skips the idle check. migrate-check
-# repeats the checks alone. The secrets are read inside the container only.
+# prints the rollback. Once migrated, it writes .ota-password (mode 600,
+# gitignored) for the next `make ota`, unless that file holds another password
+# (left alone, with a note). MIGRATE_FORCE=1 skips the idle check.
+# migrate-check repeats the checks alone. The secrets are read inside the
+# container only.
 MIGRATE_DIR := .migrate
 MIGRATE_CONFIG := $(MIGRATE_DIR)/migration.yaml
 MIGRATE_SECRETS ?= secrets.yaml
@@ -102,7 +105,7 @@ MIGRATE_SECRETS ?= secrets.yaml
 # pool-controller.yaml gives the probe addresses, and it is the rollback.
 MIGRATE_FROM ?= v1.3.1
 MIGRATE_PY = docker run --rm -i -v "$(CURDIR):/config" -v "$(abspath $(MIGRATE_SECRETS)):/run/migrate/secrets.yaml:ro" --entrypoint python3 $(ESPHOME_IMAGE) -I -B /config/tools/migrate/migrate.py
-MIGRATE_DEVICE_ARGS = --secrets /run/migrate/secrets.yaml --host "$(HOST)" --from-ref "$(MIGRATE_FROM)" --expect-version "$(FW_VERSION)" --config $(MIGRATE_CONFIG) $(if $(MIGRATE_FORCE),--force)
+MIGRATE_DEVICE_ARGS = --secrets /run/migrate/secrets.yaml --host "$(HOST)" --from-ref "$(MIGRATE_FROM)" --expect-version "$(FW_VERSION)" --config $(MIGRATE_CONFIG) --ota-password-file /config/.ota-password $(if $(MIGRATE_FORCE),--force)
 migrate-need-secrets = @test -f "$(MIGRATE_SECRETS)" || (echo "No $(MIGRATE_SECRETS): make migrate reads the controller's settings from it (MIGRATE_SECRETS=path)." && exit 1)
 migrate-need-host = @test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
 

@@ -511,6 +511,29 @@ def preflight(args) -> int:
     return 0
 
 
+def ota_password_file_action(existing: str | None, password: str) -> str:
+    """What to do with .ota-password once migrated: "write" (none yet), "same"
+    (already this password) or "different" (someone else's choice: left alone).
+    Compared as the Makefile reads it, `$(shell cat …)`: trailing newlines don't count."""
+    if existing is None:
+        return "write"
+    return "same" if existing.rstrip("\n") == password else "different"
+
+
+def save_ota_password(path: Path, password: str) -> None:
+    """So the next `make ota` uploads with the controller's OTA password, with no extra step."""
+    existing = path.read_text(encoding="utf-8") if path.exists() else None
+    action = ota_password_file_action(existing, password)
+    if action == "write":
+        write_private(path, password)
+        print(f"{path.name}: written (mode 600) with the OTA password, for the next `make ota`.")
+    elif action == "same":
+        print(f"{path.name}: already holds the OTA password.")
+    else:
+        print(f"note: {path.name} holds another password, left as it is. The controller's OTA password is "
+              "secrets.yaml's, unless it already had one set before the migration.")
+
+
 def check(args) -> int:
     key = read_key(args.secrets)
     print(f"Waiting for {args.host} with the same API key…", flush=True)
@@ -524,6 +547,8 @@ def check(args) -> int:
     if problems:
         raise MigrationError("\n".join(problems), rollback=True)
     print("Migrated: configured, same API key (Home Assistant keeps its pairing), pool temperature reading.")
+    if args.ota_password_file:
+        save_ota_password(Path(args.ota_password_file), read_ota_password(args.secrets))
     print("Once Home Assistant shows it connected, `make migrate-clean` deletes the build holding the secrets.")
     return 0
 
@@ -568,6 +593,7 @@ def main(argv: list) -> int:
         cmd.add_argument("--expect-version", help="the migration build's firmware_version")
         cmd.add_argument("--config", help="the migration build's config (run: uploaded)")
         cmd.add_argument("--force", action="store_true", help="migrate even if the controller is busy")
+        cmd.add_argument("--ota-password-file", help="check, run: once migrated, where `make ota` reads the OTA password")
         cmd.add_argument("--timeout", type=float, default=180, help="seconds to wait for the controller")
         cmd.add_argument("--settle", type=float, default=180, help="seconds to wait for configured + a pool reading")
         cmd.set_defaults(func=func)

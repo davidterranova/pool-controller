@@ -224,6 +224,24 @@ class Checks(unittest.TestCase):
         self.assertIsNone(migrate.state_value(State("configured", missing=True)))
         self.assertEqual(migrate.state_value(State("configured")), "configured")
 
+    def test_ota_password_file_action(self):
+        self.assertEqual(migrate.ota_password_file_action(None, "pw-123456"), "write")
+        self.assertEqual(migrate.ota_password_file_action("pw-123456\n", "pw-123456"), "same")
+        self.assertEqual(migrate.ota_password_file_action("pw-123456", "pw-123456"), "same")
+        self.assertEqual(migrate.ota_password_file_action("another-one", "pw-123456"), "different")
+
+    def test_save_ota_password(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / ".ota-password"
+            migrate.save_ota_password(path, "pw-123456")
+            self.assertEqual(path.read_text(), "pw-123456")
+            self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+            migrate.save_ota_password(path, "pw-123456")  # same: untouched
+            self.assertEqual(path.read_text(), "pw-123456")
+            path.write_text("someone-elses\n")
+            migrate.save_ota_password(path, "pw-123456")  # different: left alone
+            self.assertEqual(path.read_text(), "someone-elses\n")
+
     def test_rollback_names_the_old_build(self):
         text = migrate.rollback_text("192.0.2.10", "v1.3.1")
         self.assertIn("v1.3.1", text)
