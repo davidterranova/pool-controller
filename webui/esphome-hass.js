@@ -3,7 +3,8 @@
  * piscine-card written for HA runs unchanged on the ESP32's page.
  *
  *   /events (SSE)   ping (config, then uptime), state (one entity), log (one line, ANSI-coloured)
- *   POST /{domain}/{name}/{action}?…   number set, select set, button press, fan/switch turn_on|off
+ *   POST /{domain}/{name}/{action}?…   number set, select set, button press, fan/switch turn_on|off,
+ *                                       update install
  *
  * Entity ids are ESPHome's `name_id` ("select/Manual Override"); the card is configured with those
  * instead of HA's entity ids. What HA has and the device doesn't:
@@ -67,6 +68,13 @@ export const E = {
   fillMonths: "text_sensor/Fill Water Months",
   fwVersion: "text_sensor/Firmware Version",
   esphomeVersion: "text_sensor/ESPHome Version",
+  // From updates.yaml: the page falls back to comparing with GitHub on a firmware without them.
+  fwUpdate: "update/Firmware",
+  updateStatus: "text_sensor/Update Status",
+  autoUpdate: "switch/Auto Update",
+  updateInterval: "select/Update Check Interval",
+  checkUpdate: "button/Check for Update",
+  cancelUpdate: "button/Cancel Update",
   // From wifi-setup.yaml: the page hides what a firmware without it doesn't have.
   wifiMode: "text_sensor/WiFi Mode",
   wifiSignal: "sensor/WiFi Signal",
@@ -170,6 +178,7 @@ export class EspHass extends EventTarget {
         step: conf.step !== undefined ? parseFloat(conf.step) : undefined,
         mode: conf.mode,
         options: conf.option,
+        ...(domain === "update" ? updateAttributes(msg, conf) : {}),
       },
     };
     this._estimateOverrideSince();
@@ -270,6 +279,7 @@ export class EspHass extends EventTarget {
     if (domain === "number" && service === "set_value") return this.setNumber(id, data.value);
     if (domain === "select" && service === "select_option") return this.select(id, data.option);
     if (domain === "button" && service === "press") return this.press(id);
+    if (domain === "update" && service === "install") return this.install(id);
     if (["fan", "switch"].includes(domain) && ["turn_on", "turn_off", "toggle"].includes(service)) {
       return this._post(id, service);
     }
@@ -296,6 +306,10 @@ export class EspHass extends EventTarget {
   }
   press(id) {
     return this._post(id, "press");
+  }
+  /** An update entity's install: the firmware's gate decides when it starts (updates.yaml). */
+  install(id) {
+    return this._post(id, "install");
   }
   setText(id, value) {
     return this._post(id, "set", { value });
@@ -335,7 +349,24 @@ function toHaState(domain, msg) {
       return msg.value === null || msg.value === undefined || Number.isNaN(msg.value) ? "unavailable" : String(msg.value);
     case "button":
       return "unknown";
+    case "update":
+      // HA: on = an update to install (installing included), off = up to date.
+      return { "UPDATE AVAILABLE": "on", INSTALLING: "on", "NO UPDATE": "off" }[msg.state] || "unknown";
     default:
       return msg.value === null || msg.value === undefined ? "unknown" : String(msg.value);
   }
+}
+
+/**
+ * An update entity's attributes as HA names them. The device sends the latest version as `value` with
+ * every state, the installed one and the release only with the full config (on connect).
+ */
+function updateAttributes(msg, conf) {
+  return {
+    installed_version: conf.current_version || null,
+    latest_version: msg.value || null,
+    in_progress: msg.state === "INSTALLING",
+    release_url: conf.release_url || null,
+    title: conf.title || null,
+  };
 }

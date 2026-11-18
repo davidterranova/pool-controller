@@ -129,9 +129,10 @@ main { max-width: 1240px; margin: 0 auto; padding: 16px 16px 40px; }
 .erow .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .erow .name span { display: block; }
 .erow .name small { display: block; font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); margin-top: 1px; }
-/* Firmware › Mise à jour: GitHub's verdict, and its link */
+/* Firmware › Mise à jour: the controller's (or GitHub's) verdict, and its link */
 .erow .name small.fw-up, .erow .name small a { color: var(--acc); }
 .erow .name small.fw-ok { color: var(--ok); }
+.erow .name small.fw-err { color: var(--danger); }
 .erow .name small a { font-weight: 500; text-decoration: none; }
 .erow .val { text-align: right; white-space: nowrap; }
 .erow .val.bad { color: var(--danger); font-weight: 500; }
@@ -140,6 +141,9 @@ main { max-width: 1240px; margin: 0 auto; padding: 16px 16px 40px; }
 .erow .ctl input[type=range] { flex: 1; min-width: 0; accent-color: var(--acc); }
 .erow .ctl .v { min-width: 64px; text-align: right; white-space: nowrap; }
 .erow.dirty .ctl .v { color: var(--amber); font-weight: 500; }
+/* a segmented control in a row (Firmware: Auto Update, Update Check Interval): each option at its own width */
+.erow .ctl:has(.seg) { flex: 0 0 auto; min-width: 0; justify-content: flex-end; }
+.erow .ctl .seg { grid-auto-columns: max-content; }
 .sep { height: 1px; background: var(--divider-color); margin: 6px 0; }
 .sect { margin: 12px 0 2px; font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--secondary-text-color); }
 
@@ -240,7 +244,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 16px 16px 40px; }
 @media (max-width: 520px) {
   .top { padding-top: 18px; }
   .erow { flex-wrap: wrap; }
-  .erow .ctl { flex: 1 1 100%; margin-left: 54px; }
+  .erow .ctl, .erow .ctl:has(.seg) { flex: 1 1 100%; margin-left: 54px; justify-content: flex-start; }
   .join { padding-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition-duration: .01ms !important; } }
