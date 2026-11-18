@@ -30,7 +30,7 @@ Target:
 | 4 | Card: Firmware section on the update entity, position/timezone from HA | contract below; 6 to finish | feat/wp4-card-update-entity | in progress | |
 | 5 | CI: releases carry the firmware, manifest + files on GitHub Pages | 2 (for a real build) | ci/wp5-firmware-releases | done (publishing waits for WP2 and the owner) | #29 (merged) |
 | 6 | Firmware: updates (http_request OTA + update entity + auto-update) | 1, 5 (manifest URL) | feat/wp6-updates | in progress (hardware checks left) | |
-| 7 | Install page (ESP Web Tools) + docs | 5 | | todo | |
+| 7 | Install page (ESP Web Tools) + docs | 5 | feat/wp7-install-page | in progress | |
 | 8 | Automatic migration of an existing controller (`make migrate`: one OTA seeds its secrets.yaml settings) | 2 | feat/wp8-make-migrate | done: the controller in service migrated 2026-11-18 (see the log) | |
 
 Parallel from day one: 0, 1, the mock-ups of 3 and 4, and 5's workflow (tested on a dummy build).
