@@ -27,7 +27,7 @@ Target:
 | 1 | Spike: confirm the runtime hooks on hardware with ESPHome 2026.11 | — | spike/wp1-runtime-hooks | review (hardware checks left) | #30 |
 | 2 | Firmware: settings package, no `!secret` left | 1 | feat/wp2-device-settings | done in `feat/secret-free-firmware` (hardware checks left, in the WP8 window; ESPHome beta) | #31 (merged) |
 | 3 | Controller's page: setup wizard, « Contrôleur » sections | contract below (UI on the mock); 2 to finish | feat/wp3-setup-wizard | in progress | |
-| 4 | Card: Firmware section on the update entity, position/timezone from HA | contract below; 6 to finish | | todo | |
+| 4 | Card: Firmware section on the update entity, position/timezone from HA | contract below; 6 to finish | feat/wp4-card-update-entity | in progress | |
 | 5 | CI: releases carry the firmware, manifest + files on GitHub Pages | 2 (for a real build) | ci/wp5-firmware-releases | done (publishing waits for WP2 and the owner) | #29 (merged) |
 | 6 | Firmware: updates (http_request OTA + update entity + auto-update) | 1, 5 (manifest URL) | feat/wp6-updates | in progress (hardware checks left) | |
 | 7 | Install page (ESP Web Tools) + docs | 5 | | todo | |
@@ -78,9 +78,9 @@ These are agreed up front, so 3, 4 and the mock can proceed before 2 and 6. Name
 | Auto Update | switch | restored (global `auto_update_enabled`), off by default; acts on scheduled checks only: an update a manual check finds, or any with « À la demande », waits for an explicit install (WP6) |
 | Update Check Interval | select (WP6) | « À la demande / 6 h / 24 h / 7 j », default 24 h, restored (global `update_check_hours`) |
 | Firmware | update (`gated_update`, in front of an internal http_request one) | installed / latest / release URL; install action; behind our own gate (WP6): an install from HA or the page waits like any other |
-| Update Status | text_sensor (WP6) | `non vérifié`, `vérification`, `à jour`, `disponible`, `en attente (mode manuel)`, `en attente (remplissage)`, `installation`, `erreur (vérification)`, `erreur (installation)`: exact strings, the card (WP4) parses them |
+| Update Status | text_sensor (WP6) | `non vérifié`, `vérification`, `à jour`, `disponible`, `en attente (mode manuel)`, `en attente (remplissage)`, `installation`, `erreur (vérification)`, `erreur (installation)`: exact strings; the card reads them with `PiscineCard.parseUpdateStatus` (WP4) |
 | Check for Update | button | a manual check: never installs by itself, Auto Update or not |
-| Cancel Update | button (WP6) | drops an install waiting at the gate (Update Status back to `disponible`); does nothing otherwise. The page shows « Annuler la demande » only while Update Status is `en attente (…)` |
+| Cancel Update | button (WP6) | drops an install waiting at the gate (Update Status back to `disponible`); does nothing otherwise. The page and the card show « Annuler la demande » only while Update Status is `en attente (…)` |
 | Factory Reset | button | page asks for confirmation; selective erase (Rules) |
 
 ## Work packages
@@ -115,9 +115,10 @@ These are agreed up front, so 3, 4 and the mock can proceed before 2 and 6. Name
 - [ ] at integration with WP4: `posixOf()` in `webui/timezones.js`, the page's only IANA → POSIX conversion, becomes a call to the card's full table (`PiscineCard.posixTz`, via `customElements.get("piscine-card")`); `TIMEZONES` stays as the dropdown's short preset list
 
 ### WP4: card
-- [ ] Avancé › Firmware on the update entity: installed / latest, notes link, « Installer » (`update.install`), Auto Update + interval rows; retire `checkFirmware` / `FIRMWARE_FILES` (keep `parseVersion`)
-- [ ] « Utiliser la position et le fuseau de Home Assistant » (Latitude, Longitude, Timezone)
-- [ ] harness: a fake update entity in each state; VERSION bump
+- [x] Avancé › Firmware on the update entity: installed / latest, notes link, « Vérifier » (Check for Update), « Installer » (`update.install`, progress, then the reboot), Auto Update + interval rows, Update Status (« Installer » during an override or a fill asks first, then the wait is shown, with « Annuler la demande »: Cancel Update); ~~retire~~ `checkFirmware` / `FIRMWARE_FILES` only run without the update entity (v1.3.x until WP8), so they stay for now (Decisions)
+- [x] « Réglages » › Position: Latitude, Longitude, Timezone (Name), and « Utiliser la position et le fuseau de Home Assistant » (hass.config, 0.01°, POSIX from the card's `TZ_POSIX`, `tools/tz-posix.py`)
+- [x] harness: a fake update entity in each state (up to date, available, installing, rebooting, unavailable, deferred, failed, none); VERSION 1.5.0
+- [ ] with WP6: check the rows against the real entities (names, Update Status words, `update` in the mock and the dashboard check), then map them in `dashboard.yaml`
 
 ### WP5: CI releases
 - [x] one project version: a change to the card **or** firmware sources needs a new VERSION (card.yml's check, now `release.yml`: the card, `webui/`, any `*.yaml` at the root)
@@ -194,6 +195,8 @@ Before it runs: confirm that a value seeded at priority 800 survives into WP2's 
 - This file: `docs/plans/`, updated by each WP's PR.
 - Migration (2026-11-18): automatic, to keep uptime. One `make migrate` OTA seeds every current setting (Wi-Fi, API key, passwords, position, timezone, probe roles) from secrets.yaml into NVS, with nothing to set up and no re-pairing; manual steps are only the fallback (WP8).
 - Hardware: there is no spare ESP32. The hardware checks run on the controller in service, in one planned window right after `make migrate`, with the last secrets.yaml build kept as the rollback. A spare ESP32 with DS18B20s would move them off it; recommended, not required.
+- Card without the update entity (WP4): a firmware before WP6 (the v1.3.x in service until WP8) keeps « Vérifier » on GitHub's compare (`checkFirmware`, `FIRMWARE_FILES`, now any `*.yaml` / `*.h` at the root and `webui/`), so a card update through HACS doesn't take its firmware rows away; the device page uses it too until WP6 replaces its section. It goes once no such firmware is left (after WP8).
+- IANA → POSIX (WP4): one table, in the card (`TZ_POSIX`, every tzdata zone and link, 598 names over 94 rules, generated by `tools/tz-posix.py`; each string checked against `device_settings.h`'s parser), exposed as `PiscineCard.posixTz(iana)` so the controller's page (WP3) reuses it the way it reuses `parseVersion`.
 
 ## Spike log (WP1)
 _(findings, with the ESPHome version they were checked on)_
