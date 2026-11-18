@@ -440,7 +440,7 @@ build, `make ota` (no cable; see [Development builds](#development-builds));
 `make flash` (USB) only for a first flash, or a controller that can't reach
 Wi-Fi at all.
 
-The fill meter (Fill Meter, 1.7.0) is on after the update, as it was
+The fill meter (Fill Meter, 1.8.0) is on after the update, as it was
 before: a controller without a meter on its fill line turns it off once
 (Avancé › Réglages, or the device's Configuration in Home Assistant). See
 [POOL-CONTROLLER.md, Fill meter](POOL-CONTROLLER.md#fill-meter).

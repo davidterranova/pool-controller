@@ -170,7 +170,7 @@ Done as a package, like `updates.yaml`: the logic is pure C++ in `fill_meter.h`,
   - `pool_updates::gate_blocker` takes a bool;
   - `tools/tests/updates_test.cpp` covers it
 - [x] constants `GAP_MS` (5 min), `DETECT_LITRES` (3) and `DETECT_WINDOW_MS` (5 min) at the top of `fill_meter.h`
-- [x] `make firmware-test`, `make validate`, `make build` (ESPHome 2026.11.0b6: flash 1,212,883 B, 66.1 %; RAM 58,948 B, 32.6 %), `make mock-ui-check`, `make ha-dashboard-check`
+- [x] `make firmware-test`, `make validate`, `make build` (ESPHome 2026.11.0b6, with main at #46: flash 1,214,219 B, 66.2 %; RAM 59,092 B, 32.7 %), `make mock-ui-check`, `make ha-dashboard-check`
 - [x] **Docs:**
   - the POOL-CONTROLLER.md and README.md items for F1 in « Documentation », plus README's repo layout;
   - the `fill-meter.yaml` header (what each entity means, the stable global ids);
