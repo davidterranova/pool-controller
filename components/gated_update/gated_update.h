@@ -20,6 +20,9 @@ class GatedUpdate : public update::UpdateEntity, public Component {
 #ifdef ESPHOME_PROJECT_VERSION
     this->update_info_.current_version = ESPHOME_PROJECT_VERSION;
 #endif
+    // Nothing newer known until a check: Home Assistant reads an empty latest
+    // version as different from the installed one, i.e. « update available ».
+    this->update_info_.latest_version = this->update_info_.current_version;
     this->source_->add_on_state_callback([this]() { this->mirror_(); });
     if (this->source_->has_state())
       this->mirror_();
@@ -38,6 +41,8 @@ class GatedUpdate : public update::UpdateEntity, public Component {
     this->update_info_ = this->source_->update_info;
     if (this->update_info_.current_version.empty())
       this->update_info_.current_version = installed;
+    if (this->update_info_.latest_version.empty())
+      this->update_info_.latest_version = this->update_info_.current_version;
     this->state_ = this->source_->state;
     this->publish_state();
   }

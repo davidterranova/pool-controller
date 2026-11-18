@@ -279,6 +279,9 @@ switch:
     web_server: {sorting_group_id: grp_firmware, sorting_weight: 30}
     icon: mdi:timer-check
     entity_category: config
+    # The global holds the choice; without this, ESPHome's default ALWAYS_OFF
+    # runs turn_off_action at every boot and saves « off » over it.
+    restore_mode: DISABLED
     lambda: 'return id(auto_update_enabled);'
     turn_on_action:
       - globals.set: {id: auto_update_enabled, value: 'true'}
