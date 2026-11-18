@@ -140,15 +140,17 @@ globals:
     initial_value: '0'
 
 script:
-  # A restored global is written to NVS by its own 1 s poll, and NVS commits
-  # every flash_write_interval (5 min, see pool-controller.yaml): a setting
-  # commits now instead, so a power cut right after setting it keeps it.
+  # Every settings write ends here. Setup State is republished at once (the
+  # setup wizard follows it, rather than its 10 s poll). Then the setting is
+  # committed: a restored global is written to NVS by its own 1 s poll, and
+  # NVS commits every flash_write_interval (5 min, see pool-controller.yaml),
+  # so a power cut right after setting it would lose it.
   - id: settings_save
     mode: restart
     then:
+      - component.update: setup_state
       - delay: 2s
       - lambda: 'global_preferences->sync();'
-      - component.update: setup_state
 
   # The role selects' options: « none », the probes on the bus, and any
   # address a role holds that the bus didn't answer for.
@@ -311,7 +313,8 @@ text:
           }
           bool ok = api::global_api_server->save_noise_psk(psk, true);
           ESP_LOGI("settings", "API key %s", ok ? "saved" : "NOT saved");
-      - delay: 1s
+      # ESPHome applies a saved key 100 ms later (has_psk() then says so).
+      - delay: 200ms
       - component.update: setup_state
   # POSIX TZ string ("CET-1CEST,M3.5.0,M10.5.0/3"): the page and the card
   # convert the IANA zone. Refused if it doesn't parse.
@@ -462,7 +465,7 @@ button:
           }
           bool ok = api::global_api_server->save_noise_psk(psk, true);
           ESP_LOGI("settings", "API key generated and %s", ok ? "saved" : "NOT saved");
-      - delay: 1s
+      - delay: 200ms  # applied 100 ms after saving, as for API Key
       - component.update: setup_state
   # Back to no key (the API open on the LAN, as before pairing), to hand the
   # controller to Home Assistant, which then sets its own. Drops every API
@@ -476,7 +479,7 @@ button:
       - lambda: |-
           bool ok = api::global_api_server->clear_noise_psk(true);
           ESP_LOGI("settings", "API key %s", ok ? "forgotten" : "NOT forgotten");
-      - delay: 1s
+      - delay: 200ms  # applied 100 ms after clearing, as for API Key
       - component.update: setup_state
   # Scans the bus again (a probe added or swapped), then refreshes the
   # selects' options and Detected Probes.

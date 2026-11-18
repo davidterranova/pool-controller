@@ -172,13 +172,17 @@ button:
           password: !lambda 'return id(wifi_join_password);'
           save: true
           timeout: 30s
+          # Either way, Setup State (device-settings.yaml) says at once
+          # whether a network is saved: the setup wizard follows it.
           on_connect:
             - logger.log: "Wi-Fi: joined and saved"
+            - component.update: setup_state
           on_error:
             - logger.log:
                 level: WARN
                 format: "Wi-Fi: couldn't join '%s', keeping the previous network"
                 args: ['id(wifi_join_ssid).state.c_str()']
+            - component.update: setup_state
       - lambda: 'id(wifi_join_password).clear();'
 
 datetime:
