@@ -39,3 +39,8 @@ jobs:
       # an entity the card has gained, so the dashboard can't silently fall behind the firmware.
       - name: make ha-dashboard-check
         run: make ha-dashboard-check
+
+      # make migrate's generator and checks (tools/migrate/), on made-up
+      # values: never a secrets.yaml or a controller here.
+      - name: make migrate-test
+        run: make migrate-test

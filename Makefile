@@ -24,7 +24,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build firmware-test flash status kill-port ota ip logs webui webui-test mock-ui mock-webui mock-ui-check ha-dashboard-check clean
+.PHONY: validate build firmware-test flash status kill-port ota ip logs webui webui-test mock-ui mock-webui mock-ui-check ha-dashboard-check migrate-build migrate migrate-check migrate-clean migrate-test clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate: webui
@@ -82,6 +82,55 @@ ota: build
 	@test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
 	@test -n "$(OTA_PASSWORD)" || (echo "No OTA password: put the controller's OTA Password in .ota-password, or pass OTA_PASSWORD=..." && exit 1)
 	@$(ESPHOME) -s ota_password "$(OTA_PASSWORD)" upload $(CONFIG) --device $(HOST)
+
+# Moves a controller built with secrets.yaml (v1.3.x) to this firmware in one
+# OTA, with nothing to set up and no re-pairing in Home Assistant
+# (docs/plans/secret-free-firmware.md, WP8). migrate-build generates
+# $(MIGRATE_CONFIG): this firmware plus a boot step that fills every EMPTY
+# setting with what the controller was built with (secrets.yaml, and the probe
+# addresses of $(MIGRATE_FROM)), then compiles it. It holds the secrets, so it
+# and its build stay in $(MIGRATE_DIR)/ (gitignored, mode 700), never in a
+# release; migrate-clean deletes them. migrate then checks the controller is
+# idle, uploads with today's OTA password, waits for it and checks Setup State
+# `configured`, the pool temperature and the same API key; on a failure it
+# prints the rollback. Once migrated, it writes .ota-password (mode 600,
+# gitignored) for the next `make ota`, unless that file holds another password
+# (left alone, with a note). MIGRATE_FORCE=1 skips the idle check.
+# migrate-check repeats the checks alone. The secrets are read inside the
+# container only.
+MIGRATE_DIR := .migrate
+MIGRATE_CONFIG := $(MIGRATE_DIR)/migration.yaml
+MIGRATE_SECRETS ?= secrets.yaml
+# The last release built from secrets.yaml, i.e. what the controller runs: its
+# pool-controller.yaml gives the probe addresses, and it is the rollback.
+MIGRATE_FROM ?= v1.3.1
+MIGRATE_PY = docker run --rm -i -v "$(CURDIR):/config" -v "$(abspath $(MIGRATE_SECRETS)):/run/migrate/secrets.yaml:ro" --entrypoint python3 $(ESPHOME_IMAGE) -I -B /config/tools/migrate/migrate.py
+MIGRATE_DEVICE_ARGS = --secrets /run/migrate/secrets.yaml --host "$(HOST)" --from-ref "$(MIGRATE_FROM)" --expect-version "$(FW_VERSION)" --config $(MIGRATE_CONFIG) --ota-password-file /config/.ota-password $(if $(MIGRATE_FORCE),--force)
+migrate-need-secrets = @test -f "$(MIGRATE_SECRETS)" || (echo "No $(MIGRATE_SECRETS): make migrate reads the controller's settings from it (MIGRATE_SECRETS=path)." && exit 1)
+migrate-need-host = @test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
+
+migrate-build: webui
+	$(migrate-need-secrets)
+	@git cat-file -e "$(MIGRATE_FROM):pool-controller.yaml" 2>/dev/null || (echo "$(MIGRATE_FROM) has no pool-controller.yaml: set MIGRATE_FROM to the commit the controller was built from." && exit 1)
+	@mkdir -p $(MIGRATE_DIR) && chmod 700 $(MIGRATE_DIR)
+	@git show "$(MIGRATE_FROM):pool-controller.yaml" | $(MIGRATE_PY) generate --secrets /run/migrate/secrets.yaml --old-config - --from-ref "$(MIGRATE_FROM)" --out /config/$(MIGRATE_CONFIG) --out-display $(MIGRATE_CONFIG)
+	$(ESPHOME) -s firmware_version $(FW_VERSION) compile $(MIGRATE_CONFIG)
+
+migrate: migrate-build
+	$(migrate-need-host)
+	@$(MIGRATE_PY) run $(MIGRATE_DEVICE_ARGS)
+
+migrate-check:
+	$(migrate-need-secrets)
+	$(migrate-need-host)
+	@$(MIGRATE_PY) check $(MIGRATE_DEVICE_ARGS)
+
+migrate-clean:
+	rm -rf $(MIGRATE_DIR)
+
+# migrate.py's own tests: made-up values, no secrets.yaml, no controller.
+migrate-test:
+	docker run --rm -v "$(CURDIR):/config" --entrypoint python3 $(ESPHOME_IMAGE) -I -B /config/tools/migrate/test_migrate.py
 
 # Resolves the pool-controller's current IP via mDNS (same lookup `ota` uses).
 ip:
@@ -151,4 +200,4 @@ webui-test:
 	docker run --rm -v "$(CURDIR):/src" -w /src node:22-alpine node --test 'webui/test/*.test.mjs'
 
 clean:
-	rm -rf .esphome webui/dist
+	rm -rf .esphome webui/dist $(MIGRATE_DIR)

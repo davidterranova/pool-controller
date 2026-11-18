@@ -22,6 +22,7 @@ repo itself — layout and tooling.
 | `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS). `dashboard/`: dashboard components for these entities and the scripts the card calls, with a guide ([home-assistant/dashboard/README.md](home-assistant/dashboard/README.md)). |
 | `hacs.json` | Tells the Marketplace (HACS) which file this repo publishes: the card above, from each GitHub release. |
 | `tools/webui-mock/` | Local mock of the device's web UI, for working on the page without flashing (see below). |
+| `tools/tz-posix.py` | Regenerates the card's IANA → POSIX time-zone table from tzdata (« Utiliser la position et le fuseau de Home Assistant »). |
 | `tools/release/` | Release helpers for CI: the guard that keeps secrets out of a published firmware, and the firmware's `manifest.json` (see [Releases](#releases)). |
 | `webui/` | The device's own web page, built around the same `piscine-card` (see below). `make webui` bundles it into `webui/dist/` (gitignored), which the firmware embeds. |
 | `docs/plans/` | Plans for work spanning several PRs, with their progress: [secret-free firmware and OTA updates](docs/plans/secret-free-firmware.md). |
@@ -134,8 +135,11 @@ year), Auto/Manuel, the forced speed and its duration, and the outdoor and
 equipment-pad temperatures; « Remplissage » the fill water today, this month
 and by day, week or month with the period's total; « Avancé » today's plan
 with « Recalculer », the last 7 days, the controller (its link and Wi-Fi),
-its probes and its firmware, with « Vérifier » to ask GitHub whether main has
-changed it since; « Réglages » every setting the controller has. Two
+its probes and its firmware: installed and latest version, « Vérifier » and
+« Installer » on its update entity, automatic updates and how often to check;
+« Réglages » every setting the controller has, and its position and time
+zone, which « Utiliser la position et le fuseau de Home Assistant » sets
+from Home Assistant's own. Two
 more variants draw a part alone: `settings` the settings, with a line under
 each saying what it does, and `water` the fill water.
 A light on the tile and in the panel's header says when the controller was
@@ -169,11 +173,22 @@ What it needs from Home Assistant, besides the entities:
   meter or the recorder, that tab isn't there;
 - the Device Clock ([wifi-setup.yaml](wifi-setup.yaml)), which changes every
   minute: the light's heartbeat. Without it, the light only follows the link;
-- Firmware Version and ESPHome Version, for « Avancé » › Firmware (before a
-  firmware that has them, ESPHome's version comes from the device registry),
-  and, for « Vérifier », a browser that reaches api.github.com. It only tells:
-  installing stays `make ota` for now (updates from a release come with the
-  secret-free firmware plan, WP6).
+- the firmware's update entity (Firmware, with Check for Update, Cancel
+  Update, Auto Update, Update Check Interval and Update Status), for
+  « Avancé » › Firmware: « Installer » is `update.install`, which the
+  firmware holds while a manual override or a fill runs (« Annuler la
+  demande » presses Cancel Update); Auto Update installs only what a
+  scheduled check finds. A firmware without it (v1.3.x, built
+  with `make` from `secrets.yaml`) keeps the older rows instead: Firmware
+  Version and ESPHome Version (before a firmware that has them, ESPHome's
+  version comes from the device registry), and « Vérifier », which needs a
+  browser that reaches api.github.com and only tells: installing that one
+  stays `make ota`;
+- Latitude, Longitude, Timezone and Timezone Name, for « Réglages » ›
+  Position; its « Utiliser » reads Home Assistant's own location and zone
+  (Settings › System › General) and converts the zone to the POSIX string the
+  controller applies, from tzdata's rules
+  ([tools/tz-posix.py](tools/tz-posix.py) regenerates the card's table).
 
 The temperature graph exists because the probe is on the return pipe: it
 reads the pool only while water flows, and with the pump stopped it drifts

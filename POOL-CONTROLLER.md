@@ -328,8 +328,8 @@ Re-evaluated every 30 seconds, highest priority wins:
      with `-dirty` when the working tree had uncommitted changes. `make
      build` and `make ota` pass it in (`-s firmware_version`); compiled any
      other way it is `dev`. **ESPHome Version** is ESPHome's version and the
-     build time. The pool card's « Vérifier » compares the first with main
-     on GitHub.
+     build time. On a firmware without the update entity, the pool card's
+     « Vérifier » compares the first with main on GitHub.
 4. **Hot-night keep-alive** — only reached when the autonomous schedule
    above says `Off` (i.e. outside both blocks) and only overnight, before
    today's sunrise or after today's sunset: if `Pool Return Temperature` is

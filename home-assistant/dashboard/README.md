@@ -54,12 +54,17 @@ The panel has four tabs, so the pop-up needs no dashboard behind it:
 - « Remplissage »: the fill water today, this month, and by day, week or month. It needs the `volume`
   entity and the recorder; without them the tab isn't there (`variant: water` draws it alone);
 - « Avancé »: today's plan in detail with « Recalculer », the last 7 days of filtration against the
-  plan, the controller's link and Wi-Fi, the probes with « Relire », and the firmware (the commit it was
-  built from, ESPHome's version) with « Vérifier », which asks GitHub whether main has changed it since
+  plan, the controller's link and Wi-Fi, the probes with « Relire », and the firmware on its update
+  entity: installed and latest version with its release notes, « Vérifier », « Installer » (held by the
+  firmware while a manual override or a fill runs: the card asks first, then says it waits, and the
+  wait can be cancelled), automatic updates (what a scheduled check finds) and how often to check. On a firmware without updates (v1.3.x), the commit it was built from,
+  ESPHome's version and « Vérifier », which asks GitHub whether main has changed it since
   (`firmware_repo`, this repo by default). The controller's light opens it at « Contrôleur »;
-- « Réglages »: every setting, with its Apply gate. `settings_tab: false` drops it and « Avancé » (the
-  light then opens `more_path`, if given); `temperatures: false` drops the temperatures at the foot of
-  « Pompe ».
+- « Réglages »: every setting, with its Apply gate, then the controller's position and time zone, with
+  « Utiliser la position et le fuseau de Home Assistant » (Home Assistant's location rounded to 0.01°,
+  its zone as the controller's Timezone Name and its POSIX string). `settings_tab: false` drops it and
+  « Avancé » (the light then opens `more_path`, if given); `temperatures: false` drops the temperatures
+  at the foot of « Pompe ».
 
 Its header, and the tile, have a light for the controller: green while it talks (the Device Clock, `clock`,
 changes every minute), amber when it goes quiet or has been offline for less than 15 min, red beyond. In the
@@ -80,15 +85,18 @@ If yours differ (the device was renamed, or added under another name), check the
 Devices & services → ESPHome → Pool Controller, then either rename the entities to these ids or
 replace the `pool_controller_` prefix in the files.
 
-piscine-card has default entity ids of its own, but they are one particular install's: give it the
-whole `entities:` map, as `dashboard.yaml` does.
+piscine-card has default entity ids of its own, but most are one particular install's: give it the
+whole `entities:` map, as `dashboard.yaml` does. The firmware-update ones (`firmware`, `checkUpdate`,
+`cancelUpdate`, `autoUpdate`, `updateInterval`, `updateStatus`) already are a fresh install's ids.
 
 ## Keeping it in step with the firmware
 
 `make ha-dashboard-check` (also in CI) reads `pool-controller.yaml` and its packages and fails when
 the dashboard or the scripts name a controller entity that doesn't exist, or when the pool card in
-`dashboard.yaml` leaves out an entity the card uses. A firmware change that renames or adds an
-entity the dashboard relies on therefore can't land without the dashboard following.
+`dashboard.yaml` leaves out an entity the card uses (unless the card's default already is a fresh
+install's id; one the firmware doesn't have yet is only noted, since the card hides its rows). A
+firmware change that renames or adds an entity the dashboard relies on therefore can't land without
+the dashboard following.
 
 ## What the components show, and why that way
 
