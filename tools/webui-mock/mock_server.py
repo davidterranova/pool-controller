@@ -29,6 +29,10 @@ same way, for designing against entities the firmware doesn't have yet.
 --hotspot starts the simulated device on its fallback hotspot, with no clock.
 --no-release has no firmware published yet, so every update check fails (the
 manifest on GitHub Pages is a 404), as before a project's first release.
+--fill-off starts with the fill meter turned off (Fill Meter, fill-meter.yaml): no fill water, no alarm.
+--long-fill starts with a fill already running past Fill Alarm After, so its alarm is on; it stops 3 min after
+« Acquitter », and the alarm clears 5 min later, as on the device. « Détecter le compteur » opens the fill tap for
+20 s, so the pulse test passes.
 --fresh starts it as a controller straight out of the install: nothing set up
 (Setup State lists everything), no network saved, so on its hotspot with no
 clock. Once a Page Password is set, the mock asks for it (digest, user admin),
@@ -312,7 +316,19 @@ U = {
     "check": "Check for Update",
     "cancel": "Cancel Update",
 }
-SIMULATED = set(N.values()) | set(W.values()) | set(S.values()) | set(U.values())
+# The fill meter as an option (fill-meter.yaml): FillSim below.
+F = {
+    "enabled": "Fill Meter",
+    "alarm_after": "Fill Alarm After",
+    "detect": "Detect Fill Meter",
+    "status": "Fill Meter Status",
+    "last_pulse": "Fill Meter Last Pulse",
+    "running": "Fill Running",
+    "too_long": "Fill Running Too Long",
+    "ack": "Acknowledge Fill Alarm",
+    "acked": "Fill Alarm Acknowledged",
+}
+SIMULATED = set(N.values()) | set(W.values()) | set(S.values()) | set(U.values()) | set(F.values())
 
 # The simulated probe bus: made-up addresses, as ESPHome writes them (family
 # code 28 last), and what each probe measures. A fourth one hangs loose on the
@@ -673,11 +689,151 @@ class UpdateSim:
                 "release_url": self.RELEASE_URL if self.latest else ""}
 
 
+# fill_meter.h's constants, in seconds.
+FILL_GAP_S = 300            # a fill ends after this long without a litre (pulse_meter's timeout)
+FILL_DETECT_LITRES = 3      # the pulse test: this many litres…
+FILL_DETECT_WINDOW_S = 300  # …within this long
+FILL_TEST_TAP_S = 20        # the mock's tap the test opens: ~4.7 L at 14 L/min
+
+
+class FillSim:
+    """fill_meter.h in Python: fills, the long-fill alarm and its acknowledgement, the pulse test; plus the settings
+    fill-meter.yaml keeps (Fill Meter, Fill Alarm After, whether the meter is proven, its last pulse)."""
+
+    def __init__(self, log, enabled: bool = True, long_fill: bool = False, fresh: bool = False):
+        self.log = log
+        self.enabled = enabled
+        self.alarm_minutes = 60
+        self.detected = not fresh
+        self.day_measured = enabled
+        self.last_pulse_epoch: float | None = None
+        self._reset()
+        self.tap_until = 0.0
+        # --long-fill: a fill that began Fill Alarm After + 1 min ago and keeps going until acknowledged.
+        self.long_until = math.inf if long_fill and enabled else 0.0
+        if self.long_until:
+            now = time.time()
+            self.running, self.any_pulse, self.litres = True, True, 14 * (self.alarm_minutes + 1)
+            self.started, self.last_pulse = now - (self.alarm_minutes + 1) * 60, now
+            self.last_pulse_epoch = now
+
+    def _reset(self):
+        self.running = False
+        self.started = self.last_pulse = 0.0
+        self.any_pulse = False
+        self.litres = 0
+        self.too_long = self.acked = False
+        self.listening = False
+        self.detect_until = 0.0
+        self.detect_litres = 0
+        self.detect_failed = False
+
+    def tap_open(self, now: float) -> bool:
+        """Whether the mock's own tap runs: --long-fill's, or the one a pulse test opened."""
+        return now < self.long_until or now < self.tap_until
+
+    def _end(self, now: float):
+        if self.running:
+            self.running = False
+            self.log(f"[fill] Fill ended: {self.litres} L in {(self.last_pulse - self.started) / 60:.0f} min")
+        if self.too_long:
+            self.log("[fill] Fill alarm off")
+        self.too_long = self.acked = False
+
+    def on_litres(self, now: float, litres: int):
+        if not self.running or not self.any_pulse or now - self.last_pulse >= FILL_GAP_S:
+            self._end(now)
+            self.running, self.started, self.litres = True, now, 0
+            self.log("[fill] Fill started")
+        self.last_pulse, self.any_pulse = now, True
+        self.last_pulse_epoch = now
+        self.litres += litres
+        if self.listening:
+            self.detect_litres += litres
+            if self.detect_litres >= FILL_DETECT_LITRES:
+                self.listening, self.detect_failed, self.detected = False, False, True
+                self.log("[fill] Fill meter detected: it counts")
+        elif not self.detected and self.litres >= FILL_DETECT_LITRES and now - self.started <= FILL_DETECT_WINDOW_S:
+            self.detect_failed, self.detected = False, True
+            self.log("[fill] Fill meter detected: it counts")
+
+    def tick(self, now: float):
+        if not self.enabled:
+            return
+        if self.running and now - self.last_pulse >= FILL_GAP_S:
+            self._end(now)
+        too_long = self.running and self.alarm_minutes > 0 and now - self.started >= self.alarm_minutes * 60
+        if too_long != self.too_long:
+            self.too_long = too_long
+            self.log(f"[fill] Fill alarm: a fill has run for {self.alarm_minutes} min or more" if too_long else "[fill] Fill alarm off")
+        if not self.too_long:
+            self.acked = False
+        if self.listening and now >= self.detect_until:
+            self.listening, self.detect_failed, self.detected = False, True, False
+            self.log(f"[fill] Fill meter test: fewer than {FILL_DETECT_LITRES} L in {FILL_DETECT_WINDOW_S // 60} min, check its wiring")
+
+    def set_enabled(self, on: bool):
+        if on == self.enabled:
+            return
+        self.enabled = on
+        if on:
+            self.day_measured = True
+            self.log("[fill] Fill meter on")
+        else:
+            self._end(time.time())
+            self._reset()
+            self.tap_until = self.long_until = 0.0
+            self.log("[fill] Fill meter off: its pulses are ignored until it is turned back on")
+
+    def detect(self, now: float):
+        if not self.enabled:
+            self.log("[fill] Fill meter test: the meter is off, turn Fill Meter on first")
+            return
+        self.listening, self.detect_failed, self.detect_litres = True, False, 0
+        self.detect_until = now + FILL_DETECT_WINDOW_S
+        self.tap_until = now + FILL_TEST_TAP_S
+        self.log(f"[fill] Fill meter test: listening for {FILL_DETECT_LITRES} L within {FILL_DETECT_WINDOW_S // 60} min "
+                 f"(the mock opens the tap for {FILL_TEST_TAP_S} s)")
+
+    def acknowledge(self, now: float):
+        if not self.too_long or self.acked:
+            self.log("[fill] Acknowledge Fill Alarm: no alarm to acknowledge")
+            return
+        self.acked = True
+        self.log("[fill] Fill alarm acknowledged: no more reminders until this fill ends")
+        if self.long_until == math.inf:
+            self.long_until = now + 180  # --long-fill: someone closes the tap 3 min later
+
+    def status(self) -> str:
+        if not self.enabled:
+            return "off"
+        if self.listening:
+            return "listening"
+        if self.detect_failed:
+            return "not_detected"
+        return "detected" if self.detected else "untested"
+
+    def snapshot(self) -> dict:
+        last = datetime.fromtimestamp(self.last_pulse_epoch).strftime("%Y-%m-%d %H:%M") if self.last_pulse_epoch else "--"
+        return {
+            F["enabled"]: self.enabled,
+            F["alarm_after"]: float(self.alarm_minutes),
+            F["status"]: self.status(),
+            F["last_pulse"]: last,
+            F["running"]: self.enabled and self.running,
+            F["too_long"]: self.too_long,
+            F["acked"]: self.acked,
+        }
+
+
 class PoolSim:
     """A pocket version of evaluate_speed and friends, driven by wall-clock time."""
 
-    def __init__(self, log, hotspot: bool = False, fresh: bool = False, released: bool = True):
+    def __init__(self, log, hotspot: bool = False, fresh: bool = False, released: bool = True,
+                 fill_off: bool = False, long_fill: bool = False):
         self.log = log
+        self.fill = FillSim(log, enabled=not fill_off, long_fill=long_fill, fresh=fresh)
+        self.fill_carry = 0.0  # litres not yet a whole pulse
         # A fresh controller has no network saved: it starts on its hotspot.
         self.wifi = WifiSim(log, hotspot or fresh, saved=not fresh)
         self.settings = SettingsSim(log, fresh)
@@ -753,6 +909,7 @@ class PoolSim:
                 self.static[e.name] = {"sensor": 0.0, "binary_sensor": False, "fan": False,
                                        "switch": False, "text_sensor": "--"}.get(e.domain)
         self.static.setdefault(U["auto"], True)  # Auto Update: on by default, as the firmware
+        self.numbers[F["alarm_after"]] = float(self.fill.alarm_minutes)  # reads its global, no initial_value
         if not self.active:
             self.active = {k: self.num(k) for k in ("min", "max", "warm", "offset")}
 
@@ -893,20 +1050,33 @@ class PoolSim:
             b1s, b1e, b2s, b2e = self.blocks
             self.history = [(self.counted_day, self.filtration_s, self.water_lo, self.water_hi,
                              b1e - b1s + b2e - b2s)] + self.history[:6]
-            self.fill_days = [round(self.fill_today)] + self.fill_days[:29]
+            # A day the meter was off all day is unknown, not 0 L (fill-meter.yaml)
+            measured = self.fill.day_measured
+            self.fill_days = [round(self.fill_today) if measured else None] + self.fill_days[:29]
             if today.month != self.counted_day.month:
                 self.fill_months = [0] + self.fill_months[:11]
-            self.fill_months[0] = (self.fill_months[0] or 0) + round(self.fill_today)
+            if measured:
+                self.fill_months[0] = (self.fill_months[0] or 0) + round(self.fill_today)
+            self.fill.day_measured = self.fill.enabled
             self.fill_today = 0.0
             self.filtration_s = 0.0
             self.counted_day = today
             self.water_lo = self.water_hi = None
         elif self.commanded != "Off":
             self.filtration_s += now - self.last_tick
-        # The fill valve: 3 min at 14 L/min every quarter hour.
-        self.flow = 14.0 if int(now) % 900 < 180 else 0.0
-        self.volume += self.flow * (now - self.last_tick) / 60
-        self.fill_today += self.flow * (now - self.last_tick) / 60
+        # The fill valve: 3 min at 14 L/min every quarter hour, or the mock's own tap (FillSim.tap_open). With the meter
+        # off, the water still flows but nothing counts it.
+        valve = 14.0 if int(now) % 900 < 180 or self.fill.tap_open(now) else 0.0
+        self.flow = valve if self.fill.enabled else 0.0
+        if self.fill.enabled:
+            self.fill_carry += valve * (now - self.last_tick) / 60
+            litres = int(self.fill_carry)
+            if litres:  # whole pulses, as the meter counts them (1 L each)
+                self.fill_carry -= litres
+                self.volume += litres
+                self.fill_today += litres
+                self.fill.on_litres(now, litres)
+        self.fill.tick(now)
         self.last_tick = now
         # Slow drift so the sensors look alive.
         if now - self.last_drift > 30:
@@ -935,7 +1105,7 @@ class PoolSim:
         """What an install waits for (updates.h's gate_blocker): the override first, then a fill."""
         if self.override != "Auto":
             return "mode manuel"
-        return "remplissage" if self.flow > 0 else None
+        return "remplissage" if self.fill.running else None  # Fill Running, as updates.h's gate
 
     def tick_updates(self):
         hours = {"À la demande": 0, "6 h": 6, "24 h": 24, "7 j": 168}.get(self.selects.get(U["interval"]), 24)
@@ -970,6 +1140,10 @@ class PoolSim:
                 self.updates.check("on request")
             else:
                 self.log("Check for update (on request): no network")
+        elif name == F["detect"]:
+            self.fill.detect(time.time())
+        elif name == F["ack"]:
+            self.fill.acknowledge(time.time())
         elif name == N["update_temps"]:
             for k in self.temps:
                 self.temps[k] += random.uniform(-0.1, 0.1)
@@ -994,6 +1168,9 @@ class PoolSim:
 
     def set_number(self, name: str, value: float):
         self.numbers[name] = value
+        if name == F["alarm_after"]:
+            self.fill.alarm_minutes = int(round(value))
+            self.fill.tick(time.time())
         if name == N["timeout"] and self.override_since is not None:
             self.override_since = time.time()  # editing the timeout restarts the clock
         self.evaluate()
@@ -1060,9 +1237,9 @@ class PoolSim:
             # The API link to HA: the home network, and a key HA holds (it sets one as it pairs, or was given it).
             N["status"]: (self.wifi.mode == "Connected" and self.settings.api_key_set
                           and not self.settings.key_generated),
-            N["flow"]: self.flow,
-            N["volume"]: round(self.volume),
-            N["fill_today"]: round(self.fill_today),
+            N["flow"]: self.flow if self.fill.enabled else None,
+            N["volume"]: round(self.volume) if self.fill.enabled else None,
+            N["fill_today"]: round(self.fill_today) if self.fill.enabled else None,
             N["fill_days"]: _fill_line(self.counted_day - timedelta(days=1) if self.counted_day else None, self.fill_days),
             N["fill_months"]: _fill_line(datetime.now().strftime("%Y-%m"), self.fill_months),
             N["fill_import"]: self.fill_import_state,
@@ -1078,6 +1255,7 @@ class PoolSim:
         values[U["auto"]] = bool(self.static.get(U["auto"]))
         values.update(self.static)
         values.update(self.numbers)
+        values.update(self.fill.snapshot())
         values.update(self.selects)
         return values
 
@@ -1283,7 +1461,8 @@ def device_index(web: dict) -> str:
 
 class MockServer:
     def __init__(self, config_path: str, index_path: str | None, extras: list[str] | None = None,
-                 hotspot: bool = False, fresh: bool = False, released: bool = True):
+                 hotspot: bool = False, fresh: bool = False, released: bool = True,
+                 fill_off: bool = False, long_fill: bool = False):
         self.config_path = config_path
         self.index_path = index_path
         self.extras = extras or []
@@ -1291,7 +1470,7 @@ class MockServer:
         self.clients: list[queue.Queue] = []
         self.reload_clients: list[queue.Queue] = []
         self.event_id = 0
-        self.sim = PoolSim(self.log, hotspot, fresh, released)
+        self.sim = PoolSim(self.log, hotspot, fresh, released, fill_off, long_fill)
         self.layout = load_layout(config_path, self.extras)
         self.sim.adopt(self.layout.entities)
         self.sim.tick()
@@ -1456,6 +1635,8 @@ class MockServer:
                     self.sim.wifi.set_clock(value)
                 else:
                     self.sim.static[name] = value
+            elif domain == "switch" and action in ("turn_on", "turn_off", "toggle") and name == F["enabled"]:
+                self.sim.fill.set_enabled({"turn_on": True, "turn_off": False}.get(action, not self.sim.fill.enabled))
             elif domain == "switch" and action in ("turn_on", "turn_off", "toggle"):
                 self.sim.static[name] = {"turn_on": True, "turn_off": False}.get(action, not self.sim.static.get(name))
                 if name == U["auto"]:
@@ -1666,6 +1847,10 @@ def main() -> int:
                         help="start on the fallback hotspot, with no clock")
     parser.add_argument("--no-release", action="store_true",
                         help="no firmware published yet (no manifest on GitHub Pages): every update check fails")
+    parser.add_argument("--fill-off", action="store_true",
+                        help="start with the fill meter turned off (Fill Meter)")
+    parser.add_argument("--long-fill", action="store_true",
+                        help="start with a fill running past Fill Alarm After: its alarm is on")
     parser.add_argument("--fresh", action="store_true",
                         help="start as a controller not set up yet (on its hotspot, nothing set)")
     args = parser.parse_args()
@@ -1676,7 +1861,8 @@ def main() -> int:
     # PID 1 in the container ignores SIGTERM by default, so `docker stop` would
     # otherwise wait out its timeout and SIGKILL.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    mock = MockServer(args.config, args.index, args.extra, args.hotspot, args.fresh, not args.no_release)
+    mock = MockServer(args.config, args.index, args.extra, args.hotspot, args.fresh, not args.no_release,
+                      args.fill_off, args.long_fill)
     threading.Thread(target=mock.ticker, daemon=True).start()
     threading.Thread(target=mock.watcher, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(mock))
