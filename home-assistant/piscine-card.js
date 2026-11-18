@@ -15,7 +15,7 @@
  *   temperatures: false  # optional: no outdoor / equipment-pad block at the foot of « Pompe »
  *   controller_light: false                            # optional: no light for the controller (tile, header)
  *   controller_health: { warn: 3, alert: 15, beat: 4 }  # optional: its minutes before amber, before red; seconds between beats
- *   firmware_repo: owner/repo  # optional: where « Vérifier » compares the firmware (default: this repo on GitHub)
+ *   firmware_repo: owner/repo  # optional: where « Vérifier » compares a firmware without updates (v1.3.x; default: this repo)
  *
  * The card never writes the controller's Manual Override select itself:
  *   force a speed   script.piscine_forcer_vitesse (vitesse: Off|Low|Medium|High)
@@ -73,12 +73,21 @@
  * « Avancé » and « Réglages » (mock-up 2026-11-17): between them, every control the controller has, as on its
  * own page's Avancé tab, so the pop-up needs no dashboard behind it. « Avancé »: today's plan with « Recalculer »,
  * the last 7 days of filtration against the plan (Daily History), the controller (its link, its Wi-Fi signal in
- * dBm, % and words), the probes with « Relire », and the firmware: Firmware Version (the commit `make` compiled,
- * git describe), ESPHome's version and build time (its entity, else Home Assistant's device registry), and
- * « Vérifier », which asks GitHub (`firmware_repo`) whether main has changed a file the firmware is built from since
- * that commit. It can't install: the firmware carries its owner's secrets, so `make ota` stays the way.
- * « Réglages »: the settings, the same rows as `variant: settings`. The tabs are the way in: « Pompe » has no link
- * to them. `settings_tab: false` drops both (the device's page has its own Avancé).
+ * dBm, % and words), the probes with « Relire », and the firmware (mock-up 2026-11-18, plan WP4).
+ * A firmware with updates (WP6: ESPHome's `update` platform on the release manifest) has an update entity,
+ * « Firmware », and the section runs on it: installed version (with ESPHome's version and build time), latest
+ * version and its release notes, « Vérifier » (Check for Update) and « Installer » (update.install, with its
+ * progress), Auto Update and Update Check Interval. The firmware holds every install while a manual override or a
+ * fill runs, whoever asked (Update Status says « en attente »): the card asks first when « Installer » would wait, and
+ * says so while it waits, with « Annuler la demande » (Cancel Update). Auto Update installs only what a scheduled check
+ * finds, never after « Vérifier ». A firmware without it (v1.3.x, built with `make` and its owner's secrets) keeps the older
+ * rows: Firmware Version (git describe), ESPHome's version, and « Vérifier », which asks GitHub (`firmware_repo`)
+ * whether main has changed a file the firmware is built from since that commit; installing that one stays `make ota`.
+ * « Réglages »: the settings, the same rows as `variant: settings`, then « Position »: the controller's latitude,
+ * longitude and time zone, and « Utiliser la position et le fuseau de Home Assistant », which writes hass.config's,
+ * rounded to 0.01°, the zone as its IANA name (Timezone Name) and its POSIX string (Timezone, from TZ_POSIX). The
+ * tabs are the way in: « Pompe » has no link to them. `settings_tab: false` drops both (the device's page has its
+ * own Avancé).
  *
  * At the foot of « Pompe », « Températures »: the outdoor and equipment-pad probes, a tap opening Home
  * Assistant's more-info and its history. `temperatures: false` drops it (the device's page has its own tiles).
@@ -145,6 +154,12 @@ const DEFAULT_ENTITIES = {
   esphomeVersion: "sensor.piscine_pool_controller_esphome_version",
   // From here, a fresh install's ids (« Pool Controller »): entities the firmware got with its settings (WP2) and its
   // updates (WP6). An older firmware has none of them, and their rows hide.
+  firmware: "update.pool_controller_firmware",
+  checkUpdate: "button.pool_controller_check_for_update",
+  cancelUpdate: "button.pool_controller_cancel_update",
+  autoUpdate: "switch.pool_controller_auto_update",
+  updateInterval: "select.pool_controller_update_check_interval",
+  updateStatus: "sensor.pool_controller_update_status",
   latitude: "number.pool_controller_latitude",
   longitude: "number.pool_controller_longitude",
   timezone: "text.pool_controller_timezone",
@@ -167,9 +182,12 @@ const T_SPAN = { "30d": "30 jours", "90d": "90 jours", "1y": "12 mois" };
 const PROBE_GLITCH_C = 12; // a day the probe spans more than this had a bad reading (0 °C, 110 °C): its mean is dropped
 /** The controller's light (`controller_health`): minutes before amber, before red; seconds between two heartbeats. */
 const HEALTH = { warn: 3, alert: 15, beat: 4 };
-/** Where the firmware comes from, for « Vérifier » (`firmware_repo`), and the files it is built from. */
+/**
+ * A firmware without the update entity (v1.3.x, until it is migrated): where « Vérifier » compares it
+ * (`firmware_repo`), and the files a firmware is built from (any YAML or header at the root, the page).
+ */
 const FIRMWARE_REPO = "davidterranova/pool-controller";
-const FIRMWARE_FILES = ["pool-controller.yaml", "wifi-setup.yaml", "webui/", "home-assistant/piscine-card.js"];
+const FIRMWARE_FILES = [/^[^/]+\.(yaml|h)$/, /^webui\//, /^home-assistant\/piscine-card\.js$/];
 /** Never keys: the sun and the two scripts are Home Assistant's, not the controller's. */
 const NOT_CONTROLLER = new Set(["sun", "sForce", "sAuto"]);
 const WD = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
@@ -226,11 +244,15 @@ const CTL_ROWS = [
     sub: (c) => (c._s("wifiSsid") && c._s("wifiSsid") !== "unknown" ? `Réseau « ${c._s("wifiSsid")} »` : "") },
   { key: "wifiDisc", label: "Déconnexions Wi-Fi", sub: () => "Depuis le démarrage", icon: "wifi-alert", val: (c) => String(Math.round(c._n("wifiDisc"))) },
 ];
-/** Panel, tab « Avancé »: the firmware, and whether main has changed it since (the device page's Contrôleur › Firmware). */
+/**
+ * Panel, tab « Avancé »: a firmware without the update entity (v1.3.x), and whether main has changed it since (the
+ * device page's Contrôleur › Firmware). With the entity, #updRows has the section instead (_renderUpdate).
+ */
+const legacy = (c) => !c._st("firmware");
 const FW_ROWS = [
-  { key: "fwVersion", label: "Version", icon: "tag-outline", has: (c) => !!c._fw().version, val: (c) => c._fw().version.label, sub: (c) => c._fw().version.sub },
-  { key: "esphomeVersion", label: "ESPHome", icon: "chip", has: (c) => !!c._fw().esphome, val: (c) => c._fw().esphome.version, sub: (c) => c._fw().esphome.built },
-  { key: "fwCheck", label: "Mise à jour", icon: "cloud-sync-outline", has: () => true, button: "Vérifier",
+  { key: "fwVersion", label: "Version", icon: "tag-outline", has: (c) => legacy(c) && !!c._fw().version, val: (c) => c._fw().version.label, sub: (c) => c._fw().version.sub },
+  { key: "esphomeVersion", label: "ESPHome", icon: "chip", has: (c) => legacy(c) && !!c._fw().esphome, val: (c) => c._fw().esphome.version, sub: (c) => c._fw().esphome.built },
+  { key: "fwCheck", label: "Mise à jour", icon: "cloud-sync-outline", has: legacy, button: "Vérifier",
     action: (c) => c._checkFirmware(), disabled: (c) => c._fwCheck.busy || !c._fw().version?.ref, sub: (c) => c._fwCheckSub() },
 ];
 /** Panel, tab « Avancé »: the probes, as the device page's Capteurs. */
@@ -251,6 +273,7 @@ const ICONS = {
   alert: "M13,14H11V9H13M13,18H11V16H13M1,21H23L12,2L1,21Z",
   snow: "M20.79,13.95L18.46,14.57L16.46,13.44V10.56L18.46,9.43L20.79,10.05L21.31,8.12L19.54,7.65L20,5.88L18.07,5.36L17.45,7.69L15.45,8.82L13,7.38V5.12L14.71,3.41L13.29,2L12,3.29L10.71,2L9.29,3.41L11,5.12V7.38L8.55,8.82L6.55,7.69L5.93,5.36L4,5.88L4.47,7.65L2.7,8.12L3.22,10.05L5.55,9.43L7.55,10.56V13.45L5.55,14.58L3.22,13.96L2.7,15.89L4.47,16.36L4,18.12L5.93,18.64L6.55,16.31L8.55,15.18L11,16.62V18.88L9.29,20.59L10.71,22L12,20.71L13.29,22L14.7,20.59L13,18.88V16.62L15.45,15.17L17.45,16.3L18.07,18.63L20,18.12L19.53,16.35L21.3,15.88L20.79,13.95M9.5,10.56L12,9.11L14.5,10.56V13.44L12,14.89L9.5,13.44V10.56Z",
   chevron: "M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z",
+  timer: "M12,20A7,7 0 0,1 5,13A7,7 0 0,1 12,6A7,7 0 0,1 19,13A7,7 0 0,1 12,20M19.03,7.39L20.45,5.97C20,5.46 19.55,5 19.04,4.56L17.62,6C16.07,4.74 14.12,4 12,4A9,9 0 0,0 3,13A9,9 0 0,0 12,22C17,22 21,17.97 21,13C21,10.88 20.26,8.93 19.03,7.39M11,14H13V8H11M15,1H9V3H15V1Z",
 };
 const svg = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
 
@@ -290,6 +313,7 @@ const stamp = (s) => {
   return dayKey(new Date()) === `${m[1]}-${m[2]}-${m[3]}` ? `${m[4]}:${m[5]}` : `${m[3]}/${m[2]} ${m[4]}:${m[5]}`;
 };
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 const r2 = (v) => Math.round(v * 100) / 100; // the controller keeps its position to 0.01° (about 1 km)
 const deg = (v) => (Number.isFinite(v) ? `${v.toFixed(2).replace(".", ",")}°` : "non définie");
 const isSet = (s) => s !== undefined && s !== "" && s !== "unknown" && s !== "unavailable";
@@ -626,8 +650,29 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
   background:var(--acc); color:var(--on-acc); flex:none; }
 .btn:disabled { background:var(--raised); color:var(--muted); cursor:not-allowed; }
 .btn.busy { opacity:.6; pointer-events:none; }
-/* « Réglages » › Position */
+/* « Avancé » › Firmware on the update entity, « Réglages » › Position */
+.btn.tonal { background:transparent; color:var(--acc); border:1px solid var(--line); padding:0 14px; }
+.btn.tonal:disabled { background:transparent; color:var(--muted); opacity:.6; }
+.erow .btns { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.erow:has(> .btns) .name { min-width:6.5em; } /* two buttons go under the name rather than break « Mise à jour » */
+.erow .val.acc { color:var(--acc); font-weight:500; }
+.erow .name small.bad { color:var(--danger); }
 .mono { font-family:var(--code-font-family,ui-monospace,SFMono-Regular,Menlo,monospace); font-size:11px; }
+.tgl { appearance:none; -webkit-appearance:none; width:40px; height:24px; border-radius:12px; background:var(--line); position:relative;
+  flex:none; cursor:pointer; transition:background .15s; margin:0 0 0 auto; }
+.tgl::after { content:""; position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#fff;
+  transition:transform .15s; box-shadow:0 1px 2px rgba(0,0,0,.3); }
+.tgl:checked { background:var(--acc); }
+.tgl:checked::after { transform:translateX(16px); }
+.tgl:disabled, .esel:disabled { opacity:.5; cursor:not-allowed; }
+.esel { height:36px; border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--acc); font:inherit;
+  font-size:14px; font-weight:500; padding:0 8px; margin-left:auto; flex:none; }
+.prog { height:6px; border-radius:3px; background:var(--line); overflow:hidden; margin:-2px 0 8px 54px; }
+.prog i { display:block; height:100%; background:var(--acc); border-radius:3px; transition:width .2s; }
+.prog.ind i { width:35% !important; animation:indet 1.1s ease-in-out infinite; }
+@keyframes indet { 0% { transform:translateX(-100%); } 100% { transform:translateX(290%); } }
+.banner .acts { flex:1 1 100%; display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
+.banner .btn.tonal { color:inherit; }
 .posnote { font-size:12px; color:var(--muted); margin:6px 0 0; }
 @container (max-width: 520px) {
   .erow { flex-wrap:wrap; }
@@ -692,7 +737,7 @@ const PANEL_HTML = `
     <div class="sp-col">
       <section><h4 class="sp-h">Contrôleur</h4><div id="ctlRows"></div></section>
       <section><h4 class="sp-h">Sondes</h4><div id="probeRows"></div></section>
-      <section><h4 class="sp-h">Firmware</h4><div id="fwRows"></div></section>
+      <section><h4 class="sp-h">Firmware</h4><div id="fwRows"></div><div id="updRows"></div></section>
     </div>
   </div>
   <div class="setpane" role="tabpanel">
@@ -830,7 +875,10 @@ class PiscineCard extends HTMLElement {
     this._tHover = null;       // 24 h: minutes before now; 7 j / 30 j: day index
     this._stats = null;        // 30 / 90 j: { "YYYY-MM-DD": {lo, hi} }, the 23:00 rows of the hourly statistics
     this._daily = null;        // 30 j – 1 an: { "YYYY-MM-DD": {mean (the probe), lo, hi (HA's day of Min/Max Today)} }
-    this._fwCheck = { busy: false, result: null }; // « Vérifier »: GitHub's answer, {text, cls, href}
+    this._fwCheck = { busy: false, result: null }; // « Vérifier » (no update entity): GitHub's answer, {text, cls, href}
+    // « Avancé » › Firmware on the update entity: the « Installer » question open, a check under way (until, since:
+    // ms), an install seen running (so an unavailable entity next reads as its reboot), what is drawn
+    this._upd = { ask: false, checkUntil: 0, checkFrom: 0, wasBusy: false, drawn: "" };
     this._posDrawn = "";
     this._beatSeen = null; this._beatAt = -1e9; // the light's last heartbeat: the message it was for, when (performance.now)
     this._statsAt = 0; this._statsLoading = false; this._statsErr = false;
@@ -1061,11 +1109,31 @@ class PiscineCard extends HTMLElement {
     if (!r.ok) return { text: `GitHub n'a pas répondu (${r.status}${r.status === 403 || r.status === 429 ? " : trop de demandes, réessayez dans une heure" : ""}).`, cls: "" };
     const d = await r.json(), n = d.ahead_by || 0, commits = `${n} commit${n > 1 ? "s" : ""}`;
     const branch = d.behind_by > 0 ? " Elle vient d'une branche pas encore fusionnée." : "";
-    const files = (d.files || []).map((f) => f.filename).filter((f) => FIRMWARE_FILES.some((p) => (p.endsWith("/") ? f.startsWith(p) : f === p)));
+    const files = (d.files || []).map((f) => f.filename).filter((f) => FIRMWARE_FILES.some((p) => p.test(f)));
     if (!n) return { text: d.behind_by ? "À jour : plus récente que main (une branche pas encore fusionnée)." : "À jour : c'est la version de main.", cls: "fw-ok" };
     if (!files.length) return { text: `À jour : ${commits} sur main depuis, aucun ne touche au firmware.${branch}`, cls: "fw-ok", href: d.html_url };
     return { text: `Mise à jour disponible : ${commits} sur main depuis, qui changent le firmware (${files.slice(0, 3).join(", ")}${files.length > 3 ? "…" : ""}). Pour l'installer : make ota depuis le dépôt.${branch}`,
       cls: "fw-up", href: d.html_url };
+  }
+  /**
+   * Update Status, the firmware's updates and their gate (WP6): « non vérifié », « vérification », « à jour »,
+   * « disponible », « en attente (mode manuel) », « en attente (remplissage) », « installation », « erreur
+   * (vérification) », « erreur (installation) » (English forms too: « deferred: manual override », « failed: … »)
+   * -> {kind, why}: kind is deferred, failed, installing, checking or "" (nothing to add to the update entity);
+   * why, in the card's words. Also for the device's page.
+   */
+  static parseUpdateStatus(text) {
+    const t = String(text || "").trim();
+    if (!isSet(t) || t === "--") return { kind: "", why: "" };
+    const m = /^([^:(]+?)\s*(?:[:(]\s*(.*?)\)?)?$/.exec(t) || [t, t], head = m[1], rest = m[2] || "";
+    const kind = /^(deferred|held|waiting|pending|en attente|différée?)/i.test(head) ? "deferred"
+      : /^(failed|error|échec|erreur)/i.test(head) ? "failed"
+      : /^(installing|downloading|writing|installation|téléchargement)/i.test(head) ? "installing"
+      : /^(checking|vérification)/i.test(head) ? "checking" : "";
+    const why = /override|manuel/i.test(rest) ? "override en cours" : /fill|rempl/i.test(rest) ? "remplissage en cours"
+      : kind === "failed" && /v[ée]rif|check/i.test(rest) ? "la vérification n'a pas abouti"
+      : kind === "failed" && /install/i.test(rest) ? "l'installation n'a pas abouti" : rest;
+    return { kind, why: kind ? why : "" };
   }
   /** IANA zone (« Europe/Paris ») -> its POSIX TZ string (TZ_POSIX), or null for a name tzdata doesn't have. */
   static posixTz(iana) {
@@ -1075,6 +1143,112 @@ class PiscineCard extends HTMLElement {
     }
     return TZ_BY_NAME.get(String(iana || "")) || null;
   }
+  /** Why the firmware would hold an install now (its gate): a manual override, or a fill. Null when nothing would. */
+  _hold() {
+    if (this._inOvr()) {
+      const until = this._ovrUntil();
+      return { long: `override manuel en cours (${SPEEDS[this._override()]}${until ? `, retour en Auto à ${fmtT(until)}` : ", sans fin"})`, ovr: true };
+    }
+    return this._n("flow") > 0 ? { long: "remplissage en cours", ovr: false } : null;
+  }
+  /** The update entity as « Avancé » › Firmware shows it; null without one (a firmware before WP6). */
+  _updModel() {
+    const u = this._st("firmware");
+    if (!u) return null;
+    const a = u.attributes || {}, off = !isSet(u.state), status = PiscineCard.parseUpdateStatus(this._s("updateStatus"));
+    const busy = !off && (!!a.in_progress || status.kind === "installing"), fw = this._fw();
+    const pct = !busy ? null : Number.isFinite(a.update_percentage) ? a.update_percentage : typeof a.in_progress === "number" ? a.in_progress : null;
+    return { off, busy, pct: pct === null ? null : Math.round(pct), rebooting: off && this._upd.wasBusy,
+      installed: (!off && a.installed_version) || fw.version?.label || "—", esphome: fw.esphome,
+      latest: off ? null : a.latest_version || null, avail: u.state === "on", notes: a.release_url || null,
+      status, checking: Date.now() < this._upd.checkUntil || status.kind === "checking",
+      hold: this._hold(), ask: this._upd.ask, online: this._online(), canCheck: !!this._st("checkUpdate"), canCancel: !!this._st("cancelUpdate"),
+      auto: this._st("autoUpdate"), interval: this._st("updateInterval"), updated: Date.parse(u.last_updated) || 0,
+      statusAt: Date.parse(this._st("updateStatus")?.last_updated) || 0 };
+  }
+  /** « Avancé » › Firmware on the update entity, as HTML (mock-up 2026-11-18): one string per state, drawn when it changes. */
+  _updHtml(m) {
+    const row = (icon, label, sub, right, cls = "") => `<div class="erow"><span class="ic">${this._icon(icon)}</span><span class="name"><span>${label}</span>`
+      + `${sub ? `<small class="${cls}">${sub}</small>` : ""}</span>${right}</div>`;
+    const val = (v, cls = "") => `<span class="val num${cls}">${esc(v)}</span>`;
+    const st = m.status, deferred = st.kind === "deferred" && !m.busy, latest = esc(m.latest || "");
+    const status = m.rebooting ? "Redémarrage du contrôleur…"
+      : m.off ? "Contrôleur injoignable : versions inconnues pour l'instant"
+      : m.busy ? (m.pct !== null ? `Installation : ${m.pct} %` : "Installation…")
+      : m.checking ? "Recherche d'une nouvelle version…"
+      : deferred ? `En attente : ${esc(st.why || "le contrôleur attend")}`
+      : st.kind === "failed" ? `Échec : ${esc(st.why || "l'installation n'a pas abouti")}`
+      : m.avail ? `${latest} : environ 1 min, redémarrage compris` : "Rien à installer";
+    const idle = !m.off && m.online && !m.busy;
+    const btns = (m.canCheck ? `<button class="btn tonal" data-act="check"${idle && !m.checking ? "" : " disabled"}>Vérifier</button>` : "")
+      + (m.avail ? `<button class="btn" data-act="install"${idle && !deferred && !m.ask ? "" : " disabled"}>${deferred ? "En attente" : "Installer"}</button>` : "");
+    const auto = m.auto, iv = m.interval, opts = (iv && iv.attributes.options) || [];
+    return row("tag-outline", "Version installée", m.esphome ? esc(`ESPHome ${m.esphome.version}${m.esphome.built ? ` · ${m.esphome.built.charAt(0).toLowerCase()}${m.esphome.built.slice(1)}` : ""}`) : "", val(m.installed))
+      + (m.latest ? row("cloud-sync-outline", "Dernière version", (m.avail ? "Mise à jour disponible" : "À jour")
+        + (/^https?:\/\//.test(m.notes || "") ? ` · <a href="${esc(m.notes)}" target="_blank" rel="noopener">Notes de version</a>` : ""), val(m.latest, m.avail ? " acc" : ""), m.avail ? "fw-up" : "fw-ok") : "")
+      + row("download", "Mise à jour", status, btns ? `<span class="btns">${btns}</span>` : "", st.kind === "failed" && !m.busy && !m.off ? "bad" : "")
+      + (m.busy && m.pct !== null ? `<div class="prog"><i style="width:${m.pct}%"></i></div>` : m.busy || m.rebooting || m.checking ? `<div class="prog ind"><i></i></div>` : "")
+      + (m.ask && m.hold && m.avail ? `<div class="banner">${svg("alert")}<span>${esc(cap(m.hold.long))} : le contrôleur n'installe rien pendant ce temps. Il installera ${latest} dès la fin, `
+        + `puis redémarre (environ 30 s ; la pompe s'arrête le temps du redémarrage).${m.hold.ovr ? " Pour installer tout de suite, revenez d'abord en Auto." : ""}</span>`
+        + `<div class="acts"><button class="btn tonal" data-act="ask-no">Annuler</button><button class="btn" data-act="ask-yes">Installer à la fin</button></div></div>` : "")
+      + (deferred ? `<div class="banner">${svg("timer")}<span>Installation${latest ? ` de ${latest}` : ""} en attente : ${esc(m.hold ? m.hold.long : st.why || "le contrôleur attend")}. `
+        + "Le contrôleur la lancera de lui-même ensuite.</span>"
+        + (m.canCancel ? `<div class="acts"><button class="btn tonal" data-act="cancel"${m.online ? "" : " disabled"}>Annuler la demande</button></div>` : "") + "</div>" : "")
+      + (auto ? row("autorenew", "Mise à jour automatique", "Installe seule une nouvelle version trouvée par une vérification programmée ; « Vérifier » ne fait que chercher. Comme toute installation, elle attend la fin d'un override manuel ou d'un remplissage.",
+        `<input type="checkbox" class="tgl" data-act="auto" aria-label="Mise à jour automatique"${auto.state === "on" ? " checked" : ""}${isSet(auto.state) ? "" : " disabled"}>`) : "")
+      + (iv ? row("timer-outline", "Fréquence de vérification", /demande/i.test(iv.state) ? "Seulement sur « Vérifier » : rien ne s'installe seul" : isSet(iv.state) ? "La mise à jour automatique installe ce qu'elle trouve" : "",
+        `<select class="esel" data-act="interval" aria-label="Fréquence de vérification"${isSet(iv.state) ? "" : " disabled"}>${opts.includes(iv.state) ? "" : "<option selected></option>"}`
+        + opts.map((o) => `<option${o === iv.state ? " selected" : ""}>${esc(o)}</option>`).join("") + "</select>") : "");
+  }
+  /** Draws « Avancé » › Firmware when the update entity exists; says how a « Vérifier » ended. */
+  _renderUpdate() {
+    const host = this._$("updRows"), m = this._updModel(), U = this._upd;
+    host.hidden = !m;
+    if (!m) return;
+    if (m.busy) U.wasBusy = true; else if (!m.off) U.wasBusy = false;
+    m.rebooting = m.off && U.wasBusy;
+    // a « Vérifier » ends when the entity changes, when Update Status moves on from « vérification », or after 10 s
+    // (an answer that changes nothing changes no state)
+    const settled = m.statusAt > U.checkFrom && m.status.kind !== "checking";
+    if (U.checkUntil && (m.updated > U.checkFrom || settled || Date.now() >= U.checkUntil || m.off)) {
+      U.checkUntil = 0; m.checking = false;
+      if (m.status.kind === "failed") this._toast(cap(m.status.why), true);
+      else if (!m.off) this._toast(m.avail ? `Firmware ${m.latest} disponible` : `Firmware à jour (${m.installed})`);
+    }
+    if (U.ask && (!m.hold || !m.avail || m.busy)) U.ask = m.ask = false; // nothing holds it any more: « Installer » is enough
+    const html = this._updHtml(m);
+    if (html !== U.drawn) { U.drawn = html; host.innerHTML = html; } // only on a change: a link rebuilt every second loses its hover
+  }
+  _wireUpdate() {
+    const host = this._$("updRows"), U = this._upd;
+    const redraw = () => { U.drawn = ""; this._update(); };
+    const send = (domain, service, data, ok) => this._hass.callService(domain, service, data)
+      .then(() => ok && this._toast(ok), (err) => { this._refused(err); redraw(); });
+    const install = () => {
+      const m = this._updModel();
+      send("update", "install", { entity_id: this._e.firmware },
+        m.hold ? `Installation de ${m.latest} demandée : le contrôleur la lancera à la fin ${m.hold.ovr ? "de l'override" : "du remplissage"}` : `Installation de ${m.latest} demandée`);
+    };
+    host.addEventListener("click", (ev) => {
+      const b = ev.target.closest("button[data-act]");
+      if (!b || b.disabled) return;
+      const act = b.dataset.act;
+      if (act === "check") {
+        U.checkFrom = Date.now(); U.checkUntil = U.checkFrom + 10000;
+        this._hass.callService("button", "press", { entity_id: this._e.checkUpdate }).catch((err) => { U.checkUntil = 0; this._refused(err); redraw(); });
+        this._update();
+      } else if (act === "install") { if (this._hold()) { U.ask = true; this._update(); } else install(); }
+      else if (act === "ask-no") { U.ask = false; this._update(); }
+      else if (act === "ask-yes") { U.ask = false; install(); this._update(); }
+      else if (act === "cancel") send("button", "press", { entity_id: this._e.cancelUpdate }, "Demande d'installation annulée");
+    });
+    host.addEventListener("change", (ev) => {
+      const t = ev.target;
+      if (t.dataset.act === "auto") send("switch", t.checked ? "turn_on" : "turn_off", { entity_id: this._e.autoUpdate });
+      else if (t.dataset.act === "interval" && t.value) send("select", "select_option", { entity_id: this._e.updateInterval, option: t.value });
+    });
+  }
+
   /* ---------- panel, tab « Réglages » › Position ---------- */
   /** Home Assistant's own position and zone (hass.config), as the controller would take them; null without one. */
   _haPos() {
@@ -1695,6 +1869,7 @@ class PiscineCard extends HTMLElement {
         this._paneRows.push(r);
       }
     }
+    this._wireUpdate();
     this._$("posRows").addEventListener("click", (ev) => {
       const b = ev.target.closest('button[data-act="pos-ha"]');
       if (b && !b.disabled) this._posFromHa(b);
@@ -1719,6 +1894,7 @@ class PiscineCard extends HTMLElement {
       r.val.classList.toggle("bad", tone === "bad"); r.val.classList.toggle("warn", tone === "warn");
     }
     for (const r of this._paneRows) if (r.sect) r.sect.hidden = this._paneRows.every((x) => x.sect !== r.sect || x.row.hidden);
+    this._renderUpdate();
     this._renderDays();
   }
   /** Closed days from the device's Daily History, plus today so far: hours filtered, the plan's mark, the pool's min–max. */
