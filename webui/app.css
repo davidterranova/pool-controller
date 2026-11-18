@@ -96,7 +96,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 16px 16px 40px; }
 @media (max-width: 999px) {
   /* One column: the two stacks dissolve into the grid, which orders the cards for reading. */
   .cols.settings > .stack { display: contents; }
-  .o1 { order: 1; } .o2 { order: 2; } .o3 { order: 3; } .o4 { order: 4; } .o5 { order: 5; }
+  .o1 { order: 1; } .o2 { order: 2; } .o3 { order: 3; } .o4 { order: 4; }
 }
 .heading { display: flex; align-items: center; gap: 8px; margin: 8px 4px 4px; font-size: 16px; font-weight: 400; }
 .heading svg { width: 20px; height: 20px; }

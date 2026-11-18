@@ -60,9 +60,9 @@
 
     <!-- ============================================================ Réglages -->
     <section id="tab-reglages" class="cols settings" role="tabpanel" hidden>
-      <!-- Read in this order: Plan du jour, Capteurs internes, Filtration et hors gel, 7 derniers jours, Journal. From
-           1000px, two independent columns (so a tall card on one side leaves no gap on the other), the first two on the
-           left; below that the columns dissolve and o1..o5 keep the order. -->
+      <!-- Read in this order: Plan du jour, Capteurs internes, Filtration et hors gel, 7 derniers jours. From 1000px,
+           two independent columns (so a tall card on one side leaves no gap on the other), the first two on the left;
+           below that the columns dissolve and o1..o4 keep the order. -->
       <div class="stack">
         <div class="card o1">
           <h2 data-icon="calendar-clock">Plan du jour</h2>
@@ -82,27 +82,13 @@
           <h2 data-icon="calendar-check">7 derniers jours</h2>
           <div class="body"><div class="days" id="days"></div></div>
         </div>
-        <div class="card o5">
-          <h2 data-icon="console">Journal <span class="chip" id="logCount">0 ligne</span></h2>
-          <div class="logbar">
-            <div class="seg" id="logSeg" role="radiogroup" aria-label="Niveau">
-              <button role="radio" data-f="all" aria-checked="true">Tout</button>
-              <button role="radio" data-f="warn" aria-checked="false">Avertissements</button>
-              <button role="radio" data-f="error" aria-checked="false">Erreurs</button>
-            </div>
-            <span class="grow"></span>
-            <button class="btn" id="logPause" title="Pause" aria-label="Pause" data-icon="pause"></button>
-            <button class="btn" id="logClear" title="Vider" aria-label="Vider" data-icon="delete-outline"></button>
-          </div>
-          <div class="log" id="log" role="log" aria-live="off"></div>
-        </div>
       </div>
     </section>
 
     <!-- ============================================================ Réglages contrôleur -->
     <section id="tab-reglages-controleur" class="cols controller" role="tabpanel" hidden>
       <!-- Left column: Wi-Fi, then the pool's own settings (setup.js: Position, Sondes). On a wide screen
-           it spans both rows of the right one (Firmware, then Accès, Home Assistant, Réinitialiser). -->
+           it spans both rows of the right one (Firmware, then Accès, Home Assistant, Réinitialiser, Journal). -->
       <div class="stack col span-rows">
       <!-- Wi-Fi: from wifi-setup.yaml; app.js hides it on a firmware without those entities. -->
       <div class="stack" id="wifiStack">
@@ -158,7 +144,7 @@
         </div>
       </div>
 
-      <!-- Accès, Home Assistant, Réinitialiser (setup.js, device-settings.yaml): below Firmware -->
+      <!-- Accès, Home Assistant, Réinitialiser (setup.js, device-settings.yaml), then the Journal: below Firmware -->
       <div class="stack col">
         <div class="stack" id="accStack" hidden>
           <h2 class="heading" data-icon="shield-key-outline">Accès</h2>
@@ -179,6 +165,24 @@
           <div class="card">
             <h2 data-icon="restart-alert">Réglages d'usine</h2>
             <div class="body" id="resetBody"></div>
+          </div>
+        </div>
+        <!-- Journal: what the controller logs while this page is open (app.js), last: the right column is the shorter -->
+        <div class="stack">
+          <h2 class="heading" data-icon="console">Journal</h2>
+          <div class="card">
+            <h2>Messages du contrôleur <span class="chip" id="logCount">0 ligne</span></h2>
+            <div class="logbar">
+              <div class="seg" id="logSeg" role="radiogroup" aria-label="Niveau">
+                <button role="radio" data-f="all" aria-checked="true">Tout</button>
+                <button role="radio" data-f="warn" aria-checked="false">Avertissements</button>
+                <button role="radio" data-f="error" aria-checked="false">Erreurs</button>
+              </div>
+              <span class="grow"></span>
+              <button class="btn" id="logPause" title="Pause" aria-label="Pause" data-icon="pause"></button>
+              <button class="btn" id="logClear" title="Vider" aria-label="Vider" data-icon="delete-outline"></button>
+            </div>
+            <div class="log" id="log" role="log" aria-live="off"></div>
           </div>
         </div>
       </div>

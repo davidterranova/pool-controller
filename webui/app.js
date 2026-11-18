@@ -1,11 +1,11 @@
 /*
  * The controller's own page, in three tabs, the same as Home Assistant's piscine-card (mock-up v17):
  * « Contrôle » runs that card's panel (unchanged, fed by esphome-hass.js) and its water variant;
- * « Réglages » today's plan, the device's sensors, the settings (the card's settings variant), the
- * last 7 days and the live log; « Réglages contrôleur » its Wi-Fi (wifi-setup.yaml: connection,
- * statistics, joining a network), its firmware, and what setup.js adds: its position, probes,
- * passwords, Home Assistant key and factory reset, plus the setup wizard shown instead of the page
- * while the controller isn't set up (device-settings.yaml). The device keeps no history of its
+ * « Réglages » today's plan, the device's sensors, the settings (the card's settings variant) and the
+ * last 7 days; « Réglages contrôleur » its Wi-Fi (wifi-setup.yaml: connection, statistics, joining a
+ * network), its firmware, what setup.js adds (its position, probes, passwords, Home Assistant key and
+ * factory reset), and its live log, plus the setup wizard shown instead of the page while the
+ * controller isn't set up (device-settings.yaml). The device keeps no history of its
  * sensors, so the only charts are of what it records itself: the pool's min/max and filtration of the
  * last 7 days, and the fill water of 30 days and 12 months. Everything talks to the ESP32 only, so it
  * keeps working while Home Assistant is down.
@@ -92,7 +92,7 @@ function route() {
     $(`tab-${t}`).hidden = t !== tab;
     document.querySelector(`.tabs a[data-tab="${t}"]`).setAttribute("aria-selected", String(t === tab));
   }
-  if (tab === "reglages") scrollLogToEnd();
+  if (tab === "reglages-controleur") scrollLogToEnd();
   scrollTo({ top: 0 });
   if (want === "remplissage") scrollToWater();
 }
@@ -639,7 +639,7 @@ const KNOWN = new Set(Object.values(E));
   });
 }
 
-/* ================================================================ logs */
+/* ================================================================ Réglages contrôleur › Journal */
 
 const LOG_FILTERS = { all: () => true, warn: (l) => l.level === "warn" || l.level === "error", error: (l) => l.level === "error" };
 let logFilter = "all", logPaused = false;
