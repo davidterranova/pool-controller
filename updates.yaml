@@ -6,9 +6,10 @@
 #
 # Where updates come from: CI publishes each release's firmware and
 # manifest.json on GitHub Pages (.github/workflows/firmware.yml,
-# tools/release/manifest.py). A fork points firmware_repo_owner/_name (or
-# firmware_manifest_url) at its own Pages site, in pool-controller.yaml's
-# substitutions or with `-s`.
+# tools/release/manifest.py), served at the project's Pages domain. A fork
+# points firmware_site (or firmware_manifest_url) at its own Pages site
+# (https://<owner>.github.io/<repo> without a custom domain), in
+# pool-controller.yaml's substitutions or with `-s`.
 #
 # One gate for every install. « Firmware » (Home Assistant's Update entity,
 # the page's « Installer ») is a gated_update (components/gated_update/): it
@@ -37,9 +38,10 @@
 # update_check_hours.
 
 substitutions:
-  firmware_repo_owner: davidterranova
-  firmware_repo_name: pool-controller
-  firmware_manifest_url: https://${firmware_repo_owner}.github.io/${firmware_repo_name}/firmware/manifest.json
+  # The repository's GitHub Pages site, on its custom domain: github.io would
+  # answer with a redirect (and without the /<repo> prefix).
+  firmware_site: https://pool-controller.kitesize.fr
+  firmware_manifest_url: ${firmware_site}/firmware/manifest.json
 
 external_components:
   - source:

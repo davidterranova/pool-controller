@@ -407,8 +407,11 @@ it compiles with placeholder secrets and names the artifact
 `firmware-dev-<commit>-placeholder-secrets-not-a-release`: a test of the
 build, not something to install.)
 
-**GitHub Pages (the owner's call).** Controllers will look for updates at a
-stable URL, `https://<owner>.github.io/<repo>/firmware/manifest.json`. The
+**GitHub Pages.** Controllers look for updates at a stable URL,
+`https://pool-controller.kitesize.fr/firmware/manifest.json` (the repository's
+Pages site on its custom domain; a fork without one uses
+`https://<owner>.github.io/<repo>/firmware/manifest.json` through the
+`firmware_site` substitution). The
 release workflow publishes the release's three files there, replacing the
 previous ones, only when the repository allows it:
 
