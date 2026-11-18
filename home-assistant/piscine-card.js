@@ -1052,6 +1052,14 @@ class PiscineCard extends HTMLElement {
     return { text: `Mise à jour disponible : ${commits} sur main depuis, qui changent le firmware (${files.slice(0, 3).join(", ")}${files.length > 3 ? "…" : ""}). Pour l'installer : make ota depuis le dépôt.${branch}`,
       cls: "fw-up", href: d.html_url };
   }
+  /** IANA zone (« Europe/Paris ») -> its POSIX TZ string (TZ_POSIX), or null for a name tzdata doesn't have. */
+  static posixTz(iana) {
+    if (!TZ_BY_NAME) {
+      TZ_BY_NAME = new Map();
+      for (const [posix, names] of Object.entries(TZ_POSIX)) for (const n of names.split(" ")) TZ_BY_NAME.set(n, posix);
+    }
+    return TZ_BY_NAME.get(String(iana || "")) || null;
+  }
   /** « Hors ligne depuis 6 min », « Contrôleur muet depuis 5 min », else `live`. */
   _lightText(L, live = `Contrôleur · ${agoTxt(L.quiet)}`, mute = "Contrôleur muet") {
     if (L.off !== null) return Number.isFinite(L.off) ? `Hors ligne depuis ${fmtD(L.off)}` : "Hors ligne";
@@ -2048,6 +2056,110 @@ class PiscineCard extends HTMLElement {
     this._renderWater();
   }
 }
+
+/**
+ * IANA zone -> POSIX TZ string, for « Utiliser la position et le fuseau de Home Assistant » (PiscineCard.posixTz):
+ * every name tzdata knows, zones and links, grouped by the rule in force (each TZif file's footer). Generated.
+ */
+/* TZ_POSIX begin: tools/tz-posix.py, tzdata 2026f, 598 zones; don't edit by hand */
+const TZ_POSIX = {
+  "GMT0": "Africa/Abidjan Africa/Accra Africa/Bamako Africa/Banjul Africa/Bissau Africa/Conakry Africa/Dakar Africa/Freetown Africa/Lome Africa/Monrovia Africa/Nouakchott Africa/Ouagadougou Africa/Sao_Tome Africa/Timbuktu America/Danmarkshavn Atlantic/Reykjavik Atlantic/St_Helena Etc/GMT Etc/GMT+0 Etc/GMT-0 Etc/GMT0 Etc/Greenwich GMT GMT+0 GMT-0 GMT0 Greenwich Iceland",
+  "EAT-3": "Africa/Addis_Ababa Africa/Asmara Africa/Asmera Africa/Dar_es_Salaam Africa/Djibouti Africa/Kampala Africa/Mogadishu Africa/Nairobi Indian/Antananarivo Indian/Comoro Indian/Mayotte",
+  "CET-1": "Africa/Algiers Africa/Tunis",
+  "WAT-1": "Africa/Bangui Africa/Brazzaville Africa/Douala Africa/Kinshasa Africa/Lagos Africa/Libreville Africa/Luanda Africa/Malabo Africa/Ndjamena Africa/Niamey Africa/Porto-Novo",
+  "CAT-2": "Africa/Blantyre Africa/Bujumbura Africa/Gaborone Africa/Harare Africa/Juba Africa/Khartoum Africa/Kigali Africa/Lubumbashi Africa/Lusaka Africa/Maputo Africa/Windhoek",
+  "EET-2EEST,M4.5.5/0,M10.5.4/24": "Africa/Cairo Egypt",
+  "<+00>0": "Africa/Casablanca Africa/El_Aaiun",
+  "CET-1CEST,M3.5.0,M10.5.0/3": "Africa/Ceuta Arctic/Longyearbyen Atlantic/Jan_Mayen CET Europe/Amsterdam Europe/Andorra Europe/Belgrade Europe/Berlin Europe/Bratislava Europe/Brussels Europe/Budapest Europe/Busingen Europe/Copenhagen Europe/Gibraltar Europe/Ljubljana Europe/Luxembourg Europe/Madrid Europe/Malta Europe/Monaco Europe/Oslo Europe/Paris Europe/Podgorica Europe/Prague Europe/Rome Europe/San_Marino Europe/Sarajevo Europe/Skopje Europe/Stockholm Europe/Tirane Europe/Vaduz Europe/Vatican Europe/Vienna Europe/Warsaw Europe/Zagreb Europe/Zurich MET Poland",
+  "SAST-2": "Africa/Johannesburg Africa/Maseru Africa/Mbabane",
+  "EET-2": "Africa/Tripoli Europe/Kaliningrad Libya",
+  "HST10HDT,M3.2.0,M11.1.0": "America/Adak America/Atka US/Aleutian",
+  "AKST9AKDT,M3.2.0,M11.1.0": "America/Anchorage America/Juneau America/Metlakatla America/Nome America/Sitka America/Yakutat US/Alaska",
+  "AST4": "America/Anguilla America/Antigua America/Aruba America/Barbados America/Blanc-Sablon America/Curacao America/Dominica America/Grenada America/Guadeloupe America/Kralendijk America/Lower_Princes America/Marigot America/Martinique America/Montserrat America/Port_of_Spain America/Puerto_Rico America/Santo_Domingo America/St_Barthelemy America/St_Kitts America/St_Lucia America/St_Thomas America/St_Vincent America/Tortola America/Virgin",
+  "<-03>3": "America/Araguaina America/Argentina/Buenos_Aires America/Argentina/Catamarca America/Argentina/ComodRivadavia America/Argentina/Cordoba America/Argentina/Jujuy America/Argentina/La_Rioja America/Argentina/Mendoza America/Argentina/Rio_Gallegos America/Argentina/Salta America/Argentina/San_Juan America/Argentina/San_Luis America/Argentina/Tucuman America/Argentina/Ushuaia America/Asuncion America/Bahia America/Belem America/Buenos_Aires America/Catamarca America/Cayenne America/Cordoba America/Coyhaique America/Fortaleza America/Jujuy America/Maceio America/Mendoza America/Montevideo America/Paramaribo America/Punta_Arenas America/Recife America/Rosario America/Santarem America/Sao_Paulo Antarctica/Palmer Antarctica/Rothera Atlantic/Stanley Brazil/East Etc/GMT+3",
+  "EST5": "America/Atikokan America/Cancun America/Cayman America/Coral_Harbour America/Jamaica America/Panama America/Rainy_River America/Winnipeg Canada/Central EST Jamaica",
+  "CST6": "America/Bahia_Banderas America/Belize America/Chihuahua America/Costa_Rica America/Edmonton America/El_Salvador America/Guatemala America/Inuvik America/Managua America/Merida America/Mexico_City America/Monterrey America/Regina America/Swift_Current America/Tegucigalpa America/Yellowknife Canada/Mountain Canada/Saskatchewan Mexico/General",
+  "<-04>4": "America/Boa_Vista America/Campo_Grande America/Caracas America/Cuiaba America/Guyana America/La_Paz America/Manaus America/Porto_Velho Brazil/West Etc/GMT+4",
+  "<-05>5": "America/Bogota America/Eirunepe America/Guayaquil America/Lima America/Porto_Acre America/Rio_Branco Brazil/Acre Etc/GMT+5",
+  "MST7MDT,M3.2.0,M11.1.0": "America/Boise America/Cambridge_Bay America/Ciudad_Juarez America/Denver America/Shiprock MST7MDT Navajo US/Mountain",
+  "CST6CDT,M3.2.0,M11.1.0": "America/Chicago America/Indiana/Knox America/Indiana/Tell_City America/Knox_IN America/Matamoros America/Menominee America/North_Dakota/Beulah America/North_Dakota/Center America/North_Dakota/New_Salem America/Ojinaga America/Rankin_Inlet America/Resolute CST6CDT US/Central US/Indiana-Starke",
+  "MST7": "America/Creston America/Dawson America/Dawson_Creek America/Fort_Nelson America/Hermosillo America/Mazatlan America/Phoenix America/Vancouver America/Whitehorse Canada/Pacific Canada/Yukon MST Mexico/BajaSur US/Arizona",
+  "EST5EDT,M3.2.0,M11.1.0": "America/Detroit America/Fort_Wayne America/Grand_Turk America/Indiana/Indianapolis America/Indiana/Marengo America/Indiana/Petersburg America/Indiana/Vevay America/Indiana/Vincennes America/Indiana/Winamac America/Indianapolis America/Iqaluit America/Kentucky/Louisville America/Kentucky/Monticello America/Louisville America/Montreal America/Nassau America/New_York America/Nipigon America/Pangnirtung America/Port-au-Prince America/Thunder_Bay America/Toronto Canada/Eastern EST5EDT US/East-Indiana US/Eastern US/Michigan",
+  "PST8PDT,M3.2.0,M11.1.0": "America/Ensenada America/Los_Angeles America/Santa_Isabel America/Tijuana Mexico/BajaNorte PST8PDT US/Pacific",
+  "AST4ADT,M3.2.0,M11.1.0": "America/Glace_Bay America/Goose_Bay America/Halifax America/Moncton America/Thule Atlantic/Bermuda Canada/Atlantic",
+  "<-02>2<-01>,M3.5.0/-1,M10.5.0/0": "America/Godthab America/Nuuk America/Scoresbysund",
+  "CST5CDT,M3.2.0/0,M11.1.0/1": "America/Havana Cuba",
+  "<-03>3<-02>,M3.2.0,M11.1.0": "America/Miquelon",
+  "<-02>2": "America/Noronha Atlantic/South_Georgia Brazil/DeNoronha Etc/GMT+2",
+  "<-04>4<-03>,M9.1.6/24,M4.1.6/24": "America/Santiago Chile/Continental",
+  "NST3:30NDT,M3.2.0,M11.1.0": "America/St_Johns Canada/Newfoundland",
+  "<+08>-8": "Antarctica/Casey Asia/Brunei Asia/Choibalsan Asia/Irkutsk Asia/Kuala_Lumpur Asia/Kuching Asia/Singapore Asia/Ulaanbaatar Asia/Ulan_Bator Etc/GMT-8 Singapore",
+  "<+07>-7": "Antarctica/Davis Asia/Bangkok Asia/Barnaul Asia/Ho_Chi_Minh Asia/Hovd Asia/Krasnoyarsk Asia/Novokuznetsk Asia/Novosibirsk Asia/Phnom_Penh Asia/Saigon Asia/Tomsk Asia/Vientiane Etc/GMT-7 Indian/Christmas",
+  "<+10>-10": "Antarctica/DumontDUrville Asia/Ust-Nera Asia/Vladivostok Etc/GMT-10 Pacific/Chuuk Pacific/Port_Moresby Pacific/Truk Pacific/Yap",
+  "AEST-10AEDT,M10.1.0,M4.1.0/3": "Antarctica/Macquarie Australia/ACT Australia/Canberra Australia/Currie Australia/Hobart Australia/Melbourne Australia/NSW Australia/Sydney Australia/Tasmania Australia/Victoria",
+  "<+05>-5": "Antarctica/Mawson Antarctica/Vostok Asia/Almaty Asia/Aqtau Asia/Aqtobe Asia/Ashgabat Asia/Ashkhabad Asia/Atyrau Asia/Dushanbe Asia/Oral Asia/Qostanay Asia/Qyzylorda Asia/Samarkand Asia/Tashkent Asia/Yekaterinburg Etc/GMT-5 Indian/Kerguelen Indian/Maldives",
+  "NZST-12NZDT,M9.5.0,M4.1.0/3": "Antarctica/McMurdo Antarctica/South_Pole NZ Pacific/Auckland",
+  "<+03>-3": "Antarctica/Syowa Asia/Aden Asia/Amman Asia/Baghdad Asia/Bahrain Asia/Damascus Asia/Istanbul Asia/Kuwait Asia/Qatar Asia/Riyadh Etc/GMT-3 Europe/Istanbul Europe/Minsk Turkey",
+  "<+00>0<+02>-2,M3.5.0/1,M10.5.0/3": "Antarctica/Troll",
+  "<+12>-12": "Asia/Anadyr Asia/Kamchatka Etc/GMT-12 Kwajalein Pacific/Fiji Pacific/Funafuti Pacific/Kwajalein Pacific/Majuro Pacific/Nauru Pacific/Tarawa Pacific/Wake Pacific/Wallis",
+  "<+04>-4": "Asia/Baku Asia/Dubai Asia/Muscat Asia/Tbilisi Asia/Yerevan Etc/GMT-4 Europe/Astrakhan Europe/Samara Europe/Saratov Europe/Ulyanovsk Indian/Mahe Indian/Mauritius Indian/Reunion",
+  "EET-2EEST,M3.5.0/0,M10.5.0/0": "Asia/Beirut",
+  "<+06>-6": "Asia/Bishkek Asia/Dacca Asia/Dhaka Asia/Kashgar Asia/Omsk Asia/Thimbu Asia/Thimphu Asia/Urumqi Etc/GMT-6 Indian/Chagos",
+  "IST-5:30": "Asia/Calcutta Asia/Kolkata",
+  "<+09>-9": "Asia/Chita Asia/Dili Asia/Khandyga Asia/Yakutsk Etc/GMT-9 Pacific/Palau",
+  "CST-8": "Asia/Chongqing Asia/Chungking Asia/Harbin Asia/Macao Asia/Macau Asia/Shanghai Asia/Taipei PRC ROC",
+  "<+0530>-5:30": "Asia/Colombo",
+  "EET-2EEST,M3.5.0/3,M10.5.0/4": "Asia/Famagusta Asia/Nicosia EET Europe/Athens Europe/Bucharest Europe/Chisinau Europe/Helsinki Europe/Kiev Europe/Kyiv Europe/Mariehamn Europe/Nicosia Europe/Riga Europe/Sofia Europe/Tallinn Europe/Tiraspol Europe/Uzhgorod Europe/Vilnius Europe/Zaporozhye",
+  "EET-2EEST,M3.4.4/50,M10.4.4/50": "Asia/Gaza Asia/Hebron",
+  "HKT-8": "Asia/Hong_Kong Hongkong",
+  "WIB-7": "Asia/Jakarta Asia/Pontianak",
+  "WIT-9": "Asia/Jayapura",
+  "IST-2IDT,M3.4.4/26,M10.5.0": "Asia/Jerusalem Asia/Tel_Aviv Israel",
+  "<+0430>-4:30": "Asia/Kabul",
+  "PKT-5": "Asia/Karachi",
+  "<+0545>-5:45": "Asia/Kathmandu Asia/Katmandu",
+  "<+11>-11": "Asia/Magadan Asia/Sakhalin Asia/Srednekolymsk Etc/GMT-11 Pacific/Bougainville Pacific/Efate Pacific/Guadalcanal Pacific/Kosrae Pacific/Noumea Pacific/Pohnpei Pacific/Ponape",
+  "WITA-8": "Asia/Makassar Asia/Ujung_Pandang",
+  "PST-8": "Asia/Manila",
+  "KST-9": "Asia/Pyongyang Asia/Seoul ROK",
+  "<+0630>-6:30": "Asia/Rangoon Asia/Yangon Indian/Cocos",
+  "<+0330>-3:30": "Asia/Tehran Iran",
+  "JST-9": "Asia/Tokyo Japan",
+  "<-01>1<+00>,M3.5.0/0,M10.5.0/1": "Atlantic/Azores",
+  "WET0WEST,M3.5.0/1,M10.5.0": "Atlantic/Canary Atlantic/Faeroe Atlantic/Faroe Atlantic/Madeira Europe/Lisbon Portugal WET",
+  "<-01>1": "Atlantic/Cape_Verde Etc/GMT+1",
+  "ACST-9:30ACDT,M10.1.0,M4.1.0/3": "Australia/Adelaide Australia/Broken_Hill Australia/South Australia/Yancowinna",
+  "AEST-10": "Australia/Brisbane Australia/Lindeman Australia/Queensland",
+  "ACST-9:30": "Australia/Darwin Australia/North",
+  "<+0845>-8:45": "Australia/Eucla",
+  "<+1030>-10:30<+11>-11,M10.1.0,M4.1.0": "Australia/LHI Australia/Lord_Howe",
+  "AWST-8": "Australia/Perth Australia/West",
+  "<-06>6<-05>,M9.1.6/22,M4.1.6/22": "Chile/EasterIsland Pacific/Easter",
+  "GMT0IST,M3.5.0/1,M10.5.0": "Eire Europe/Dublin",
+  "<-10>10": "Etc/GMT+10 Pacific/Rarotonga Pacific/Tahiti",
+  "<-11>11": "Etc/GMT+11 Pacific/Niue",
+  "<-12>12": "Etc/GMT+12",
+  "<-06>6": "Etc/GMT+6 Pacific/Galapagos",
+  "<-07>7": "Etc/GMT+7",
+  "<-08>8": "Etc/GMT+8 Pacific/Pitcairn",
+  "<-09>9": "Etc/GMT+9 Pacific/Gambier",
+  "<+01>-1": "Etc/GMT-1",
+  "<+13>-13": "Etc/GMT-13 Pacific/Apia Pacific/Enderbury Pacific/Fakaofo Pacific/Kanton Pacific/Tongatapu",
+  "<+14>-14": "Etc/GMT-14 Pacific/Kiritimati",
+  "<+02>-2": "Etc/GMT-2",
+  "UTC0": "Etc/UCT Etc/UTC Etc/Universal Etc/Zulu UCT UTC Universal Zulu",
+  "GMT0BST,M3.5.0/1,M10.5.0": "Europe/Belfast Europe/Guernsey Europe/Isle_of_Man Europe/Jersey Europe/London GB GB-Eire",
+  "MSK-3": "Europe/Kirov Europe/Moscow Europe/Simferopol Europe/Volgograd W-SU",
+  "<-00>0": "Factory",
+  "HST10": "HST Pacific/Honolulu Pacific/Johnston US/Hawaii",
+  "<+1245>-12:45<+1345>,M9.5.0/2:45,M4.1.0/3:45": "NZ-CHAT Pacific/Chatham",
+  "ChST-10": "Pacific/Guam Pacific/Saipan",
+  "<-0930>9:30": "Pacific/Marquesas",
+  "SST11": "Pacific/Midway Pacific/Pago_Pago Pacific/Samoa US/Samoa",
+  "<+11>-11<+12>,M10.1.0,M4.1.0/3": "Pacific/Norfolk",
+};
+/* TZ_POSIX end */
+let TZ_BY_NAME = null;
 
 if (!customElements.get("piscine-card")) {
   customElements.define("piscine-card", PiscineCard);
