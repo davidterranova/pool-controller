@@ -26,7 +26,7 @@ Target:
 | 0 | Card 1.3.1: parse ESPHome 2026.7's version string (« … (config hash …, built YYYY-MM-DD HH:MM:SS +0000) ») | — | fix/card-esphome-version-built | done | #28 (merged) |
 | 1 | Spike: confirm the runtime hooks on hardware with ESPHome 2026.11 | — | spike/wp1-runtime-hooks | review (hardware checks left) | #30 |
 | 2 | Firmware: settings package, no `!secret` left | 1 | feat/wp2-device-settings | done in `feat/secret-free-firmware` (hardware checks left, in the WP8 window; ESPHome beta) | #31 (merged) |
-| 3 | Controller's page: setup wizard, « Contrôleur » sections | contract below (UI on the mock); 2 to finish | | todo | |
+| 3 | Controller's page: setup wizard, « Contrôleur » sections | contract below (UI on the mock); 2 to finish | feat/wp3-setup-wizard | in progress | |
 | 4 | Card: Firmware section on the update entity, position/timezone from HA | contract below; 6 to finish | | todo | |
 | 5 | CI: releases carry the firmware, manifest + files on GitHub Pages | 2 (for a real build) | ci/wp5-firmware-releases | done (publishing waits for WP2 and the owner) | #29 (merged) |
 | 6 | Firmware: updates (http_request OTA + update entity + auto-update) | 1, 5 (manifest URL) | feat/wp6-updates | in progress (hardware checks left) | |
@@ -108,9 +108,11 @@ These are agreed up front, so 3, 4 and the mock can proceed before 2 and 6. Name
 - [ ] on hardware: see « WP2 adds » under the spike log's hardware checks
 
 ### WP3: controller's page
-- [ ] mock-up first: a wizard while Setup State ≠ configured (page password → Wi-Fi → position/timezone → probes → Home Assistant)
-- [ ] « Contrôleur »: Accès, Position, Sondes, Home Assistant, Réinitialiser, beside Wi-Fi and Firmware
-- [ ] the Home Assistant step says « ajoutez l'appareil dans Home Assistant » (HA sets the key); fallbacks: paste a key (API Key), or « Je n'utilise pas Home Assistant » (Generate API Key: the firmware makes and keeps a key nobody sees; Forget API Key to pair with HA later)
+- [x] mock-up first: a wizard while Setup State ≠ configured (page password → Wi-Fi → position/timezone → probes → Home Assistant)
+- [x] « Contrôleur »: Accès, Position, Sondes, Home Assistant, Réinitialiser, beside Wi-Fi and Firmware
+- [x] the Home Assistant step says « ajoutez l'appareil dans Home Assistant » (HA sets the key); fallbacks: paste a key (API Key), or « Je n'utilise pas Home Assistant » (Generate API Key: the firmware makes and keeps a key nobody sees; Forget API Key to pair with HA later)
+- [x] firmware: Setup State is republished right after every write that can change it (`settings_save`, which each setting runs, the API key buttons and text, the Wi-Fi join's outcome), so the wizard follows the device's word instead of its 10 s poll
+- [ ] at integration with WP4: `posixOf()` in `webui/timezones.js`, the page's only IANA → POSIX conversion, becomes a call to the card's full table (`PiscineCard.posixTz`, via `customElements.get("piscine-card")`); `TIMEZONES` stays as the dropdown's short preset list
 
 ### WP4: card
 - [ ] Avancé › Firmware on the update entity: installed / latest, notes link, « Installer » (`update.install`), Auto Update + interval rows; retire `checkFirmware` / `FIRMWARE_FILES` (keep `parseVersion`)
