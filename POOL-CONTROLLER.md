@@ -282,8 +282,8 @@ network) and kept in its NVS, which a firmware update never touches.
   [fill-meter.yaml](fill-meter.yaml)) — whether the fill-line water meter
   is there (on by default), how long a fill may run before the alarm (60
   min by default, `0` = never), and its pulse test. On the controller's
-  page in Avancé › Réglages, in Home Assistant under the device's
-  Configuration. See [Fill meter](#fill-meter).
+  page in Réglages contrôleur › Compteur d'eau, in Home Assistant under the
+  device's Configuration. See [Fill meter](#fill-meter).
 
 Page Password, OTA Password and API Key are write-only: the controller never
 sends them back, to a page or to Home Assistant (a text in password mode
@@ -946,8 +946,8 @@ was counting keeps counting after the update). Off:
 - the entities stay (ESPHome can't remove them at run time): the pool card
   and the controller's page hide « Remplissage » instead.
 
-On the controller's page it is in Avancé › Réglages; in Home Assistant under
-the device's Configuration (not in the pool card's Réglages).
+On the controller's page it is in Réglages contrôleur › Compteur d'eau; in
+Home Assistant under the device's Configuration (not in the pool card).
 
 **Detecting the meter.** It is a dry contact with a pull-up, so it has no
 address, and it reads the same unplugged or idle: only a pulse proves it is

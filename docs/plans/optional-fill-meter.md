@@ -1,6 +1,6 @@
 # Optional fill meter: turn the « Remplissage » on or off, detect the meter, alarm on long fills
 
-Tracking document. One session per work package (WP). Planned against main at v1.6.0, after the secret-free firmware ([secret-free-firmware.md](secret-free-firmware.md), done).
+Tracking document. One session per work package (WP). Planned against main at v1.6.0, after the secret-free firmware ([secret-free-firmware.md](secret-free-firmware.md), done); F2 and F3 re-planned on 1.8.0's three tabs (PR #48: « Contrôle » | « Réglages » | « Réglages contrôleur » in both widgets, fill water a section of « Contrôle »).
 
 ## Branches
 
@@ -21,7 +21,7 @@ To claim a WP:
 
 The feature branch's other rules:
 - **Version:**
-  - It bumps VERSION to the next unreleased minor: 1.8.0 now (it was 1.7.0, until PR #46 released that on 2026-11-18).
+  - It bumps VERSION to the next unreleased minor: 1.9.0 now (it was 1.7.0 until PR #46 released that, then 1.8.0 until PR #48 did, both on 2026-11-18).
   - release.yml's check runs on every PR, whatever its base: it fails when the card or firmware changed and VERSION is already released. So the sub-PRs pass without each bumping it.
   - Whenever main releases the version it holds, the next sync of main bumps it again.
 - **Keeping up with main:** merge main into the feature branch whenever main moves, at least before the final PR. Then each open WP branch merges the feature branch in.
@@ -37,7 +37,7 @@ The feature branch's other rules:
 The fill-line water meter (AJN15TI, reed switch on `water_meter_pin`, GPIO33) is wired on this install, but not every pool has one. Today the firmware always counts it, and both widgets always show « Remplissage ». The meter should be optional:
 
 - **Enable or disable it** from two places:
-  - the controller's own page (Avancé › Réglages);
+  - the controller's own page (« Réglages contrôleur » › « Compteur d'eau »);
   - Home Assistant's device page (Settings › Devices › ESPHome › Pool Controller › Configuration). Not from the card.
 - **When it is enabled:**
   - « Détecter le compteur » checks that the meter is wired and counting;
@@ -90,13 +90,13 @@ Requiring 3 L, not one pulse, rules out a single bounce or glitch: at this tap's
 - **Status light:**
   - The card's controller light (tile and panel header) goes **amber and pulses** while the alarm is on and not yet acknowledged.
   - Order: red (controller lost) > **amber pulsing (fill alarm)** > amber (quiet or briefly offline) > green.
-  - While pulsing, the header line reads « Remplissage depuis 1 h 12 », and the light's button opens « Remplissage » instead of « Avancé › Contrôleur ».
+  - While pulsing, the header line and the tile read « Remplissage depuis 1 h 12 », and the light's button leads to the alarm's banner in « Contrôle » instead of the controller's device page.
   - Once acknowledged, the light goes back to its usual health colour; the banner stays (« acquittée ») until the fill ends.
   - With `prefers-reduced-motion` the card's global rule stops the animation: steady amber.
-- **HA card:**
-  - The « Réglages » tab gets no fill rows (as asked).
-  - The `settings` variant gains a `fill_settings: true` option that adds them, set only by the controller's page.
-  - The dashboard's settings component leaves the option off.
+- **Where the settings are:**
+  - Home Assistant: the device page's Configuration only. The card shows none of them, in neither « Réglages » tab (as asked).
+  - The controller's page: « Réglages contrôleur » › « Compteur d'eau », after « Sondes » (the meter is wiring, like the probes). The page draws it itself (`app.js`), as it does Wi-Fi and Firmware.
+  - This replaces the first plan: « Avancé › Réglages » was gone with 1.8.0's tabs, and the card's `settings` variant is shared by both widgets, so a `fill_settings` option there would have put the rows in the card too. The option is dropped.
 - **Older firmware:** a card or page reading a firmware without the switch (entity missing) behaves exactly as today, with « Remplissage » shown when the meter's entities are there and no fill alarm. So the card can ship before or after the firmware.
 
 ## Entity contract
@@ -123,13 +123,13 @@ Whether the meter is proven (`detected`) is kept in a restored global (`fill_met
 
 | WP | What | Depends on | Branch | Status | PR |
 |---|---|---|---|---|---|
-| F1 | Firmware: switch, alarm + acknowledgement, detection, gating of the counters | — | feat/optional-fill-meter-f1-firmware | review | #49 |
-| F2 | Card: hide « Remplissage », alarm banners, pulsing light, `fill_settings` rows | contract above | | todo | |
-| F3 | Controller's page + mock: tab, Capteurs rows, Réglages, banner | contract; F1's YAML for the mock | | todo | |
+| F1 | Firmware: switch, alarm + acknowledgement, detection, gating of the counters | — | feat/optional-fill-meter-f1-firmware | done | #49 |
+| F2 | Card: hide « Remplissage », alarm banner, pulsing light | contract above | | todo | |
+| F3 | Controller's page + mock: « Remplissage », Capteurs rows, « Compteur d'eau », wizard | contract; F1's YAML for the mock | | todo | |
 | F4 | HA side: blueprint, dashboard, `ha-dashboard-check` | F1 (ids for `ha-dashboard-check`) | | todo | |
 | F5 | Documentation pass: every file in « Documentation » below agrees with what merged | F1–F4 merged | | todo | |
 
-| — | Feature branch: plan + VERSION 1.8.0 | — | feat/optional-fill-meter | in progress | #47 (draft, into main) |
+| — | Feature branch: plan + VERSION 1.9.0 | — | feat/optional-fill-meter | in progress | #47 (draft, into main) |
 
 F2 can start right away. F3 can start right away on the mock, once F1's entity declarations are pushed; it doesn't need F1's logic. F4 comes last, or alongside F1. Each WP updates the docs for what it changes (its « Docs » items). F5 is a final read-through across all of them, plus the cross-references.
 
@@ -177,57 +177,54 @@ Done as a package, like `updates.yaml`: the logic is pure C++ in `fill_meter.h`,
   - YAML comments on each new entity and global, in the file's style
 
 ### F2: card (`home-assistant/piscine-card.js`)
-- [ ] `DEFAULT_ENTITIES` gains:
-  - `fillEnabled`, `fillAlarmAfter`, `fillDetect`, `fillStatus`, `fillLastPulse`, `fillRunning`, `fillTooLong`, `fillAck`, `fillAcked`;
-  - this install's ids, like the rest (the known leftover coupling)
+- [ ] `DEFAULT_ENTITIES` gains, with a fresh install's ids (`…pool_controller_…`, like the settings and updates block):
+  - `fillEnabled`, `fillRunning`, `fillTooLong`, `fillAck`, `fillAcked`, and `fillAlarmAfter` for the banner's « plus de N min »;
+  - not Detect Fill Meter, Status or Last Pulse: the card shows no fill setting (see « Where the settings are »)
 - [ ] `_fillOff()`: true only when `fillEnabled` exists and is `off`. While it is true:
-  - `shown.water` is false in `_updatePanel` (tab hidden; a selected tab falls back to « Pompe »);
-  - `variant: water` hides its host (`display:none`, `getCardSize` 0);
-  - the fill rows of `fill_settings` are hidden except the switch
-- [ ] alarm banners, while `fillTooLong` is on:
-  - an `.alert` on « Pompe » next to stuck/plan: « Remplissage en cours depuis plus de N min » with the start time, and an « Acquitter » button (`button.press` on `fillAck`);
-  - the same at the top of the water pane;
-  - once `fillAcked`, the button gives way to « Alarme acquittée »
+  - `_waterShown()` is false: no fill section in « Contrôle », and `variant: water` hides its host (`display:none`, `getCardSize` 0);
+  - no fill alarm, whatever the sensors say
+- [ ] `_hold()` (« Installer » asks first during a fill): Fill Running when the entity exists, else a non-zero flow (an older firmware), as F1's gate
+- [ ] alarm banner in « Contrôle »'s alerts, after the stuck override, while `fillTooLong` is on:
+  - amber `.alert`: « Remplissage en cours depuis HH:MM (plus de N min) : vérifiez le robinet de remplissage. », with « Acquitter » (`button.press` on `fillAck`);
+  - once `fillAcked`, the button gives way to « Alarme acquittée : plus de rappel jusqu'à la fin de ce remplissage. »;
+  - the controller's page shows the same banner: its « Contrôle » is this panel, fed by the ESP32, so it works with HA down
 - [ ] **status light:**
-  - `_light()` returns `h: "alarm"` when `fillTooLong` is on and `fillAcked` isn't, unless the controller is `lost`;
+  - `_light()` returns `h: "alarm"` when the alarm is on and not acknowledged, unless the controller is `lost`;
   - `.led.alarm` / `.clink.alarm`: `--c: var(--amber)` plus a continuous pulse (`@keyframes fillpulse`, ~1.6 s, the dot scaling and its ring fading out, like `ping` but looping);
   - no heartbeat ping while pulsing;
-  - tooltip and header text « Remplissage depuis … »;
-  - the button opens « Remplissage » while `alarm`;
+  - tooltip, header text and the tile's second line: « Remplissage depuis 1 h 12 »;
+  - the header button selects « Contrôle » and scrolls the banner into view, instead of opening the device page;
   - the tile's dot follows (it shares `_renderLight`)
-- [ ] water pane: « En cours depuis HH:MM » under Débit while `fillRunning` is on
-- [ ] settings variant, `fill_settings: true`, adds a « Compteur d'eau · immédiat » section:
-  - a **switch row** (new row type: a toggle calling `switch.turn_on/off`; on the device page, POST `switch/…/turn_on`);
-  - shown only when on: « Détecter le compteur » (button row, status as its sub-line: « Détecté le … », « À l'écoute : ouvrez le robinet de remplissage… », « Aucune impulsion en 5 min : vérifiez le câblage »), dernière impulsion, and « Alarme après » (number row, « 0 = jamais »)
-- [ ] the panel's « Réglages » tab does **not** pass `fill_settings`
-- [ ] VERSION bump
-- [ ] **Docs:** the card's header comment (the options, the hidden tab, the alarm, the light's new state and its order); the README.md « Home Assistant card » items in « Documentation »
+- [ ] fill section (`WATER_PANE`, so the panel and `variant: water`): « En cours depuis HH:MM » under the readings while `fillRunning` is on, amber while the alarm is on
+- [ ] VERSION: the feature branch's (1.9.0)
+- [ ] **Docs:** the card's header comment (the hidden fill section, the banner, the light's new state and its order, the fill entities); the README.md « Home Assistant card » and dashboard README « The card as a tile with a pop-up » items in « Documentation »
 
 ### F3: controller's page (`webui/`) and the mock
-- [ ] `esphome-hass.js` `E`: the nine contract entities, so they aren't listed under « Autres entités »
-- [ ] `esphome-hass.js`: `switch` turn_on/off and `button.press` through `callService` (check both domains are mapped)
+- [ ] `esphome-hass.js` `E`: the nine contract entities, so they aren't listed under « Autres entités »; the card's fill keys mapped in the panel's and the water variant's `entities`
+- [ ] `esphome-hass.js`: `switch` turn_on/off, `button.press` and `number.set_value` through `callService` (check each domain is mapped)
 - [ ] `app.js`:
-  - `TABS` and `route()` drop « remplissage » while Fill Meter is `off` (nav link hidden; `#remplissage` falls back to « Contrôle »), re-evaluated on change;
-  - Capteurs internes: Débit and Volume rows hidden while off (a `hidden` predicate on `valueRow`);
-  - Réglages: the settings variant gets `fill_settings: true` and the fill entities;
-  - `#alerts`: a banner while Fill Running Too Long is on, with « Acquitter » (works with HA down)
+  - « Contrôle »: « Remplissage » (`waterStack`) hidden while Fill Meter is off; `#remplissage` then lands on « Contrôle »'s top;
+  - Capteurs internes: Débit and Volume rows hidden while off (`valueRow`'s `visible`);
+  - « Réglages contrôleur »: a « Compteur d'eau » stack after « Sondes »:
+    - « Compteur d'eau sur le remplissage », Oui | Non (the segmented control Auto Update uses);
+    - shown only while on: « Détecter le compteur » (button row; its status as the sub-line: « Détecté », « À l'écoute : ouvrez le robinet de remplissage… », « Aucune impulsion en 5 min : vérifiez le câblage », « Pas encore testé »), « Dernière impulsion », and « Alarme après » (minutes, « 0 = jamais »)
 - [ ] setup wizard (`webui/setup.js`, `setup-model.js`):
   - step 4 « Sondes » gains a « Compteur d'eau » block: « J'ai un compteur » runs the pulse test, « Pas de compteur » turns Fill Meter off;
   - not a Setup State item, so it never blocks « configured » and `SETUP_ITEMS` is unchanged;
   - `webui/test/setup-model.test.mjs` covers any new model logic
-- [ ] Contrôleur › Réinitialiser:
+- [ ] « Réglages contrôleur » › Réinitialiser:
   - the factory reset is selective, so the fill meter settings are **kept** with the others;
   - its « Restent » list names them: « les réglages (filtration, hors gel, compteur d'eau, mises à jour) »;
   - check that `device_settings.h`'s erase doesn't touch the new globals
-- [ ] the page's card keeps `controller_light: false` (its header chip is the page's own link)
+- [ ] the page's card keeps `controller_light: false` (its header chip is the page's own link): the banner is the page's signal
 - [ ] `tools/webui-mock/mock_server.py`:
-  - simulate the switch;
+  - simulate the switch and Fill Alarm After;
   - Detect: `listening`, then `detected` after a simulated fill of ~20 s;
   - the running, too-long and acknowledged sensors, and the Acknowledge button: a `--long-fill` flag runs a fill past Fill Alarm After;
   - `MOCK_FILL=off` starts with the meter off;
   - `make mock-ui-check` passes
 - [ ] screenshots of both states (on/off) and of the alarm, before and after « Acquitter », in the PR
-- [ ] **Docs:** the `app.js` header comment (the tab is conditional); the README.md « The device's page » and POOL-CONTROLLER.md « Local web UI » items in « Documentation »; the mock's flags in README.md « Working on the web UI without flashing » and the Makefile comment for `mock-ui`
+- [ ] **Docs:** the `app.js` header comment (the conditional « Remplissage », « Compteur d'eau »); the README.md « The device's page » and POOL-CONTROLLER.md « Local web UI » items in « Documentation »; the mock's flags in README.md « Working on the web UI without flashing » and the Makefile comment for `mock-ui`
 
 ### F4: Home Assistant side
 - [ ] `home-assistant/blueprints/pool_fill_too_long.yaml` (automation blueprint). Inputs:
@@ -260,7 +257,7 @@ Done as a package, like `updates.yaml`: the logic is pure C++ in `fill_meter.h`,
   - its WP3 points here for the « Compteur d'eau » wizard block;
   - its WP6 points here for the gate waiting on Fill Running
 - [ ] this plan: every WP `done`, the open questions closed or moved to an issue
-- [ ] the description of the final PR into main, which becomes the release notes of 1.8.0, says how to turn the meter off and where the alarm's blueprint is
+- [ ] the description of the final PR into main, which becomes the release notes of 1.9.0, says how to turn the meter off and where the alarm's blueprint is
 
 ## Documentation
 
@@ -272,21 +269,21 @@ What each file gains. The WP named does it; F5 checks it all at the end.
 | POOL-CONTROLLER.md | « Hardware » | the meter is optional; pin `water_meter_pin`; what to do without one (turn Fill Meter off) | F1 |
 | POOL-CONTROLLER.md | new « Fill meter » (after « Manual Override timeout and alert ») | enabling and disabling, and what « off » does to each entity and to the day record; the pulse test and its constants; what « running » means (`GAP_MS`, slow leaks); the alarm and Fill Alarm After; acknowledgement and when it resets; behaviour on reboot | F1 |
 | POOL-CONTROLLER.md | « First setup » | step 4's optional « Compteur d'eau » block | F3 |
-| POOL-CONTROLLER.md | « Controller settings » | Fill Meter, Fill Alarm After and Detect Fill Meter: where they are (page Réglages, HA device page › Configuration), defaults | F1 |
+| POOL-CONTROLLER.md | « Controller settings » | Fill Meter, Fill Alarm After and Detect Fill Meter: where they are (page « Réglages contrôleur » › « Compteur d'eau », HA device page › Configuration), defaults | F1 |
 | POOL-CONTROLLER.md | « Updates » | an install waits for Fill Running (no longer a non-zero flow); nothing waits while the meter is off | F1 |
 | POOL-CONTROLLER.md | « Factory reset » | the fill meter settings are kept | F3 |
 | POOL-CONTROLLER.md | « Why it doesn't depend on Home Assistant » | the alarm and its acknowledgement are on the controller; HA only notifies | F1 |
 | POOL-CONTROLLER.md | « Home Assistant configuration » | the entity list: Fill Meter, Fill Alarm After and Detect under Configuration; Status and Last Pulse under Diagnostic; the alarm sensors; the blueprint | F1, F4 |
 | POOL-CONTROLLER.md | « Suggested dashboard cards » | the fill section's visibility condition; the alarm card | F4 |
-| POOL-CONTROLLER.md | « Local web UI » | the « Remplissage » tab is conditional; the fill rows in Réglages; the alarm banner | F3 |
+| POOL-CONTROLLER.md | « Local web UI » | « Remplissage » in « Contrôle » is conditional; « Compteur d'eau » in « Réglages contrôleur »; the alarm banner | F3 |
 | README.md | intro (feature list) | the optional fill meter with its alarm | F1 |
-| README.md | « Home Assistant card » | « Remplissage » hidden while the meter is off; the alarm banners; the light's pulsing amber and its order; `fill_settings` | F2 |
-| README.md | « The device's page » | the conditional tab, the Réglages section, the banner with « Acquitter » | F3 |
+| README.md | « Home Assistant card » | the fill section hidden while the meter is off; the alarm banner; the light's pulsing amber and its order | F2 |
+| README.md | « The device's page » | the conditional « Remplissage », « Compteur d'eau », the banner with « Acquitter » | F3 |
 | README.md | « Working on the web UI without flashing » | `MOCK_FILL=off`, `--long-fill` | F3 |
 | README.md | « Installing a controller » | the wizard asks about the meter | F3 |
 | README.md | « Updating firmware after the first flash » | after the update the meter stays on; turn it off if there is none | F1 |
 | home-assistant/dashboard/README.md | table of files | the blueprint | F4 |
-| home-assistant/dashboard/README.md | « The card as a tile with a pop-up » | « Remplissage » needs the meter on; the light pulses on a fill alarm and its button then opens « Remplissage » | F2 |
+| home-assistant/dashboard/README.md | « The card as a tile with a pop-up » | the fill section needs the meter on; the light pulses on a fill alarm and its button then leads to the banner | F2 |
 | home-assistant/dashboard/README.md | new « Fill alarm notifications » | import the blueprint (my-link), its inputs, the 15-min repeat, the actionable « Acquitter », the all-clear; where Fill Meter and Fill Alarm After are in HA (device page › Configuration) | F4 |
 | home-assistant/dashboard/README.md | « Entity ids » / « What the components show » | the new ids; why the fill section hides itself | F4 |
 | home-assistant/piscine-card.js | header comment | see F2 | F2 |
@@ -307,20 +304,21 @@ These come from the secret-free firmware, which is done.
   - Controllers with Auto Update install it on their next scheduled check, and the gate defers the install during a fill.
   - The default-on switch means this controller keeps counting through it.
 - **PR #46 (daily plan history):** merged and released as 1.7.0 on 2026-11-18, then merged into the feature branch.
+- **PR #48 (three tabs):** released as 1.8.0 on 2026-11-18, merged into the feature branch after F1. F2 and F3 were re-planned on it (« Where the settings are »).
 
 ## Verification
 - [ ] each PR: `make validate`, `make mock-ui-check`, `make ha-dashboard-check`, CI green; its « Docs » items done
 - [ ] mock:
-  - off: no « Remplissage » tab, no Débit/Volume rows, no detection row;
+  - off: no « Remplissage » in « Contrôle », no Débit/Volume rows, no detection row;
   - on: everything back;
-  - `--long-fill`: banner on the page; « Acquitter » turns it to « acquittée »
+  - `--long-fill`: the banner in « Contrôle »; « Acquitter » turns it to « acquittée »
 - [ ] hardware (this controller, after `make ota`):
   - the switch shows under Configuration in HA's device page, on by default;
   - Fill Water Today keeps counting
 - [ ] detection with the tap open → `detected` within a minute; with no water for 5 min → `not_detected`
 - [ ] alarm, with Fill Alarm After set to 5 min and the tap left open:
   - after 5 min: Fill Running Too Long turns on;
-  - the card's light (tile and header) pulses amber, and its button opens « Remplissage »;
+  - the card's light (tile and header) pulses amber, and its button leads to the banner;
   - the banners show in the card and on the page;
   - the phone gets a notification, then another every 15 min, each replacing the last
 - [ ] « Acquitter » from the phone notification:
@@ -332,8 +330,8 @@ These come from the secret-free firmware, which is done.
 - [ ] tap closed: the alarm clears 5 min after the last pulse, the all-clear runs, the acknowledgement resets; the next long fill alarms again
 - [ ] an HA restart during an unacknowledged alarm: the reminders resume
 - [ ] off from HA:
-  - the card's « Remplissage » tab and the dashboard's fill section disappear;
-  - the page's tab disappears too;
+  - the card's fill section and the dashboard's fill section disappear;
+  - the page's « Remplissage » disappears too;
   - the entities read `unknown`;
   - no alarm, no pulse;
   - the next midnight stores `-`
