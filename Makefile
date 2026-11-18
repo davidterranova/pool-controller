@@ -36,10 +36,12 @@ build: webui
 	$(ESPHOME) -s firmware_version $(FW_VERSION) compile $(CONFIG)
 
 # Host tests of the firmware's pure C++ helpers (tools/tests/: updates.h's
-# schedule, install gate and Update Status), with the ESPHome image's g++.
+# schedule, install gate and Update Status; fill_import.h's Fill Water
+# Import), with the ESPHome image's g++.
+FIRMWARE_TESTS := updates_test fill_import_test
 firmware-test:
 	docker run --rm -v "$(CURDIR):/config" -w /config --entrypoint sh $(ESPHOME_IMAGE) -c \
-		'g++ -std=c++20 -Wall -Wextra -Werror -o /tmp/updates_test tools/tests/updates_test.cpp && /tmp/updates_test'
+		'set -e; for t in $(FIRMWARE_TESTS); do g++ -std=c++20 -Wall -Wextra -Werror -o /tmp/$$t tools/tests/$$t.cpp; /tmp/$$t; done'
 
 # Flashes over UART via esptool (bundled with the ESP-IDF install), not through
 # Docker: Docker Desktop on macOS can't pass a host USB-serial device into the

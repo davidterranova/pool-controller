@@ -431,6 +431,21 @@ Re-evaluated every 30 seconds, highest priority wins:
      midnight (one flash write a day); `--` before the first midnight. Like
      Daily History, they exist for the device's own page, which has no
      recorder: Home Assistant has the meter's own statistics.
+   - **Fill Water Import** (config, write-only, not on the device's page)
+     fills that record from elsewhere — Home Assistant's history of the
+     meter — since it only starts the day the firmware first closed one. It
+     takes one line in either sensor's own format, newest first, `-` for
+     unknown: `2026-11-17: 0 19 - 940 3` (days, at most 30) or
+     `2026-11: 23 9538 2913` (months, at most 12), the date's length telling
+     which. It writes only **closed** days and months, strictly before today
+     and before this month: today stays Fill Water Today's, and this month's
+     total becomes its closed days in the record (never a value from the
+     line), so nothing is counted twice; `-` never erases a known value, and
+     a day above 65534 L is capped there as the record does. Anything off (a
+     bad date, a value that isn't whole litres, too many values, a date in
+     the future, no clock) refuses the whole line; its state then says why,
+     else what was imported (`importé : 30 jours`), never the line itself.
+     A 30-day line is at most 191 characters, within a text entity's 255.
    - **Firmware Version** (diagnostic) is the commit of this repo the
      firmware was compiled from, as `git describe --tags --always --dirty`
      says it: `v1.3.0`, `v1.3.0-4-g1a2b3c4` (4 commits after that tag),
