@@ -1,13 +1,14 @@
 /*
- * The controller's own page: « Contrôle » runs Home Assistant's piscine-card (unchanged, fed by
- * esphome-hass.js) next to HA-style tiles; « Remplissage » the card's water variant; « Avancé » the
- * settings, today's plan, the device's sensors and its live log; « Contrôleur » its Wi-Fi
- * (wifi-setup.yaml: connection, statistics, joining a network), its firmware, and what setup.js adds:
- * its position, probes, passwords, Home Assistant key and factory reset, plus the setup wizard shown
- * instead of the page while the controller isn't set up (device-settings.yaml). The device keeps no
- * history of its sensors, so the only charts are of what it records itself: the pool's min/max and
- * filtration of the last 7 days, and the fill water of 30 days and 12 months. Everything talks to the
- * ESP32 only, so it keeps working while Home Assistant is down.
+ * The controller's own page, in three tabs, the same as Home Assistant's piscine-card (mock-up v17):
+ * « Contrôle » runs that card's panel (unchanged, fed by esphome-hass.js) and its water variant;
+ * « Réglages » today's plan, the device's sensors, the settings (the card's settings variant) and the
+ * last 7 days; « Réglages contrôleur » its Wi-Fi (wifi-setup.yaml: connection, statistics, joining a
+ * network), its firmware, what setup.js adds (its position, probes, passwords, Home Assistant key and
+ * factory reset), and its live log, plus the setup wizard shown instead of the page while the
+ * controller isn't set up (device-settings.yaml). The device keeps no history of its
+ * sensors, so the only charts are of what it records itself: the pool's min/max and filtration of the
+ * last 7 days, and the fill water of 30 days and 12 months. Everything talks to the ESP32 only, so it
+ * keeps working while Home Assistant is down.
  */
 import { EspHass, E } from "./esphome-hass.js";
 import { ICONS } from "./icons.js";
@@ -67,17 +68,33 @@ const run = (p, ok) => p.then(() => ok && toast(ok)).catch((e) => toast(`Refusé
 
 /* ================================================================ tabs */
 
-const TABS = ["controle", "remplissage", "avance", "controleur"];
+const TABS = ["controle", "reglages", "reglages-controleur"];
+/** The tabs' old names (links and bookmarks from before v17) -> where they live now. */
+const TAB_ALIASES = { avance: "reglages", controleur: "reglages-controleur", wifi: "reglages-controleur", remplissage: "controle" };
 let tab = "controle";
+/**
+ * #remplissage: Contrôle at its Remplissage (below Filtration on a phone). Filtration grows as the controller's
+ * states come in, so the page follows it for a few seconds, until the reader scrolls or types.
+ */
+function scrollToWater() {
+  const ro = new ResizeObserver(() => $("waterStack").scrollIntoView({ block: "start" }));
+  const STOP = ["wheel", "touchstart", "keydown", "pointerdown"];
+  const stop = () => { ro.disconnect(); for (const t of STOP) removeEventListener(t, stop); };
+  for (const t of STOP) addEventListener(t, stop, { passive: true });
+  setTimeout(stop, 4000);
+  ro.observe($("tab-controle"));
+}
 function route() {
-  const want = location.hash.slice(1) === "wifi" ? "controleur" : location.hash.slice(1); // the tab's old name
-  tab = TABS.includes(want) ? want : "controle";
+  const want = location.hash.slice(1), alias = TAB_ALIASES[want];
+  tab = TABS.includes(alias || want) ? alias || want : "controle";
+  if (alias) history.replaceState(null, "", `#${tab}`); // the address bar shows the tab's name of today
   for (const t of TABS) {
     $(`tab-${t}`).hidden = t !== tab;
     document.querySelector(`.tabs a[data-tab="${t}"]`).setAttribute("aria-selected", String(t === tab));
   }
-  if (tab === "avance") scrollLogToEnd();
+  if (tab === "reglages-controleur") scrollLogToEnd();
   scrollTo({ top: 0 });
+  if (want === "remplissage") scrollToWater();
 }
 addEventListener("hashchange", route);
 addEventListener("popstate", route);
@@ -89,8 +106,7 @@ const card = document.createElement("piscine-card");
 card.setConfig({
   variant: "panel",
   recorder: false, // no recorder nor statistics here: the temperature graph keeps its 7 days, from Daily History
-  settings_tab: false, // the Avancé tab is this page's « Réglages »
-  temperatures: false, // the Températures tiles next to the card show them
+  settings_tab: false, // this page has its own « Réglages » and « Réglages contrôleur »
   controller_light: false, // its header's « Connecté au contrôleur » chip is this page's link to the controller
   entities: {
     override: E.override, commanded: E.commanded, planned: E.planned, nextAt: E.nextAt, nextTo: E.nextTo,
@@ -104,28 +120,6 @@ card.setConfig({
 $("cardHost").appendChild(card);
 let cardReady = false;
 
-/** "25,9 – 26,6 °C" from two sensors, or null while either is unknown. */
-function range(lo, hi) {
-  return Number.isFinite(lo) && Number.isFinite(hi) ? `${fmt1(lo)} – ${fmt1(hi)} °C` : null;
-}
-
-const TILES = [
-  { id: E.water, name: "Bassin", icon: "thermometer-water", group: "temps", full: true,
-    // Today's min/max, kept by the controller (pumping readings only: the probe is on the return pipe).
-    sub: () => st(E.waterMin) && (range(n(E.waterMin), n(E.waterMax))
-      ? `Aujourd'hui ${range(n(E.waterMin), n(E.waterMax))}` : "Aujourd'hui : pas encore mesurée"),
-    subTitle: "Minimum et maximum depuis minuit, mesurés pompe en marche (la sonde est sur le retour)" },
-  { id: E.outdoor, name: "Extérieure", icon: "weather-partly-cloudy", group: "temps" },
-  { id: E.pad, name: "Local technique", icon: "home-thermometer-outline", group: "temps" },
-];
-for (const t of TILES) {
-  t.el = h(`<div class="card tile${t.full ? " full" : ""}">
-    <div class="row"><span class="ic">${icon(t.icon)}</span>
-      <span class="txt"><div class="name">${t.name}</div><div class="state num"></div>
-        ${t.sub ? `<div class="sub num" title="${t.subTitle}"></div>` : ""}</span></div></div>`);
-  $("tilesTemps").appendChild(t.el);
-}
-
 function updateControl() {
   if (!cardReady && st(E.override)) {
     card.hass = hass;
@@ -133,21 +127,13 @@ function updateControl() {
     card.shadowRoot.getElementById("close").hidden = true;
     cardReady = true;
   } else if (cardReady) card.hass = hass;
-  for (const t of TILES) {
-    t.el.querySelector(".state").textContent = shown(t.id);
-    if (t.sub) {
-      const sub = t.el.querySelector(".sub"), text = t.sub();
-      sub.hidden = !text;
-      sub.textContent = text || "";
-    }
-  }
   $("subtitle").textContent = `${fmt1(n(E.water))} °C · ${s(E.commanded) ?? "–"} · ${fmt1(n(E.hoursToday))} h`;
   const c = $("conn");
   c.className = `chip ${hass.connected ? "ok" : "bad"}`;
   c.textContent = hass.connected ? "Connecté au contrôleur" : "Connexion perdue…";
 }
 
-/* ================================================================ « Avancé »: entity rows */
+/* ================================================================ « Réglages » and « Réglages contrôleur »: entity rows */
 
 const updaters = [];
 
@@ -242,24 +228,25 @@ function buttonRow(host, { id, label, sub, iconName, text = "Appuyer", ok, fill,
 }
 const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}</div>`));
 
-/* ---- Réglages: piscine-card's settings variant, the rows Home Assistant's dashboard shows too */
+/* ---- Filtration et hors gel: piscine-card's settings variant, the rows Home Assistant's card shows too */
 {
   const settings = document.createElement("piscine-card");
   settings.setConfig({
     variant: "settings",
+    title: "Filtration et hors gel", // the section's name in Home Assistant's card too
     icons: ICONS, // no <ha-icon> here
     entities: {
       min: E.min, max: E.max, offset: E.offset, warm: E.warm, pending: E.pending, apply: E.apply,
       boostDuration: E.boostDuration, boostInterval: E.boostInterval, highEvery: E.highEvery, freezeAt: E.freezeAt,
     },
   });
-  settings.classList.add("o3"); // Avancé: after Plan du jour and Capteurs internes (index.html)
+  settings.classList.add("o3"); // Réglages: after Plan du jour and Capteurs internes (index.html)
   $("settingsHost").replaceWith(settings);
   updaters.push(() => { if (st(E.min)) settings.hass = hass; });
 }
 
-/* ---- Remplissage: piscine-card's water variant, from the controller's own record (Fill Water Today, Days, Months)
-   rather than Home Assistant's statistics: the same readings and chart, 30 days and 12 months */
+/* ---- Contrôle › Remplissage: piscine-card's water variant, from the controller's own record (Fill Water Today, Days,
+   Months) rather than Home Assistant's statistics: the same readings and chart, 30 days and 12 months */
 {
   const water = document.createElement("piscine-card");
   water.setConfig({
@@ -589,7 +576,7 @@ const orDash = (id) => () => s(id) || "—";
     const d = new Date();
     return run(hass.setDateTime(E.clock, localStamp(d)), `Horloge du contrôleur réglée sur ce navigateur (${clock(d)})`);
   };
-  const goWifi = () => (location.hash = "#controleur");
+  const goWifi = () => (location.hash = "#reglages-controleur");
   updaters.push(() => {
     // No internet, no SNTP: the device can't place today's plan. This page has a clock; hand it over,
     // once per page load, and only when the device has none at all.
@@ -616,7 +603,7 @@ const orDash = (id) => () => s(id) || "—";
   });
 }
 
-/* ---- Setup: the wizard while the controller isn't set up, and the Contrôleur tab's Position, Sondes,
+/* ---- Setup: the wizard while the controller isn't set up, and the Réglages contrôleur tab's Position, Sondes,
    Accès, Home Assistant and Réinitialiser sections (setup.js) */
 updaters.push(mountSetup({ hass, E, ui: { icon, esc, toast, fmt1, bars } }));
 
@@ -663,7 +650,7 @@ const KNOWN = new Set(Object.values(E));
   });
 }
 
-/* ================================================================ logs */
+/* ================================================================ Réglages contrôleur › Journal */
 
 const LOG_FILTERS = { all: () => true, warn: (l) => l.level === "warn" || l.level === "error", error: (l) => l.level === "error" };
 let logFilter = "all", logPaused = false;

@@ -22,9 +22,8 @@
   </header>
   <nav class="tabs" role="tablist">
     <a role="tab" href="#controle" data-tab="controle" data-icon="pump">Contrôle</a>
-    <a role="tab" href="#remplissage" data-tab="remplissage" data-icon="water">Remplissage</a>
-    <a role="tab" href="#avance" data-tab="avance" data-icon="tune-vertical">Avancé</a>
-    <a role="tab" href="#controleur" data-tab="controleur" data-icon="chip">Contrôleur</a>
+    <a role="tab" href="#reglages" data-tab="reglages" data-icon="tune-vertical">Réglages</a>
+    <a role="tab" href="#reglages-controleur" data-tab="reglages-controleur" data-icon="chip">Réglages contrôleur</a>
   </nav>
 
   <!-- Setup wizard (setup.js): the page while Setup State isn't `configured`, one step per missing item -->
@@ -46,30 +45,24 @@
     <div class="alerts" id="alerts"></div>
     <div class="alerts" id="setupAlerts"></div>
     <!-- ============================================================ Contrôle -->
+    <!-- Filtration (piscine-card's panel) and Remplissage, side by side from 1000px, Remplissage below on a phone -->
     <section id="tab-controle" class="cols control" role="tabpanel">
       <div class="stack">
         <h2 class="heading" data-icon="pump">Filtration</h2>
         <div class="card panel-host" id="cardHost"></div>
       </div>
-      <div class="stack">
-        <h2 class="heading" data-icon="thermometer-water">Températures</h2>
-        <div class="tiles" id="tilesTemps"></div>
-      </div>
-    </section>
-
-    <!-- ============================================================ Remplissage -->
-    <section id="tab-remplissage" class="cols water" role="tabpanel" hidden>
-      <div class="stack">
+      <div class="stack" id="waterStack">
+        <h2 class="heading" data-icon="water">Remplissage</h2>
         <!-- piscine-card's water variant (app.js) on the controller's own record: today, 30 days, 12 months -->
         <div id="waterHost"></div>
       </div>
     </section>
 
-    <!-- ============================================================ Avancé -->
-    <section id="tab-avance" class="cols advanced" role="tabpanel" hidden>
-      <!-- Read in this order: Plan du jour, Capteurs internes, Réglages, 7 derniers jours, Journal. From 1000px, two
-           independent columns (so a tall card on one side leaves no gap on the other), the first two on the left;
-           below that the columns dissolve and o1..o5 keep the order. -->
+    <!-- ============================================================ Réglages -->
+    <section id="tab-reglages" class="cols settings" role="tabpanel" hidden>
+      <!-- Read in this order: Plan du jour, Capteurs internes, Filtration et hors gel, 7 derniers jours. From 1000px,
+           two independent columns (so a tall card on one side leaves no gap on the other), the first two on the left;
+           below that the columns dissolve and o1..o4 keep the order. -->
       <div class="stack">
         <div class="card o1">
           <h2 data-icon="calendar-clock">Plan du jour</h2>
@@ -82,33 +75,20 @@
       </div>
 
       <div class="stack">
-        <!-- Réglages: piscine-card's settings variant (app.js), the same rows as on Home Assistant's dashboard -->
+        <!-- Filtration et hors gel: piscine-card's settings variant (app.js), the same rows as in Home Assistant's
+             card (Réglages) -->
         <div id="settingsHost"></div>
         <div class="card o4">
           <h2 data-icon="calendar-check">7 derniers jours</h2>
           <div class="body"><div class="days" id="days"></div></div>
         </div>
-        <div class="card o5">
-          <h2 data-icon="console">Journal <span class="chip" id="logCount">0 ligne</span></h2>
-          <div class="logbar">
-            <div class="seg" id="logSeg" role="radiogroup" aria-label="Niveau">
-              <button role="radio" data-f="all" aria-checked="true">Tout</button>
-              <button role="radio" data-f="warn" aria-checked="false">Avertissements</button>
-              <button role="radio" data-f="error" aria-checked="false">Erreurs</button>
-            </div>
-            <span class="grow"></span>
-            <button class="btn" id="logPause" title="Pause" aria-label="Pause" data-icon="pause"></button>
-            <button class="btn" id="logClear" title="Vider" aria-label="Vider" data-icon="delete-outline"></button>
-          </div>
-          <div class="log" id="log" role="log" aria-live="off"></div>
-        </div>
       </div>
     </section>
 
-    <!-- ============================================================ Contrôleur -->
-    <section id="tab-controleur" class="cols wifi" role="tabpanel" hidden>
+    <!-- ============================================================ Réglages contrôleur -->
+    <section id="tab-reglages-controleur" class="cols controller" role="tabpanel" hidden>
       <!-- Left column: Wi-Fi, then the pool's own settings (setup.js: Position, Sondes). On a wide screen
-           it spans both rows of the right one (Firmware, then Accès, Home Assistant, Réinitialiser). -->
+           it spans both rows of the right one (Firmware, then Accès, Home Assistant, Réinitialiser, Journal). -->
       <div class="stack col span-rows">
       <!-- Wi-Fi: from wifi-setup.yaml; app.js hides it on a firmware without those entities. -->
       <div class="stack" id="wifiStack">
@@ -164,7 +144,7 @@
         </div>
       </div>
 
-      <!-- Accès, Home Assistant, Réinitialiser (setup.js, device-settings.yaml): below Firmware -->
+      <!-- Accès, Home Assistant, Réinitialiser (setup.js, device-settings.yaml), then the Journal: below Firmware -->
       <div class="stack col">
         <div class="stack" id="accStack" hidden>
           <h2 class="heading" data-icon="shield-key-outline">Accès</h2>
@@ -185,6 +165,24 @@
           <div class="card">
             <h2 data-icon="restart-alert">Réglages d'usine</h2>
             <div class="body" id="resetBody"></div>
+          </div>
+        </div>
+        <!-- Journal: what the controller logs while this page is open (app.js), last: the right column is the shorter -->
+        <div class="stack">
+          <h2 class="heading" data-icon="console">Journal</h2>
+          <div class="card">
+            <h2>Messages du contrôleur <span class="chip" id="logCount">0 ligne</span></h2>
+            <div class="logbar">
+              <div class="seg" id="logSeg" role="radiogroup" aria-label="Niveau">
+                <button role="radio" data-f="all" aria-checked="true">Tout</button>
+                <button role="radio" data-f="warn" aria-checked="false">Avertissements</button>
+                <button role="radio" data-f="error" aria-checked="false">Erreurs</button>
+              </div>
+              <span class="grow"></span>
+              <button class="btn" id="logPause" title="Pause" aria-label="Pause" data-icon="pause"></button>
+              <button class="btn" id="logClear" title="Vider" aria-label="Vider" data-icon="delete-outline"></button>
+            </div>
+            <div class="log" id="log" role="log" aria-live="off"></div>
           </div>
         </div>
       </div>

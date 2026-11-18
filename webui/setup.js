@@ -6,8 +6,8 @@
  *     Wi-Fi → position and time zone → probes → Home Assistant, one step per missing item, opened at
  *     the first one. A step is done when Setup State no longer lists its item, so a page reopened
  *     after joining the home network, or after a factory reset, resumes where it should.
- *   - The Contrôleur tab gains Position and Sondes (the same forms) and Accès, Home Assistant and
- *     Réinitialiser.
+ *   - The Réglages contrôleur tab gains Position and Sondes (the same forms) and Accès, Home Assistant
+ *     and Réinitialiser.
  *
  * Secrets are write-only (CVE-2026-71260 leaks password-mode text values): a password or a key is
  * sent once, its form cleared, and the page never reads one back; whether each is set comes from
@@ -60,7 +60,7 @@ export function mountSetup({ hass, E, ui }) {
   const readings = new Map(); // probe address -> its last readings
   let probesSeen = "", lastMode = null;
   const browserTz = browserZone();
-  const joinHome = $("joinForm").parentNode; // step 2 borrows the Contrôleur tab's network list and form
+  const joinHome = $("joinForm").parentNode; // step 2 borrows the Réglages contrôleur tab's network list and form
 
   /* ------------------------------------------------------------ device state */
 
@@ -339,7 +339,7 @@ export function mountSetup({ hass, E, ui }) {
     toast("Clé oubliée : ajoutez le contrôleur dans Home Assistant");
   }
 
-  /* ------------------------------------------------------------ Contrôleur tab sections */
+  /* ------------------------------------------------------------ Réglages contrôleur tab sections */
 
   function accBody() {
     const pageSet = !isMissing("page_password");
@@ -402,7 +402,7 @@ export function mountSetup({ hass, E, ui }) {
   function renderSections() {
     const sections = [["posStack", E.latitude], ["probeStack", E.detectedProbes], ["accStack", E.pagePassword], ["haStack", E.apiKey], ["resetStack", E.factoryReset]];
     for (const [id, entity] of sections) $(id).hidden = !st(entity);
-    if (st(E.latitude)) paint($("posBody"), `${posForm(true)}<p class="posnote">Ou depuis Home Assistant : carte Piscine › Réglages › Position.</p>`);
+    if (st(E.latitude)) paint($("posBody"), `${posForm(true)}<p class="posnote">Ou depuis Home Assistant : carte Piscine › Réglages contrôleur › Position.</p>`);
     if (st(E.detectedProbes)) paint($("probeBody"), probesHTML());
     if (st(E.pagePassword)) paint($("accBody"), accBody());
     if (st(E.apiKey)) paint($("haBody"), haBody());
@@ -453,7 +453,7 @@ export function mountSetup({ hass, E, ui }) {
       }
       if (mode === "Connected") {
         return hero("ok", bars(n(E.wifiSignal)), `Connecté à « ${ssid} »`, `Signal ${n(E.wifiSignal)} dBm · ${esc(text(E.ip))}`)
-          + '<p class="hint">Pour changer de réseau plus tard : Contrôleur › Wi-Fi.</p>';
+          + '<p class="hint">Pour changer de réseau plus tard : Réglages contrôleur › Wi-Fi.</p>';
       }
       return (mode === "Connecting"
         ? hero("idle", "wifi-sync", `Connexion à « ${esc(text(E.joinSsid))} »…`, "Jusqu'à 30 s ; s'il échoue, le point d'accès reste.")
@@ -478,9 +478,9 @@ export function mountSetup({ hass, E, ui }) {
           + `<p class="hint">Sinon :</p><div class="keyslot">${keyUI("wz")}</div>${noHaLink()}`;
       }
       return intro + (keyOrigin === "paste" ? hero("ok", "check", "Clé définie", "Collée depuis l'ancien secrets.yaml : Home Assistant se reconnecte avec elle.")
-        : keyOrigin === "generated" ? hero("ok", "check", "Sans Home Assistant", "Le contrôleur s'est donné une clé aléatoire, que personne ne voit. Pour l'ajouter plus tard : Contrôleur › Home Assistant.")
+        : keyOrigin === "generated" ? hero("ok", "check", "Sans Home Assistant", "Le contrôleur s'est donné une clé aléatoire, que personne ne voit. Pour l'ajouter plus tard : Réglages contrôleur › Home Assistant.")
         : linked() ? hero("ok", "check", "Clé définie par Home Assistant", "Il est connecté, chiffré. La clé n'est affichée nulle part.")
-        : hero("ok", "check", "Clé définie", "Le contrôleur a sa clé. Home Assistant n'est pas connecté pour l'instant : Contrôleur › Home Assistant."));
+        : hero("ok", "check", "Clé définie", "Le contrôleur a sa clé. Home Assistant n'est pas connecté pour l'instant : Réglages contrôleur › Home Assistant."));
     }
     return doneBody();
   }
@@ -497,7 +497,7 @@ export function mountSetup({ hass, E, ui }) {
       + row("map-marker-outline", "Position", `${deg(n(E.latitude))} · ${deg(n(E.longitude))}`, `${esc(zone)} · <span class="mono">${esc(text(E.timezone))}</span>`)
       + row("thermometer", "Sondes", role(ROLES[0]), ROLES.slice(1).map(role).join(" · "))
       + row("home-assistant", "Home Assistant", linked() ? "connecté" : keyOrigin === "generated" ? "non utilisé" : "clé définie",
-        linked() ? "Connecté, chiffré." : keyOrigin === "generated" ? "Clé aléatoire ; Contrôleur › Home Assistant pour l'ajouter." : "Contrôleur › Home Assistant.")
+        linked() ? "Connecté, chiffré." : keyOrigin === "generated" ? "Clé aléatoire ; Réglages contrôleur › Home Assistant pour l'ajouter." : "Réglages contrôleur › Home Assistant.")
       + "</div>";
   }
   function stepNav(step, m) {

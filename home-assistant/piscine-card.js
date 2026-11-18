@@ -11,10 +11,11 @@
  *
  *   type: custom:piscine-card
  *   variant: panel       # full controls, placed inside the Bubble pop-up
- *   settings_tab: false  # optional: no « Avancé » nor « Réglages » tab; the light's button then opens more_path, if given
- *   temperatures: false  # optional: no outdoor / equipment-pad block at the foot of « Pompe »
+ *   settings_tab: false  # optional: no « Réglages » nor « Réglages contrôleur » tab, so no tab bar
  *   controller_light: false                            # optional: no light for the controller (tile, header)
  *   controller_health: { warn: 3, alert: 15, beat: 4 }  # optional: its minutes before amber, before red; seconds between beats
+ *   more_path: /config/…  # optional: where the light leads instead of the controller's device page
+ *   # temperatures: deprecated since 1.8.0, accepted and ignored (the probes are in « Réglages » › Sondes)
  *
  * The card never writes the controller's Manual Override select itself:
  *   force a speed   script.piscine_forcer_vitesse (vitesse: Off|Low|Medium|High)
@@ -49,31 +50,37 @@
  * tag at the foot of the axis, so a 13 °C curve isn't squashed to show 3 °C.
  * `recorder: false` (the device's own page) leaves only 7 j, which the device keeps itself, and no range to pick.
  *
- * The controller's light (a dot on the tile; in the panel's header a button that opens « Avancé » › Contrôleur):
+ * Three tabs, the controller's own page's (mock-up v17, 2026-11-18): « Contrôle » | « Réglages » | « Réglages
+ * contrôleur ». `settings_tab: false` keeps « Contrôle » alone, without a tab bar (the device's page has its own two).
+ *
+ * The controller's light (a dot on the tile; in the panel's header a button that opens Home Assistant's own device
+ * page for the controller, /config/devices/device/<device_id of the `online` entity>: its link, Wi-Fi signal and
+ * disconnections; `more_path` when given leads there instead; without a device id, « Réglages contrôleur »):
  * when the controller was last heard, from the newest update of any of its entities. Green while it talks; amber
  * when it has been quiet for `warn` min, or offline for less than `alert` (a restart, an OTA, a Wi-Fi drop usually
  * end on their own); red beyond. Each new message pops the dot and sends a ring out of it (every `beat` s at most).
  * Its heartbeat is the Device Clock (wifi-setup.yaml, entity `clock`), which changes every minute; without it a
  * still night leaves every value as it was, so only the link counts. Offline, the light replaces the pump's state.
  *
- * Fill water (tab « Remplissage », next to « Pompe »; recorder only, so not on the device's page; mock-up
- * 2026-11-17). The water meter on the fill line (Piscine - Volume total remplissage, total_increasing) as HA's
- * statistics `change`: 30 j one bar a day, 90 j one a week (13 weeks from a Monday, HA's weeks), 12 mois one a
- * month, the period's total above. The running day/week/month adds what the meter counted since the last
- * compiled hour (the live state against that hour's `state`; after a reboot the meter restarts from 0). Above it,
- * today, this month so far and the flow. A tab rather than one more block: the pop-up stays a pump control, and the
- * water history is one tap away.
+ * Fill water (« Contrôle », after Pilotage, under its chart's « Eau de remplissage »; recorder only, so not in the
+ * device page's panel; mock-up 2026-11-17). The water meter on the fill line (Piscine - Volume total remplissage,
+ * total_increasing) as HA's statistics `change`: 30 j one bar a day, 90 j one a week (13 weeks from a Monday, HA's
+ * weeks), 12 mois one a month, the period's total above. The running day/week/month adds what the meter counted
+ * since the last compiled hour (the live state against that hour's `state`; after a reboot the meter restarts from
+ * 0). Above it, today, this month so far and the flow.
  *
  *   type: custom:piscine-card
  *   variant: water       # the same, alone. With `recorder: false` (the device's page) from the controller's own
  *                        # record instead: entities fillToday, fillDays, fillMonths (Fill Water Today / Days /
  *                        # Months), 30 j and 12 mois.
  *
- * « Avancé » and « Réglages » (mock-up 2026-11-17): between them, every control the controller has, as on its
- * own page's Avancé tab, so the pop-up needs no dashboard behind it. « Avancé », in the device page's order: today's
- * plan with « Recalculer », the controller (its link, its Wi-Fi signal in dBm, % and words) and the probes with
- * « Relire » (the page's « Capteurs internes »), the firmware (mock-up 2026-11-18, plan WP4), then the last 7 days of
- * filtration against the plan (Daily History, each day's plan from Daily Plan History).
+ * « Réglages » and « Réglages contrôleur »: between them, every control the controller has, as on its own page, so
+ * the pop-up needs no dashboard behind it. « Réglages », read in this order: today's plan with « Recalculer », the
+ * probes with « Relire » (a tap on one opens Home Assistant's more-info, its history), « Filtration et hors gel »
+ * (the same rows as `variant: settings`), then the last 7 days of filtration against the plan (Daily History, each day's plan from Daily Plan History).
+ * « Réglages contrôleur »: « Position », the controller's latitude, longitude and time zone, and « Utiliser la
+ * position et le fuseau de Home Assistant », which writes hass.config's, rounded to 0.01°, the zone as its IANA name
+ * (Timezone Name) and its POSIX string (Timezone, from TZ_POSIX); then « Firmware » (mock-up 2026-11-18, plan WP4).
  * The section runs on the controller's update entity, « Firmware » (ESPHome's `update` platform on the release
  * manifest): installed version (with ESPHome's version and build time), latest version and its release notes,
  * « Vérifier » (Check for Update) and « Installer » (update.install, with its progress), Auto Update and Update Check
@@ -82,18 +89,11 @@
  * attente »): the card asks first when « Installer » would wait, and says so while it waits, with « Annuler la demande »
  * (Cancel Update). Auto Update installs only what a scheduled check finds, never after « Vérifier ». Whether a newer
  * firmware exists is the controller's to say, and the card's own version is HACS's: the card asks GitHub nothing. A
- * firmware without the entity (before the update entity, v1.4) has no Firmware section.
- * « Réglages »: the settings, the same rows as `variant: settings`, then « Position »: the controller's latitude,
- * longitude and time zone, and « Utiliser la position et le fuseau de Home Assistant », which writes hass.config's,
- * rounded to 0.01°, the zone as its IANA name (Timezone Name) and its POSIX string (Timezone, from TZ_POSIX). The
- * tabs are the way in: « Pompe » has no link to them. `settings_tab: false` drops both (the device's page has its
- * own Avancé).
- *
- * At the foot of « Pompe », « Températures »: the outdoor and equipment-pad probes, a tap opening Home
- * Assistant's more-info and its history. `temperatures: false` drops it (the device's page has its own tiles).
+ * firmware without the entity (before the update entity, v1.4) has no Firmware section. The tabs are the way in:
+ * « Contrôle » has no link to them.
  *
  *   type: custom:piscine-card
- *   variant: settings    # the controller's settings: the rows of its own page (Avancé › Réglages)
+ *   variant: settings    # the controller's settings: the rows of its own page (Réglages › Filtration et hors gel)
  * Home Assistant's entities card cuts a long name short on a phone and has no line for a description; these
  * rows wrap both. The device's page runs this same variant, with `icons` (name -> SVG path) where HA has
  * <ha-icon>.
@@ -101,9 +101,11 @@
  * Layout: one column on a phone (Bubble bottom sheet). From 680 px of container width (the Bubble
  * adaptive-dialog on a screen, width_desktop 760px) the panel is two columns with the day plan and the
  * temperature across the full width under the header — layout « B » approved on the mock-up (« Screen »
- * view) on 2026-11-11.
+ * view) on 2026-11-11. « Réglages » is then two columns too, cut after « Appliquer »: Plan du jour, Sondes and
+ * « Filtration » on the left, « Impulsions et hors gel » and 7 derniers jours on the right; « Réglages
+ * contrôleur » is Position beside Firmware.
  */
-const VERSION = "1.7.0";
+const VERSION = "1.8.0";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",
@@ -147,9 +149,6 @@ const DEFAULT_ENTITIES = {
   nextBoostEnd: "sensor.piscine_pool_controller_next_boost_end",
   recompute: "button.piscine_pool_controller_recompute_schedule_now",
   updateTemps: "button.piscine_pool_controller_update_temperature_sensors_now",
-  wifiSignal: "sensor.piscine_pool_controller_wifi_signal",
-  wifiSsid: "sensor.piscine_pool_controller_wifi_ssid",
-  wifiDisc: "sensor.piscine_pool_controller_wifi_disconnects",
   clock: "datetime.piscine_pool_controller_device_clock",
   fwVersion: "sensor.piscine_pool_controller_firmware_version",
   esphomeVersion: "sensor.piscine_pool_controller_esphome_version",
@@ -191,8 +190,9 @@ const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet"
 const W_RANGES = { "30d": "30 j", "90d": "90 j", "12m": "12 mois" };
 const W_PERIOD = { "30d": "day", "90d": "week", "12m": "month" };
 /**
- * variant: settings — the device page's « Réglages », in its order and words. `icon` when the entity has none. Not
- * Manual Override Timeout: « Pompe » › Manuel › « Retour en Auto » sets it, with the override it applies to.
+ * variant: settings and the panel's « Réglages » › « Filtration et hors gel » — the device page's, in its order and
+ * words. `icon` when the entity has none. Not Manual Override Timeout: « Contrôle » › Manuel › « Retour en Auto » sets
+ * it, with the override it applies to. In the wide panel the rows split after « Appliquer » (APPLY_CUT).
  */
 const SETTINGS = [
   { sect: "Durée de filtration · s'applique avec «\u00a0Appliquer\u00a0»" },
@@ -208,11 +208,12 @@ const SETTINGS = [
   { sect: "Hors gel · immédiat" },
   { key: "freezeAt", label: "Low forcé sous", sub: "Quand l'eau descend sous ce seuil, quoi qu'on demande", icon: "snowflake-thermometer" },
 ];
+const APPLY_CUT = SETTINGS.findIndex((d) => d.key === "apply") + 1;
 const APPLIED = "Réglages appliqués : plan du jour recalculé";
 
 /**
- * Panel, tab « Réglages »: Plan du jour and Contrôleur, the device page's rows (webui/app.js) in its words. A row
- * whose entity is missing is hidden (Wi-Fi rows need wifi-setup.yaml). `val`/`sub` take the card.
+ * Panel, tab « Réglages »: Plan du jour, the device page's rows (webui/app.js) in its words. A row whose entity is
+ * missing is hidden. `val`/`sub` take the card.
  */
 const span = (c, a, b) => (hhmm(c._s(a)) !== null && c._s(a) !== c._s(b) ? `${c._s(a)} → ${c._s(b)}` : "—"); // start == end: none
 const degC = (k) => (c) => `${fmt1(c._n(k))} °C`;
@@ -231,26 +232,19 @@ const PLAN_ROWS = [
   { key: "recomputed", label: "Plan calculé à", icon: "calendar-clock", val: (c) => stamp(c._s("recomputed")) },
   { key: "recompute", label: "Recalculer le plan maintenant", icon: "refresh", button: "Recalculer", ok: "Plan du jour recalculé" },
 ];
-const CTL_ROWS = [
-  { key: "online", label: "Liaison avec Home Assistant", icon: "lan-connect", tone: (c) => ({ late: "warn", lost: "bad" })[c._light().h] || "",
-    val: (c) => c._lightText(c._light(), "En ligne", "Muet"), sub: (c) => (c._light().seen ? `Dernier message reçu à ${stampMs(c._light().seen)}` : "") },
-  { key: "wifiSignal", label: "Signal Wi-Fi", icon: "wifi", tone: (c) => wifiQuality(c._n("wifiSignal")).tone,
-    val: (c) => `${Math.round(c._n("wifiSignal"))} dBm · ${Math.max(0, Math.min(100, 2 * (c._n("wifiSignal") + 100)))} % · ${wifiQuality(c._n("wifiSignal")).word}`, // HA's dBm -> % rule of thumb
-    sub: (c) => (c._s("wifiSsid") && c._s("wifiSsid") !== "unknown" ? `Réseau « ${c._s("wifiSsid")} »` : "") },
-  { key: "wifiDisc", label: "Déconnexions Wi-Fi", sub: () => "Depuis le démarrage", icon: "wifi-alert", val: (c) => String(Math.round(c._n("wifiDisc"))) },
-];
-/** Panel, tab « Avancé »: the probes, as the device page's Capteurs. */
+/**
+ * Panel, tab « Réglages » › Sondes: the probes, as the device page's Capteurs internes › Capteurs. `more`: a tap opens
+ * Home Assistant's more-info for that sensor, with its history.
+ */
 const PROBE_ROWS = [
-  { key: "water", label: "Eau (retour filtre)", icon: "thermometer-water", val: degC("water"),
+  { key: "water", label: "Eau (retour filtre)", icon: "thermometer-water", val: degC("water"), more: true,
     sub: (c) => (c._commanded() === "Off" ? "Pompe arrêtée : la sonde lit le tuyau" : "Pompe en marche : l'eau du bassin") },
-  { key: "pad", label: "Local technique", icon: "home-thermometer-outline", val: degC("pad") },
-  { key: "outdoor", label: "Extérieur", icon: "weather-partly-cloudy", val: degC("outdoor") },
+  { key: "pad", label: "Local technique", icon: "home-thermometer-outline", val: degC("pad"), more: true },
+  { key: "outdoor", label: "Extérieur", icon: "weather-partly-cloudy", val: degC("outdoor"), more: true },
   { key: "updateTemps", label: "Relire les sondes de température", icon: "thermometer", button: "Relire", ok: "Sondes relues" },
 ];
 
 const ICONS = {
-  outdoor: "M12.74,5.47C15.1,6.5 16.35,9.03 15.92,11.46C17.19,12.56 18,14.19 18,16V16.17C18.31,16.06 18.65,16 19,16A3,3 0 0,1 22,19A3,3 0 0,1 19,22H6A4,4 0 0,1 2,18A4,4 0 0,1 6,14H6.27C5,12.45 4.6,10.24 5.5,8.26C6.72,5.5 9.97,4.24 12.74,5.47M11.93,7.3C10.16,6.5 8.09,7.31 7.31,9.07C6.85,10.09 6.93,11.22 7.41,12.13C8.5,10.83 10.16,10 12,10C12.7,10 13.38,10.12 14,10.34C13.94,9.06 13.18,7.86 11.93,7.3M13.55,3.64C13,3.4 12.45,3.23 11.88,3.12L14.37,1.82L15.27,4.71C14.76,4.29 14.19,3.93 13.55,3.64M6.09,4.44C5.6,4.79 5.17,5.19 4.8,5.63L4.91,2.82L7.87,3.5C7.25,3.71 6.65,4.03 6.09,4.44M18,9.71C17.91,9.12 17.78,8.55 17.59,8L19.97,9.5L17.92,11.73C18.03,11.08 18.05,10.4 18,9.71M3.04,11.3C3.11,11.9 3.24,12.47 3.43,13L1.06,11.5L3.1,9.28C3,9.93 2.97,10.61 3.04,11.3M19,18H16V16A4,4 0 0,0 12,12A4,4 0 0,0 8,16H6A2,2 0 0,0 4,18A2,2 0 0,0 6,20H19A1,1 0 0,0 20,19A1,1 0 0,0 19,18Z",
-  pad: "M19 8C20.11 8 21 8.9 21 10V16.76C21.61 17.31 22 18.11 22 19C22 20.66 20.66 22 19 22C17.34 22 16 20.66 16 19C16 18.11 16.39 17.31 17 16.76V10C17 8.9 17.9 8 19 8M19 9C18.45 9 18 9.45 18 10V11H20V10C20 9.45 19.55 9 19 9M12 5.69L7 10.19V18H14.1L14 19L14.1 20H5V12H2L12 3L16.4 6.96C15.89 7.4 15.5 7.97 15.25 8.61L12 5.69Z",
   pump: "M12 2L9.5 6H14.5L12 2M12 22L14.5 18H9.5L12 22M2 12L6 14.5V9.5L2 12M22 12L18 9.5V14.5L22 12M12 8A4 4 0 0 0 8 12A4 4 0 0 0 12 16A4 4 0 0 0 16 12A4 4 0 0 0 12 8M12 10A2 2 0 0 1 14 12A2 2 0 0 1 12 14A2 2 0 0 1 10 12A2 2 0 0 1 12 10Z",
   auto: "M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13.57 17.4,15 16.4,16.1L17.84,17.54C19.18,16.09 20,14.15 20,12A8,8 0 0,0 12,4M12,18A6,6 0 0,1 6,12C6,10.43 6.6,9 7.6,7.9L6.16,6.46C4.82,7.91 4,9.85 4,12A8,8 0 0,0 12,20V23L16,19L12,15V18Z",
   close: "M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z",
@@ -270,8 +264,6 @@ const fmtD = (min) => {
 };
 /** Minutes ago -> « à l'instant », « il y a 3 min », « il y a 2 h », « il y a 4 j ». */
 const agoTxt = (m) => (!(m >= 1) ? "à l'instant" : m < 90 ? `il y a ${Math.round(m)} min` : m < 36 * 60 ? `il y a ${Math.round(m / 60)} h` : `il y a ${Math.round(m / 1440)} j`);
-/** A Wi-Fi signal in words, on the steps of the device page's bars icon: bon (3–4 bars), moyen (2), faible (1). */
-const wifiQuality = (dbm) => (dbm >= -67 ? { word: "bon", tone: "" } : dbm >= -75 ? { word: "moyen", tone: "warn" } : { word: "faible", tone: "bad" });
 /** A time in ms -> "HH:MM" today, else "DD/MM HH:MM". */
 const stampMs = (t) => { const d = new Date(t); return dayKey(d) === dayKey(new Date()) ? fmtT(d) : `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${fmtT(d)}`; };
 /** "HH:MM" text sensor -> minutes of day, or null for "--:--" / unavailable. */
@@ -334,7 +326,7 @@ const STYLE = `
   display:block;
 }
 :host([variant=tile]) { height:100%; }
-:host([variant=panel]) { container-type:inline-size; }
+:host([variant=panel]) { container:pcard / inline-size; }
 :host([dark]) {
   --acc:#3fb0ec; --acc-soft:rgba(63,176,236,.18); --on-acc:#06202e;
   --amber:#f0b03a; --amber-soft:rgba(240,176,58,.17);
@@ -557,17 +549,18 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .tl-leg i.k-band { background:var(--acc); opacity:.2; }
 .tl-leg i.k-rng { width:6px; height:11px; background:var(--acc); border-radius:2px; }
 
-/* tabs « Pompe » / « Remplissage » / « Avancé » / « Réglages »: the pump tab is everything the panel had; the others hide it */
+/* tabs « Contrôle » (pump) / « Réglages » (settings) / « Réglages contrôleur » (controller), the controller page's own:
+   « Contrôle » is everything the panel shows but the two panes; each of those hides the rest */
 .tabs { order:-2; display:flex; gap:4px; border-bottom:1px solid var(--line); margin:-8px 0 -6px; }
-.tabs button { position:relative; border:0; background:none; padding:10px 12px; font-size:14px; font-weight:500; color:var(--muted); cursor:pointer; }
+.tabs button { position:relative; border:0; background:none; padding:10px 10px; font-size:14px; font-weight:500; color:var(--muted); cursor:pointer; white-space:nowrap; }
 .tabs button[aria-selected="true"] { color:var(--acc); }
 .tabs button[aria-selected="true"]::after { content:""; position:absolute; left:8px; right:8px; bottom:-1px; height:2px; border-radius:2px 2px 0 0; background:var(--acc); }
-.panel[data-tab="water"] > :not(.sh-head):not(.tabs):not(.water):not(.toast) { display:none !important; }
-.panel[data-tab="adv"] > :not(.sh-head):not(.tabs):not(.advpane):not(.toast) { display:none !important; }
 .panel[data-tab="settings"] > :not(.sh-head):not(.tabs):not(.setpane):not(.toast) { display:none !important; }
-.panel:not([data-tab="water"]) > .water, .panel:not([data-tab="adv"]) > .advpane, .panel:not([data-tab="settings"]) > .setpane { display:none; }
-.tabs button { padding:10px 10px; }
+.panel[data-tab="controller"] > :not(.sh-head):not(.tabs):not(.ctlpane):not(.toast) { display:none !important; }
+.panel:not([data-tab="settings"]) > .setpane, .panel:not([data-tab="controller"]) > .ctlpane { display:none; }
 .water { display:flex; flex-direction:column; gap:6px; }
+/* « Contrôle »: the fill water after Pilotage, a rule above it; its chart's « Eau de remplissage » is its label */
+.panel > .water { border-top:1px solid var(--line); padding-top:16px; }
 .water .readings { margin-bottom:12px; grid-template-columns:repeat(3,minmax(0,1fr)); }
 /* three narrow tiles on a phone: a label that wraps (« Rempli aujourd'hui ») must not push its value below the others'.
    The tiles share the row's height; labels stay on top (two lines at most), values sit on the bottom line. */
@@ -582,27 +575,16 @@ ha-card.water-card.plain { background:var(--card); border:1px solid var(--ha-car
 .tl-leg i.k-bar { width:8px; height:11px; background:var(--acc); border-radius:2px 2px 0 0; }
 .tl-leg i.k-cur { width:8px; height:11px; background:var(--acc); opacity:.55; border-radius:2px 2px 0 0; }
 
-/* « Températures », at the foot of « Pompe »: outdoor and equipment pad, a tap opens HA's more-info (its history).
-   One per row on a phone, side by side once 200 px each fit. */
-.probes { display:flex; flex-direction:column; gap:8px; }
-.probes .lbl { margin:0; }
-.probes .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:8px; }
-.ptile { display:flex; align-items:center; gap:10px; min-width:0; padding:10px; border:0; border-radius:12px; background:var(--raised);
-  text-align:left; cursor:pointer; color:var(--fg); }
-.ptile .ico { width:36px; height:36px; background:var(--acc-soft); color:var(--acc); }
-.ptile .ico svg { width:20px; height:20px; }
-.ptile .txt { display:flex; flex-direction:column; min-width:0; }
-.ptile .p { font-size:14px; font-weight:500; overflow-wrap:anywhere; }
-.ptile .s { font-size:13px; color:var(--muted); }
-
-/* tab « Avancé », read in the device page's Avancé order: today's plan, the controller and its probes (its « Capteurs
-   internes »), the firmware, the last 7 days; one column on a phone, the first three on the left when wide. Tab
-   « Réglages »: the settings (together, the device page's Avancé). Each column is a container, so its rows wrap at its
-   own width. */
-.advpane, .setpane { display:flex; flex-direction:column; gap:22px; }
-.setpane { container-type:inline-size; }
+/* tab « Réglages », read in this order: Plan du jour › Sondes › Filtration et hors gel › 7 derniers jours; tab
+   « Réglages contrôleur »: Position › Firmware. One column on a phone; two when wide (@container pcard below), the
+   settings cut after « Appliquer »: their second part (.cont) continues the first on a phone, without a heading.
+   Each column is a container, so its rows wrap at its own width. */
+.setpane, .ctlpane { display:flex; flex-direction:column; gap:22px; container-type:inline-size; }
 .sp-col { display:flex; flex-direction:column; gap:22px; min-width:0; container-type:inline-size; }
 .sp-h { display:flex; align-items:center; gap:10px; margin:0 0 2px; font-size:15px; font-weight:500; }
+.setpane .cont { margin-top:-22px; }
+.setpane .cont > .sp-h { display:none; }
+.setpane .cont .esect:first-child { margin-top:12px; }
 .erow .val { margin-left:auto; text-align:right; white-space:nowrap; }
 .erow .val.bad { color:var(--danger); font-weight:500; }
 .days { display:flex; flex-direction:column; gap:4px; }
@@ -653,7 +635,7 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
   background:var(--acc); color:var(--on-acc); flex:none; }
 .btn:disabled { background:var(--raised); color:var(--muted); cursor:not-allowed; }
 .btn.busy { opacity:.6; pointer-events:none; }
-/* « Avancé » › Firmware on the update entity, « Réglages » › Position */
+/* « Réglages contrôleur » › Firmware on the update entity, and › Position */
 .btn.tonal { background:transparent; color:var(--acc); border:1px solid var(--line); padding:0 14px; }
 .btn.tonal:disabled { background:transparent; color:var(--muted); opacity:.6; }
 .erow .btns { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
@@ -691,8 +673,9 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
    Pilotage and the manual controls on the right. Phones never reach 680 px. */
 @container (min-width: 680px) {
   .panel { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 28px; align-items:start; padding:6px 6px 4px; }
-  .sh-head, .tabs, .water, .advpane, .setpane, .probes, .foot, .plan, .temp { grid-column:1 / -1; }
-  .advpane { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 28px; align-items:start; }
+  .sh-head, .tabs, .water, .setpane, .ctlpane, .foot, .plan, .temp { grid-column:1 / -1; }
+  .setpane, .ctlpane { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 28px; align-items:start; }
+  .sp-col + .sp-col { align-self:stretch; border-left:1px solid var(--line); padding-left:14px; margin-left:-14px; }
   .water .chart { height:170px; }
   .temp { padding-bottom:20px; border-bottom:1px solid var(--line); }
   .temp .chart { height:150px; }
@@ -701,10 +684,18 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
   .col-state { align-self:stretch; border-right:1px solid var(--line); padding-right:14px; margin-right:-14px; }
   .power:not(:has(:not([hidden]))) { display:none; }
 }
+/* Wide « Réglages »: the settings' second part opens the right column, under its own heading, and the first is
+   « Filtration » alone. Named: these sit in columns that are containers themselves. */
+@container pcard (min-width: 680px) {
+  .setpane .cont { margin-top:0; }
+  .setpane .cont > .sp-h { display:flex; }
+  .setpane .cont .esect:first-child { margin-top:4px; }
+  .sp-h .narrow { display:none; }
+}
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; } }
 `;
 
-/** The fill water: in the panel's « Remplissage » tab, and alone as `variant: water`. */
+/** The fill water: in the panel's « Contrôle », after Pilotage, and alone as `variant: water`. */
 const WATER_PANE = `
     <div class="readings">
       <div class="reading"><span class="l">Rempli aujourd'hui</span><span class="v num" id="wToday"></span></div>
@@ -730,29 +721,31 @@ const PANEL_HTML = `
     <button class="x" id="close" aria-label="Fermer">${svg("close")}</button>
   </div>
   <div class="tabs" role="tablist" id="tabs" hidden>
-    <button role="tab" data-tab="pump" aria-selected="true">Pompe</button>
-    <button role="tab" data-tab="water" aria-selected="false">Remplissage</button>
-    <button role="tab" data-tab="adv" aria-selected="false">Avancé</button>
+    <button role="tab" data-tab="pump" aria-selected="true">Contrôle</button>
     <button role="tab" data-tab="settings" aria-selected="false">Réglages</button>
+    <button role="tab" data-tab="controller" aria-selected="false">Réglages contrôleur</button>
   </div>
-  <div class="water" role="tabpanel">${WATER_PANE}</div>
-  <div class="advpane" role="tabpanel">
+  <div class="setpane" role="tabpanel">
     <div class="sp-col">
       <section><h4 class="sp-h">Plan du jour</h4><div id="planRows"></div></section>
-      <section><h4 class="sp-h">Contrôleur</h4><div id="ctlRows"></div></section>
       <section><h4 class="sp-h">Sondes</h4><div id="probeRows"></div></section>
+      <section><h4 class="sp-h"><span>Filtration<span class="narrow"> et hors gel</span></span><span class="chip" id="pendChip" hidden>En attente</span></h4>
+        <div class="banner" id="pendBanner" hidden>${svg("alert")}<span>Durée de filtration modifiée : elle ne compte qu'une fois appliquée, ce qui recalcule le plan du jour.</span><button class="btn" id="applyNow">Appliquer</button></div>
+        <div id="rows"></div></section>
     </div>
     <div class="sp-col">
-      <section id="fwSec"><h4 class="sp-h">Firmware</h4><div id="updRows"></div></section>
+      <section class="cont"><h4 class="sp-h">Impulsions et hors gel</h4><div id="rows2"></div></section>
       <section><h4 class="sp-h">7 derniers jours</h4><div class="days" id="days"></div></section>
     </div>
   </div>
-  <div class="setpane" role="tabpanel">
-    <section><h4 class="sp-h">Réglages<span class="chip" id="pendChip" hidden>En attente</span></h4>
-      <div class="banner" id="pendBanner" hidden>${svg("alert")}<span>Durée de filtration modifiée : elle ne compte qu'une fois appliquée, ce qui recalcule le plan du jour.</span><button class="btn" id="applyNow">Appliquer</button></div>
-      <div id="rows"></div></section>
-    <section id="posSec" hidden><h4 class="sp-h">Position</h4><div id="posRows"></div>
-      <p class="posnote">Arrondies à 0,01° (environ 1 km) : assez pour le lever et le coucher du soleil, d'où le contrôleur tire son plan, sans situer la maison.</p></section>
+  <div class="ctlpane" role="tabpanel">
+    <div class="sp-col">
+      <section id="posSec" hidden><h4 class="sp-h">Position</h4><div id="posRows"></div>
+        <p class="posnote">Arrondies à 0,01° (environ 1 km) : assez pour le lever et le coucher du soleil, d'où le contrôleur tire son plan, sans situer la maison.</p></section>
+    </div>
+    <div class="sp-col">
+      <section id="fwSec" hidden><h4 class="sp-h">Firmware</h4><div id="updRows"></div></section>
+    </div>
   </div>
   <div class="plan">
     <div class="plan-h"><p class="lbl">Plan du jour</p><span class="num" id="planSum"></span></div>
@@ -826,13 +819,7 @@ const PANEL_HTML = `
     </div>
   </div>
   </div>
-  <div class="probes" id="probes">
-    <p class="lbl">Températures</p>
-    <div class="grid">
-      <button class="ptile" data-key="outdoor"><span class="ico">${svg("outdoor")}</span><span class="txt"><span class="p">Extérieur</span><span class="s num" id="prOut"></span></span></button>
-      <button class="ptile" data-key="pad"><span class="ico">${svg("pad")}</span><span class="txt"><span class="p">Local technique</span><span class="s num" id="prPad"></span></span></button>
-    </div>
-  </div>
+  <div class="water" id="waterBlk" hidden>${WATER_PANE}</div>
   <div class="foot"><span class="num" id="sync"></span><span class="num" id="plannedTxt"></span></div>
   <div class="toast" id="toast" role="status"></div>
 </div>`;
@@ -865,7 +852,7 @@ class PiscineCard extends HTMLElement {
     if (!["tile", "panel", "settings", "water"].includes(variant)) throw new Error("variant must be tile, panel, settings or water");
     this._config = { variant, layout: config.layout || "horizontal", popup_hash: config.popup_hash || "#piscine", more_path: config.more_path || null,
       recorder: config.recorder !== false, title: config.title ?? "Réglages", icons: config.icons || null,
-      settings_tab: config.settings_tab !== false, temperatures: config.temperatures !== false,
+      settings_tab: config.settings_tab !== false, // `temperatures` (before 1.8.0): accepted, ignored
       controller_light: config.controller_light !== false, health: { ...HEALTH, ...(config.controller_health || {}) } };
     this._e = { ...DEFAULT_ENTITIES, ...(config.entities || {}) };
     this.setAttribute("variant", variant);
@@ -881,20 +868,20 @@ class PiscineCard extends HTMLElement {
     this._tHover = null;       // 24 h: minutes before now; 7 j / 30 j: day index
     this._stats = null;        // 30 / 90 j: { "YYYY-MM-DD": {lo, hi} }, the 23:00 rows of the hourly statistics
     this._daily = null;        // 30 j – 1 an: { "YYYY-MM-DD": {mean (the probe), lo, hi (HA's day of Min/Max Today)} }
-    // « Avancé » › Firmware on the update entity: the « Installer » question open, a check under way (until, since:
-    // ms), an install seen running (so an unavailable entity next reads as its reboot), what is drawn
+    // « Réglages contrôleur » › Firmware on the update entity: the « Installer » question open, a check under way
+    // (until, since: ms), an install seen running (so an unavailable entity next reads as its reboot), what is drawn
     this._upd = { ask: false, checkUntil: 0, checkFrom: 0, wasBusy: false, drawn: "" };
     this._posDrawn = "";
     this._beatSeen = null; this._beatAt = -1e9; // the light's last heartbeat: the message it was for, when (performance.now)
     this._statsAt = 0; this._statsLoading = false; this._statsErr = false;
     this._tVer = 0; this._tDrawn = "";
-    this._tab = variant === "water" ? "water" : "pump"; // panel: « Pompe », « Remplissage » (water), « Avancé » (adv), « Réglages » (settings)
+    this._tab = "pump"; // panel: « Contrôle » (pump), « Réglages » (settings), « Réglages contrôleur » (controller)
     this._wRange = "30d"; this._wHover = null;
     this._wStats = {};         // range -> {start (ms), rows [{t, change, state}]}, from the statistics
     this._wAt = {}; this._wDay = {}; this._wLoading = {}; this._wErr = {};
     this._wVer = 0; this._wDrawn = "";
     this._setRows = [];        // settings: [{def, row, input, out, editing (ms)}]
-    this._paneRows = [];       // panel, « Avancé »: Plan du jour, Contrôleur, Sondes [{def, row, val, sub, btn, icon}]
+    this._paneRows = [];       // panel, « Réglages »: Plan du jour, Sondes [{def, row, val, sub, btn, icon}]
     this._daysDrawn = "";
   }
 
@@ -1127,7 +1114,7 @@ class PiscineCard extends HTMLElement {
     }
     return this._n("flow") > 0 ? { long: "remplissage en cours", ovr: false } : null;
   }
-  /** The update entity as « Avancé » › Firmware shows it; null without one (a firmware before WP6). */
+  /** The update entity as « Réglages contrôleur » › Firmware shows it; null without one (a firmware before WP6). */
   _updModel() {
     const u = this._st("firmware");
     if (!u) return null;
@@ -1142,7 +1129,7 @@ class PiscineCard extends HTMLElement {
       auto: this._st("autoUpdate"), interval: this._st("updateInterval"), updated: Date.parse(u.last_updated) || 0,
       statusAt: Date.parse(this._st("updateStatus")?.last_updated) || 0 };
   }
-  /** « Avancé » › Firmware on the update entity, as HTML (mock-up 2026-11-18): one string per state, drawn when it changes. */
+  /** « Réglages contrôleur » › Firmware on the update entity, as HTML (mock-up 2026-11-18): one string per state, drawn when it changes. */
   _updHtml(m) {
     // `more`: the row opens Home Assistant's own dialog for the update entity (release notes, « Ignorer »)
     const row = (icon, label, sub, right, cls = "", more = false) => `<div class="erow${more ? ' more" data-act="more" role="button" tabindex="0" title="Ouvrir dans Home Assistant' : ""}">`
@@ -1178,7 +1165,7 @@ class PiscineCard extends HTMLElement {
         `<select class="esel" data-act="interval" aria-label="Fréquence de vérification"${isSet(iv.state) ? "" : " disabled"}>${opts.includes(iv.state) ? "" : "<option selected></option>"}`
         + opts.map((o) => `<option${o === iv.state ? " selected" : ""}>${esc(o)}</option>`).join("") + "</select>") : "");
   }
-  /** Draws « Avancé » › Firmware when the update entity exists; says how a « Vérifier » ended. */
+  /** Draws « Réglages contrôleur » › Firmware when the update entity exists; says how a « Vérifier » ended. */
   _renderUpdate() {
     const host = this._$("updRows"), m = this._updModel(), U = this._upd;
     this._$("fwSec").hidden = !m; // no update entity (a firmware before v1.4): nothing to show
@@ -1230,7 +1217,7 @@ class PiscineCard extends HTMLElement {
     });
   }
 
-  /* ---------- panel, tab « Réglages » › Position ---------- */
+  /* ---------- panel, tab « Réglages contrôleur » › Position ---------- */
   /** Home Assistant's own position and zone (hass.config), as the controller would take them; null without one. */
   _haPos() {
     const c = this._hass.config;
@@ -1665,9 +1652,11 @@ class PiscineCard extends HTMLElement {
     return out;
   }
 
+  /** The panel's water block shows in « Contrôle » with a recorder and a water meter; the variant always. */
+  _waterShown() { return this._config.variant === "water" || (this._config.recorder && !!this._st("volume")); }
   _renderWater() {
     const box = this._$("wChart");
-    if (!box || this._tab !== "water") return;
+    if (!box || !this._waterShown() || (this._config.variant === "panel" && this._tab !== "pump")) return;
     const range = this._wRange;
     this._loadWater("30d"); // today's reading
     this._loadWater("12m"); // this month's
@@ -1778,19 +1767,23 @@ class PiscineCard extends HTMLElement {
     this._hass.callService("button", "press", { entity_id: this._e[key] }).then(() => this._toast(ok), (err) => this._refused(err))
       .finally(() => btn.classList.remove("busy"));
   }
-  /** The settings rows (SETTINGS) into #rows, with the pending banner's « Appliquer »: the variant and the panel's tab. */
+  /**
+   * The settings rows (SETTINGS) into #rows, with the pending banner's « Appliquer »: the variant and the panel's tab.
+   * The panel's « Réglages » has a second host, #rows2, for the rows after « Appliquer » (its wide layout's right column).
+   */
   _wireSettingRows() {
     const refused = (err) => this._refused(err);
     const apply = (btn) => this._press(btn, "apply", APPLIED);
     this._$("applyNow").addEventListener("click", (ev) => apply(ev.currentTarget));
-    const host = this._$("rows");
+    const first = this._$("rows"), rest = this._$("rows2") || first;
     let sect = null;
     this._sects = [];
-    for (const def of SETTINGS) {
+    SETTINGS.forEach((def, i) => {
+      const host = i < APPLY_CUT ? first : rest;
       if (def.sect) {
         const el = document.createElement("div"); el.className = "esect"; el.textContent = def.sect; host.appendChild(el);
         this._sects.push(sect = { el, rows: [] });
-        continue;
+        return;
       }
       const row = document.createElement("div"); row.className = "erow";
       row.innerHTML = `<span class="ic"></span><span class="name"><span></span>${def.sub ? "<small></small>" : ""}</span>`
@@ -1813,7 +1806,7 @@ class PiscineCard extends HTMLElement {
       host.appendChild(row);
       this._setRows.push(r);
       if (sect) sect.rows.push(r);
-    }
+    });
   }
   _updateSettings() {
     const pending = this._s("pending") === "on", now = Date.now();
@@ -1833,19 +1826,25 @@ class PiscineCard extends HTMLElement {
     for (const sc of this._sects) sc.el.hidden = sc.rows.every((r) => r.row.hidden);
   }
 
-  /* ---------- panel, tab « Avancé »: Plan du jour, Contrôleur, Sondes, Firmware, 7 derniers jours (and « Réglages »' rows) ---------- */
-  _wireSetPane() {
+  /* ---------- panel, tabs « Réglages » (Plan du jour, Sondes, the settings, 7 derniers jours) and « Réglages contrôleur » ---------- */
+  _wirePanes() {
     this._wireSettingRows();
-    for (const [host, defs] of [[this._$("planRows"), PLAN_ROWS], [this._$("ctlRows"), CTL_ROWS], [this._$("probeRows"), PROBE_ROWS]]) {
+    for (const [host, defs] of [[this._$("planRows"), PLAN_ROWS], [this._$("probeRows"), PROBE_ROWS]]) {
       let sect = null;
       for (const def of defs) {
         if (def.sect) { sect = document.createElement("div"); sect.className = "esect"; sect.textContent = def.sect; host.appendChild(sect); continue; }
-        const row = document.createElement("div"); row.className = "erow";
+        const row = document.createElement("div"); row.className = def.more ? "erow more" : "erow";
         row.innerHTML = `<span class="ic"></span><span class="name"><span></span><small></small></span>`
-          + (def.button ? `<button class="btn"></button>` : `<span class="val num"></span>`);
+          + (def.button ? `<button class="btn"></button>` : `<span class="val num"></span>`)
+          + (def.more ? `<span class="chev">${svg("chevron")}</span>` : "");
         row.querySelector(".name span").textContent = def.label;
         const r = { def, row, sect, val: row.querySelector(".val"), sub: row.querySelector("small"), btn: row.querySelector("button"), icon: null };
         if (r.btn) { r.btn.textContent = def.button; r.btn.addEventListener("click", () => this._press(r.btn, def.key, def.ok)); }
+        if (def.more) {
+          Object.assign(row, { tabIndex: 0, title: "Ouvrir dans Home Assistant" }); row.setAttribute("role", "button");
+          row.addEventListener("click", () => this._moreInfo(def.key));
+          row.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); this._moreInfo(def.key); } });
+        }
         host.appendChild(row);
         this._paneRows.push(r);
       }
@@ -1856,7 +1855,7 @@ class PiscineCard extends HTMLElement {
       if (b && !b.disabled) this._posFromHa(b);
     });
   }
-  _renderAdvPane() {
+  _renderSetPane() {
     for (const r of this._paneRows) {
       const e = this._st(r.def.key);
       r.row.hidden = !e;
@@ -1871,7 +1870,7 @@ class PiscineCard extends HTMLElement {
       r.val.classList.toggle("bad", tone === "bad"); r.val.classList.toggle("warn", tone === "warn");
     }
     for (const r of this._paneRows) if (r.sect) r.sect.hidden = this._paneRows.every((x) => x.sect !== r.sect || x.row.hidden);
-    this._renderUpdate();
+    this._updateSettings();
     this._renderDays();
   }
   /**
@@ -1916,6 +1915,13 @@ class PiscineCard extends HTMLElement {
     if (v === "panel") this._wirePanel(); else if (v === "settings") this._wireSettings(); else if (v === "water") this._wireWater(); else this._wireTile();
   }
 
+  /** Where the light leads: `more_path`, else the controller's device page in Home Assistant (null without a device id). */
+  _lightPath() {
+    if (this._config.more_path) return this._config.more_path;
+    const dev = this._hass && this._hass.entities && this._hass.entities[this._e.online]?.device_id;
+    return dev ? `/config/devices/device/${encodeURIComponent(dev)}` : null;
+  }
+  /** Home Assistant's own navigation (its navigate()): a history entry, then « location-changed » for its router. */
   _navigate(path, replace = false) {
     history[replace ? "replaceState" : "pushState"](null, "", path);
     window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace } }));
@@ -1930,20 +1936,20 @@ class PiscineCard extends HTMLElement {
 
   _wirePanel() {
     this._$("close").addEventListener("click", () => this._navigate(location.pathname + location.search, true));
-    // The light: the « Avancé » tab at « Contrôleur »; without that tab, more_path if given
-    const openAdv = (at) => {
-      if (!this._config.settings_tab) { if (this._config.more_path) this._navigate(this._config.more_path); return; }
-      this._tab = "adv"; this._update();
-      const t = this.shadowRoot.querySelector('#tabs [data-tab="adv"]');
-      (at ? this._$(at).closest("section") : this._$("tabs")).scrollIntoView({ block: "nearest" }); t.focus({ preventScroll: true });
-    };
-    this._$("ctlLink").addEventListener("click", () => openAdv("ctlRows"));
+    // The light: Home Assistant's device page for the controller (its link, Wi-Fi signal, disconnections), or
+    // more_path; without a device id, « Réglages contrôleur »
+    this._$("ctlLink").addEventListener("click", () => {
+      const path = this._lightPath();
+      if (path) { this._navigate(path); return; }
+      const tab = this.shadowRoot.querySelector('#tabs [data-tab="controller"]');
+      if (this._$("tabs").hidden || tab.hidden) return;
+      this._tab = "controller"; this._update();
+      this._$("tabs").scrollIntoView({ block: "nearest" });
+      tab.focus({ preventScroll: true });
+    });
     // without the recorder only Daily History's 7 days exist: no range to choose
     this._$("tRange").hidden = !this._config.recorder;
-    this.shadowRoot.querySelectorAll(".ptile").forEach((b) => b.addEventListener("click", () => {
-      this._moreInfo(b.dataset.key);
-    }));
-    this._wireSetPane();
+    this._wirePanes();
 
     const backToAuto = () => {
       if (this._pending() || !this._inOvr()) return;
@@ -2027,7 +2033,7 @@ class PiscineCard extends HTMLElement {
       this._renderTemp();
     });
 
-    // tabs « Pompe » / « Remplissage » / « Réglages » (arrows move between the shown ones, as in a tablist)
+    // tabs « Contrôle » / « Réglages » / « Réglages contrôleur » (arrows move between the shown ones, as in a tablist)
     this.shadowRoot.querySelectorAll("#tabs button").forEach((b) => {
       b.addEventListener("click", () => { this._tab = b.dataset.tab; this._wHover = null; this._update(); });
       b.addEventListener("keydown", (e) => {
@@ -2157,25 +2163,20 @@ class PiscineCard extends HTMLElement {
     const inOvr = this._inOvr(), online = this._online(), freeze = this._freeze(), stuck = this._stuck();
     const until = this._ovrUntil();
 
-    // « Remplissage » needs the recorder's statistics and a water meter; « Avancé » and « Réglages » can be turned off
-    const shown = { pump: true, water: this._config.recorder && !!this._st("volume"), adv: this._config.settings_tab, settings: this._config.settings_tab };
+    // « Réglages » and « Réglages contrôleur » can be turned off; the latter needs a firmware with a position or updates
+    const ctl = ["latitude", "longitude", "timezone", "firmware"].some((k) => this._st(k));
+    const shown = { pump: true, settings: this._config.settings_tab, controller: this._config.settings_tab && ctl };
     if (!shown[this._tab]) this._tab = "pump";
-    this._$("tabs").hidden = !shown.water && !shown.settings;
+    this._$("tabs").hidden = !shown.settings && !shown.controller;
     this.shadowRoot.querySelector(".panel").dataset.tab = this._tab;
     this.shadowRoot.querySelectorAll("#tabs button").forEach((b) => {
       const on = b.dataset.tab === this._tab;
       b.hidden = !shown[b.dataset.tab];
       b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1;
     });
-    if (this._tab === "adv") this._renderAdvPane();
-    if (this._tab === "settings") { this._updateSettings(); this._renderPos(); }
-
-    // « Températures » at the foot of « Pompe »
-    const probes = { outdoor: this._st("outdoor"), pad: this._st("pad") };
-    this._$("probes").hidden = !this._config.temperatures || (!probes.outdoor && !probes.pad);
-    this.shadowRoot.querySelectorAll(".ptile").forEach((b) => { b.hidden = !probes[b.dataset.key]; });
-    this._$("prOut").textContent = `${fmt1(this._n("outdoor"))} °C`;
-    this._$("prPad").textContent = `${fmt1(this._n("pad"))} °C`;
+    if (this._tab === "settings") this._renderSetPane();
+    if (this._tab === "controller") { this._renderPos(); this._renderUpdate(); }
+    this._$("waterBlk").hidden = !this._waterShown(); // « Contrôle »: the fill water, with a recorder and a meter
 
     this._$("ico").className = this._icoClass("ico big");
     this._$("ico").style.setProperty("--spd", this._spinSpeed());
