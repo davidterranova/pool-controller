@@ -431,14 +431,29 @@ Re-evaluated every 30 seconds, highest priority wins:
      midnight (one flash write a day); `--` before the first midnight. Like
      Daily History, they exist for the device's own page, which has no
      recorder: Home Assistant has the meter's own statistics.
+   - **Fill Water Import** (config, write-only, not on the device's page)
+     fills that record from elsewhere — Home Assistant's history of the
+     meter — since it only starts the day the firmware first closed one. It
+     takes one line in either sensor's own format, newest first, `-` for
+     unknown: `2026-11-17: 0 19 - 940 3` (days, at most 30) or
+     `2026-11: 23 9538 2913` (months, at most 12), the date's length telling
+     which. It writes only **closed** days and months, strictly before today
+     and before this month: today stays Fill Water Today's, and this month's
+     total becomes its closed days in the record (never a value from the
+     line), so nothing is counted twice; `-` never erases a known value, and
+     a day above 65534 L is capped there as the record does. Anything off (a
+     bad date, a value that isn't whole litres, too many values, a date in
+     the future, no clock) refuses the whole line; its state then says why,
+     else what was imported (`importé : 30 jours`), never the line itself.
+     A 30-day line is at most 191 characters, within a text entity's 255.
    - **Firmware Version** (diagnostic) is the commit of this repo the
      firmware was compiled from, as `git describe --tags --always --dirty`
      says it: `v1.3.0`, `v1.3.0-4-g1a2b3c4` (4 commits after that tag),
      with `-dirty` when the working tree had uncommitted changes. `make
      build` and `make ota` pass it in (`-s firmware_version`); compiled any
      other way it is `dev`. **ESPHome Version** is ESPHome's version and the
-     build time. On a firmware without the update entity, the pool card's
-     « Vérifier » compares the first with main on GitHub.
+     build time. Whether a newer firmware exists is the Firmware update
+     entity's to say (see [Updates](#updates)).
 4. **Hot-night keep-alive** — only reached when the autonomous schedule
    above says `Off` (i.e. outside both blocks) and only overnight, before
    today's sunrise or after today's sunset: if `Pool Return Temperature` is
@@ -743,7 +758,7 @@ takes its place (see [First setup](#first-setup)). Four tabs:
 |---|---|
 | **Contrôle** | The pool card's panel (pump state, today's plan timeline, the pool's temperature over the last 7 days, Auto/Manuel, forced speed and duration), the temperatures with today's pool min/max |
 | **Remplissage** | The fill water from the device's own record (Fill Water Today, Days, Months): today, this month, the flow, litres by day over 30 days or by month over 12 (the pool card's water variant) |
-| **Avancé** | Filtration settings with their Apply gate, boost pulses and freeze-protection threshold (the pool card's settings variant, as in Home Assistant), today's plan in detail, the last 7 days (Daily History), the device's sensors, its live log |
+| **Avancé** | Today's plan in detail, the device's sensors, the filtration settings with their Apply gate, boost pulses and freeze-protection threshold (the pool card's settings variant, as in Home Assistant), the last 7 days (Daily History), its live log |
 | **Contrôleur** | Wi-Fi: the connection and its statistics, joining another network (see "Wi-Fi and the fallback hotspot" below). Firmware: the version it runs, ESPHome's, and its updates (« Vérifier », « Installer », Auto Update, the check interval, Update Status, « Annuler la demande »; see [Updates](#updates)). Accès (page and OTA passwords), Position, Sondes, Home Assistant, Réinitialiser (see [Controller settings](#controller-settings)). |
 
 The `sorting_groups:` under `web_server:` (Pump, Today's Plan, Filtration

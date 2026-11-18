@@ -7,8 +7,7 @@
  * instead of the page while the controller isn't set up (device-settings.yaml). The device keeps no
  * history of its sensors, so the only charts are of what it records itself: the pool's min/max and
  * filtration of the last 7 days, and the fill water of 30 days and 12 months. Everything talks to the
- * ESP32 only (but, on a firmware without updates.yaml, « Vérifier », which asks GitHub), so it keeps
- * working while Home Assistant is down.
+ * ESP32 only, so it keeps working while Home Assistant is down.
  */
 import { EspHass, E } from "./esphome-hass.js";
 import { ICONS } from "./icons.js";
@@ -254,7 +253,7 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
       boostDuration: E.boostDuration, boostInterval: E.boostInterval, highEvery: E.highEvery, freezeAt: E.freezeAt,
     },
   });
-  settings.classList.add("o1");
+  settings.classList.add("o3"); // Avancé: after Plan du jour and Capteurs internes (index.html)
   $("settingsHost").replaceWith(settings);
   updaters.push(() => { if (st(E.min)) settings.hass = hass; });
 }
@@ -449,10 +448,10 @@ const orDash = (id) => () => s(id) || "—";
 }
 
 /* ---- Firmware: the version it runs (Firmware Version: the commit `make` compiled, or a release's tag), ESPHome's, and
-   its updates. With updates.yaml: the Firmware update entity behind the controller's own gate, « Vérifier » (Check for
+   its updates (updates.yaml): the Firmware update entity behind the controller's own gate, « Vérifier » (Check for
    Update), « Installer », « Annuler la demande » while an install waits (Cancel Update), Auto Update (scheduled checks
-   only) and Update Check Interval. On an older firmware: « Vérifier » asks GitHub
-   whether main has changed the firmware since (the card's own check, so both hosts say the same). */
+   only) and Update Check Interval. Whether a newer firmware exists is the controller's to say: the page asks GitHub
+   nothing (a firmware without updates.yaml just has no « Mise à jour » row). */
 {
   const Card = customElements.get("piscine-card"), host = $("fwRows");
   const version = () => Card.parseVersion(s(E.fwVersion)), esphome = () => Card.parseEsphome(s(E.esphomeVersion));
@@ -479,28 +478,6 @@ const orDash = (id) => () => s(id) || "—";
     };
   };
 
-  /* -- older firmware: compare with main on GitHub */
-  {
-    const { row, buttons: [btn], draw } = statusRow([{ text: "Vérifier" }]);
-    let busy = false, result = null;
-    btn.addEventListener("click", async () => {
-      const v = version();
-      if (!v?.ref || busy) return;
-      busy = true; result = null; update();
-      result = await Card.checkFirmware("davidterranova/pool-controller", v.ref);
-      busy = false; update();
-    });
-    updaters.push(() => {
-      row.hidden = hasUpdates();
-      if (row.hidden) return;
-      const v = version();
-      btn.disabled = busy || !v?.ref;
-      draw(busy ? { text: "Vérification auprès de GitHub…" } : result
-        || { text: !v ? "Ce firmware ne dit pas de quel commit il vient : il faut l'installer avec make ota."
-          : !v.ref ? "Compilé hors de make : pas de commit à comparer." : "Compare cette version avec la branche main du dépôt sur GitHub." });
-    });
-  }
-
   /* -- updates.yaml: the controller checks the releases and installs through its gate */
   {
     const { row, buttons: [check, install, cancel], draw } = statusRow(
@@ -519,7 +496,8 @@ const orDash = (id) => () => s(id) || "—";
         return { text: `${latest} s'installera à ${why}.`, cls: "fw-up" };
       }
       if (st_ === "vérification") return { text: "Vérification de la dernière version…" };
-      if (st_ === "erreur (vérification)") return { text: "La vérification a échoué (réseau ou GitHub) : réessayez plus tard.", cls: "fw-err" };
+      // Also every check until a first release is published: the controller only knows it got no answer.
+      if (st_ === "erreur (vérification)") return { text: "La vérification a échoué : pas de réseau, ou aucune version publiée pour l'instant.", cls: "fw-err" };
       if (st_ === "erreur (installation)") return { text: `L'installation de ${latest} a échoué ; le contrôleur garde ${now}.`, cls: "fw-err" };
       if (st(E.fwUpdate).state === "on") return { text: `${latest} disponible (installée : ${now}).`, cls: "fw-up", href: a.release_url, link: "Notes de version" };
       if (st(E.fwUpdate).state === "off") return { text: `À jour : ${now} est la dernière version.`, cls: "fw-ok" };

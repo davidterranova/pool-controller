@@ -8,7 +8,7 @@ ESPHOME_VERSION ?= 2026.11.0b6
 ESPHOME_IMAGE ?= ghcr.io/esphome/esphome:$(ESPHOME_VERSION)
 ESPHOME := docker run --rm -v "$(CURDIR):/config" $(ESPHOME_IMAGE)
 # The commit the firmware is built from, as its Firmware Version entity reports it
-# (the pool card compares it with main on GitHub): v1.3.0, v1.3.0-4-g1a2b3c4, …-dirty.
+# (the pool card and the controller's page show it): v1.3.0, v1.3.0-4-g1a2b3c4, …-dirty.
 FW_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_DIR := .esphome/build/pool-controller/build
 ESPTOOL := /Users/davidterranova/.espressif/tools/python/v6.0.2/venv/bin/esptool
@@ -36,10 +36,12 @@ build: webui
 	$(ESPHOME) -s firmware_version $(FW_VERSION) compile $(CONFIG)
 
 # Host tests of the firmware's pure C++ helpers (tools/tests/: updates.h's
-# schedule, install gate and Update Status), with the ESPHome image's g++.
+# schedule, install gate and Update Status; fill_import.h's Fill Water
+# Import), with the ESPHome image's g++.
+FIRMWARE_TESTS := updates_test fill_import_test
 firmware-test:
 	docker run --rm -v "$(CURDIR):/config" -w /config --entrypoint sh $(ESPHOME_IMAGE) -c \
-		'g++ -std=c++20 -Wall -Wextra -Werror -o /tmp/updates_test tools/tests/updates_test.cpp && /tmp/updates_test'
+		'set -e; for t in $(FIRMWARE_TESTS); do g++ -std=c++20 -Wall -Wextra -Werror -o /tmp/$$t tools/tests/$$t.cpp; /tmp/$$t; done'
 
 # Flashes over UART via esptool (bundled with the ESP-IDF install), not through
 # Docker: Docker Desktop on macOS can't pass a host USB-serial device into the
@@ -165,8 +167,9 @@ mock-ui: webui
 # hotspot, with no clock (a router outage). MOCK_FRESH=1 starts it as a new
 # install: not set up (Setup State lists everything), no network saved, on its
 # hotspot with no clock; once a Page Password is set, it asks for it.
+# MOCK_NO_RELEASE=1: no firmware published yet, every update check fails.
 mock-webui:
-	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh)"
+	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh) $(if $(MOCK_NO_RELEASE),--no-release)"
 
 # Prints the page layout (sections, order, which entities the simulation
 # drives) and fails if $(CONFIG) has an entity type the mock can't render.
