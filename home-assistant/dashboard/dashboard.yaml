@@ -49,6 +49,7 @@ views:
               waterMin: sensor.pool_controller_pool_water_min_today
               waterMax: sensor.pool_controller_pool_water_max_today
               history: sensor.pool_controller_daily_history
+              planHistory: sensor.pool_controller_daily_plan_history
               outdoor: sensor.pool_controller_outdoor_temperature
               online: binary_sensor.pool_controller_status
               stuck: binary_sensor.pool_controller_manual_override_active

@@ -73,7 +73,7 @@
  * own page's Avancé tab, so the pop-up needs no dashboard behind it. « Avancé », in the device page's order: today's
  * plan with « Recalculer », the controller (its link, its Wi-Fi signal in dBm, % and words) and the probes with
  * « Relire » (the page's « Capteurs internes »), the firmware (mock-up 2026-11-18, plan WP4), then the last 7 days of
- * filtration against the plan (Daily History).
+ * filtration against the plan (Daily History, each day's plan from Daily Plan History).
  * The section runs on the controller's update entity, « Firmware » (ESPHome's `update` platform on the release
  * manifest): installed version (with ESPHome's version and build time), latest version and its release notes,
  * « Vérifier » (Check for Update) and « Installer » (update.install, with its progress), Auto Update and Update Check
@@ -103,7 +103,7 @@
  * temperature across the full width under the header — layout « B » approved on the mock-up (« Screen »
  * view) on 2026-11-11.
  */
-const VERSION = "1.6.0";
+const VERSION = "1.7.0";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",
@@ -121,6 +121,7 @@ const DEFAULT_ENTITIES = {
   waterMin: "sensor.piscine_pool_controller_pool_water_min_today",
   waterMax: "sensor.piscine_pool_controller_pool_water_max_today",
   history: "sensor.piscine_pool_controller_daily_history",
+  planHistory: "sensor.piscine_pool_controller_daily_plan_history",
   outdoor: "sensor.piscine_pool_controller_outdoor_temperature",
   online: "binary_sensor.piscine_pool_controller_status",
   stuck: "binary_sensor.piscine_pool_controller_manual_override_active",
@@ -304,6 +305,18 @@ const isSet = (s) => s !== undefined && s !== "" && s !== "unknown" && s !== "un
 const parseDays = (text) => Object.fromEntries([...String(text || "").matchAll(
   /(\d{4}-\d{2}-\d{2}): ([\d.]+) h(?: (-?[\d.]+)\/(-?[\d.]+) °C)?/g)]
   .map((m) => [m[1], { hours: +m[2], lo: m[3] === undefined ? NaN : +m[3], hi: m[4] === undefined ? NaN : +m[4] }]));
+
+/** A closed day this far under its plan is « sous son plan »: less is the day boundary and the minute rounding. */
+const SHORT_TOLERANCE_H = 0.25;
+const dayShort = (r) => Number.isFinite(r.hours) && Number.isFinite(r.planned) && r.hours < r.planned - SHORT_TOLERANCE_H;
+/** A row of « 7 derniers jours »'s tooltip: today's, a closed day's against its plan, or a day without data. */
+const dayTitle = (r) => {
+  if (r.today) return "En cours ; le trait marque la durée planifiée";
+  if (!Number.isFinite(r.hours)) return "Pas de données : contrôleur éteint ou sans heure ce jour-là";
+  if (!Number.isFinite(r.planned)) return "Plan du jour non enregistré";
+  const gap = r.hours - r.planned;
+  return `Plan ${fmt1(r.planned)} h ; ${Math.abs(gap) < 0.05 ? "plan tenu" : `${gap > 0 ? "+" : "−"}${fmt1(Math.abs(gap))} h`}`;
+};
 
 const STYLE = `
 :host {
@@ -601,6 +614,7 @@ ha-card.water-card.plain { background:var(--card); border:1px solid var(--ha-car
 .day .bar { position:relative; height:10px; border-radius:5px; background:var(--raised); }
 .day .bar i { position:absolute; left:0; top:0; bottom:0; border-radius:5px; background:var(--acc); }
 .day.today .bar i { opacity:.55; }
+.day.short .bar i { background:var(--amber); }
 .day .bar b { position:absolute; top:-4px; bottom:-4px; width:2px; margin-left:-1px; border-radius:1px; background:var(--fg); }
 .day.missing .v, .day.missing .dl { color:var(--muted); font-style:italic; }
 .days .dfoot { margin:8px 0 0; font-size:12px; color:var(--muted); }
@@ -1860,17 +1874,21 @@ class PiscineCard extends HTMLElement {
     this._renderUpdate();
     this._renderDays();
   }
-  /** Closed days from the device's Daily History, plus today so far: hours filtered, the plan's mark, the pool's min–max. */
+  /**
+   * Closed days from the device's Daily History, plus today so far: hours filtered, the plan's mark, the pool's
+   * min–max. A closed day's plan comes from Daily Plan History (firmware that has it, days closed since); a day that
+   * filtered more than SHORT_TOLERANCE_H under its plan turns amber.
+   */
   _renderDays() {
     const host = this._$("days");
-    const key = ["history", "hoursToday", "hoursPlanned", "waterMin", "waterMax"].map((k) => this._s(k)).join("|") + new Date().toDateString();
+    const key = ["history", "planHistory", "hoursToday", "hoursPlanned", "waterMin", "waterMax"].map((k) => this._s(k)).join("|") + new Date().toDateString();
     if (key === this._daysDrawn) return;
     this._daysDrawn = key;
-    const closed = parseDays(this._s("history"));
+    const closed = parseDays(this._s("history")), plans = parseDays(this._s("planHistory"));
     const rows = [{ label: "Aujourd'hui", hours: this._n("hoursToday"), planned: this._n("hoursPlanned"), lo: this._n("waterMin"), hi: this._n("waterMax"), today: true }];
     for (let i = 1; i <= 7; i++) {
       const d = dayAgo(i);
-      rows.push({ label: i === 1 ? "Hier" : `${WD[d.getDay()]} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`, ...closed[dayKey(d)] });
+      rows.push({ label: i === 1 ? "Hier" : `${WD[d.getDay()]} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`, ...closed[dayKey(d)], planned: plans[dayKey(d)]?.hours });
     }
     const scale = Math.max(1, ...rows.flatMap((r) => [r.hours, r.planned]).filter(Number.isFinite));
     const pct = (v) => `${Math.min(100, (v / scale) * 100).toFixed(1)}%`;
@@ -1878,15 +1896,15 @@ class PiscineCard extends HTMLElement {
     const past = rows.filter((r) => !r.today && Number.isFinite(r.hours));
     host.innerHTML = `<div class="day head"><span></span><span>Filtration</span><span></span><span class="w">Eau</span></div>`
       + rows.map((r) => {
-        const known = Number.isFinite(r.hours);
-        return `<div class="day${r.today ? " today" : ""}${known ? "" : " missing"}" title="${r.today ? "En cours ; le trait marque la durée planifiée" : known ? "" : "Pas de données : contrôleur éteint ou sans heure ce jour-là"}">`
+        const known = Number.isFinite(r.hours), short = !r.today && dayShort(r);
+        return `<div class="day${r.today ? " today" : ""}${known ? "" : " missing"}${short ? " short" : ""}" title="${dayTitle(r)}">`
           + `<span class="dl">${r.label}</span><span class="bar">${known ? `<i style="width:${pct(r.hours)}"></i>` : ""}`
           + `${Number.isFinite(r.planned) && r.planned > 0 ? `<b style="left:${pct(r.planned)}"></b>` : ""}</span>`
           + `<span class="v num">${known ? `${fmt1(r.hours)} h` : "—"}</span><span class="w num">${known ? water(r) : ""}</span></div>`;
       }).join("")
       + `<p class="dfoot">${past.length
         ? `Moyenne ${fmt1(past.reduce((a, r) => a + r.hours, 0) / past.length)} h de filtration par jour sur ${past.length} jour${past.length > 1 ? "s" : ""}.`
-        : "Aucune journée complète pour l'instant."} Eau : minimum et maximum du jour, mesurés pompe en marche. Le contrôleur enregistre chaque journée à minuit.</p>`;
+        : "Aucune journée complète pour l'instant."} Le trait marque la durée planifiée ; en orange, une journée restée sous son plan. Eau : minimum et maximum du jour, mesurés pompe en marche. Le contrôleur enregistre chaque journée à minuit.</p>`;
   }
 
   /* ---------- build ---------- */
