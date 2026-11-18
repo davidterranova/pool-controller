@@ -90,6 +90,24 @@ export const E = {
   join: "button/Join WiFi Network",
   clock: "datetime/Device Clock",
   clockSource: "text_sensor/Clock Source",
+  // From device-settings.yaml (setup.js): what used to be compiled in. Secrets are write-only.
+  setupState: "text_sensor/Setup State",
+  pagePassword: "text/Page Password",
+  otaPassword: "text/OTA Password",
+  apiKey: "text/API Key",
+  generateKey: "button/Generate API Key",
+  forgetKey: "button/Forget API Key",
+  latitude: "number/Latitude",
+  longitude: "number/Longitude",
+  timezone: "text/Timezone",
+  timezoneName: "text/Timezone Name",
+  detectedProbes: "text_sensor/Detected Probes",
+  poolProbe: "select/Pool Probe",
+  padProbe: "select/Pad Probe",
+  outdoorProbe: "select/Outdoor Probe",
+  rescanProbes: "button/Rescan Probes",
+  factoryReset: "button/Factory Reset",
+  waitingFor: "text_sensor/Schedule Waiting For",
 };
 
 /** What the recorder keeps (every change): the card draws today's overrides from it. */

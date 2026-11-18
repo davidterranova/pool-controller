@@ -27,8 +27,24 @@
     <a role="tab" href="#controleur" data-tab="controleur" data-icon="chip">Contrôleur</a>
   </nav>
 
+  <!-- Setup wizard (setup.js): the page while Setup State isn't `configured`, one step per missing item -->
+  <div class="wizard" id="wizard" hidden>
+    <header class="wz-top">
+      <div><h1>Piscine</h1><p id="wzSub"></p></div>
+      <span class="chip" id="wzChip"></span>
+    </header>
+    <ol class="wz-steps" id="wzSteps"></ol>
+    <p class="wz-state" id="wzState"></p>
+    <div class="card">
+      <h2 id="wzTitle"></h2>
+      <div class="body wz-body"><div id="wzBody" class="wz-body"></div><div id="wzWifi" class="wz-wifi" hidden></div></div>
+    </div>
+    <div class="wz-nav" id="wzNav"></div>
+  </div>
+
   <main>
     <div class="alerts" id="alerts"></div>
+    <div class="alerts" id="setupAlerts"></div>
     <!-- ============================================================ Contrôle -->
     <section id="tab-controle" class="cols control" role="tabpanel">
       <div class="stack">
@@ -88,8 +104,11 @@
       </div>
     </section>
 
-    <!-- ============================================================ Wi-Fi (wifi-setup.yaml) -->
+    <!-- ============================================================ Contrôleur -->
     <section id="tab-controleur" class="cols wifi" role="tabpanel" hidden>
+      <!-- Left column: Wi-Fi, then the pool's own settings (setup.js: Position, Sondes). On a wide screen
+           it spans both rows of the right one (Firmware, then Accès, Home Assistant, Réinitialiser). -->
+      <div class="stack col span-rows">
       <!-- Wi-Fi: from wifi-setup.yaml; app.js hides it on a firmware without those entities. -->
       <div class="stack" id="wifiStack">
       <h2 class="heading" data-icon="wifi">Wi-Fi</h2>
@@ -118,12 +137,54 @@
       </div>
       </div>
 
+      <!-- Position and Sondes (setup.js, device-settings.yaml): the wizard's steps 3 and 4, at hand -->
+      <div class="stack" id="posStack" hidden>
+        <h2 class="heading" data-icon="map-marker-outline">Position</h2>
+        <div class="card">
+          <h2 data-icon="white-balance-sunny">Soleil et heure locale</h2>
+          <div class="body" id="posBody"></div>
+        </div>
+      </div>
+      <div class="stack" id="probeStack" hidden>
+        <h2 class="heading" data-icon="thermometer-lines">Sondes</h2>
+        <div class="card">
+          <h2 data-icon="thermometer">Rôle de chaque sonde</h2>
+          <div class="body" id="probeBody"></div>
+        </div>
+      </div>
+      </div>
+
       <!-- Firmware: the commit `make` compiled, ESPHome's version, and whether main has changed it since (GitHub) -->
       <div class="stack">
         <h2 class="heading" data-icon="chip">Firmware</h2>
         <div class="card">
           <h2 data-icon="tag-outline">Version</h2>
           <div class="body"><div class="rows" id="fwRows"></div></div>
+        </div>
+      </div>
+
+      <!-- Accès, Home Assistant, Réinitialiser (setup.js, device-settings.yaml): below Firmware -->
+      <div class="stack col">
+        <div class="stack" id="accStack" hidden>
+          <h2 class="heading" data-icon="shield-key-outline">Accès</h2>
+          <div class="card">
+            <h2 data-icon="lock">Mots de passe</h2>
+            <div class="body" id="accBody"></div>
+          </div>
+        </div>
+        <div class="stack" id="haStack" hidden>
+          <h2 class="heading" data-icon="home-assistant">Home Assistant</h2>
+          <div class="card">
+            <h2 data-icon="key-variant">Clé de chiffrement</h2>
+            <div class="body" id="haBody"></div>
+          </div>
+        </div>
+        <div class="stack" id="resetStack" hidden>
+          <h2 class="heading" data-icon="restore">Réinitialiser</h2>
+          <div class="card">
+            <h2 data-icon="restart-alert">Réglages d'usine</h2>
+            <div class="body" id="resetBody"></div>
+          </div>
         </div>
       </div>
     </section>
