@@ -54,13 +54,13 @@ The meter is a passive dry contact with a pull-up, so it has no address. It also
 Detection is a **pulse test**:
 1. Press « Détecter le compteur »: the controller starts listening.
 2. Open the fill tap.
-3. The controller reports `detected` once it counts `FILL_DETECT_LITRES` (3 L) within `FILL_DETECT_WINDOW` (5 min), or `not_detected` when the window ends.
+3. The controller reports `detected` once it counts `DETECT_LITRES` (3 L) within `DETECT_WINDOW_MS` (5 min), or `not_detected` when the window ends. Any fill that reaches 3 L within its first 5 min proves the meter too, so a meter that was already counting needs no test.
 
 Requiring 3 L, not one pulse, rules out a single bounce or glitch: at this tap's ~15 L/min the test passes in about 12 s. A **last pulse** time is also kept, so a meter that has gone quiet for weeks can be spotted without running a test. The pin stays a compile-time substitution: in the generic firmware it is part of the hardware's wiring, like the relays.
 
 ## Decisions
 
-- **Default: on** (`RESTORE_DEFAULT_ON`): the first boot of a firmware with the switch keeps counting, so this install sees no change after the OTA. A new install without a meter turns it off once: the setup wizard asks (see « Interactions »).
+- **Default: on** (the global `fill_meter_enabled` starts true): the first boot of a firmware with the switch keeps counting, so this install sees no change after the OTA. A new install without a meter turns it off once: the setup wizard asks (see « Interactions »).
 - **Disabled means nothing counts.**
   - The pulses are ignored, so Fill Water Today doesn't grow.
   - The flow, volume and Fill Water Today read `unknown` (NaN), not 0.
@@ -68,8 +68,8 @@ Requiring 3 L, not one pulse, rules out a single bounce or glitch: at this tap's
   - Turning the meter off mid-fill ends Fill Running and clears the alarm and its acknowledgement.
 - **Entities stay declared.** ESPHome can't remove entities at runtime, so HA keeps listing them on the device page, reading `unknown`. Hiding happens in the widgets and the dashboard.
 - **« Fill running »:**
-  - A fill starts with the first pulse after at least `FILL_GAP` (5 min, the same as pulse_meter's `timeout`) without one.
-  - It runs while pulses keep arriving less than `FILL_GAP` apart.
+  - A fill starts with the first pulse after at least `GAP_MS` (5 min, the same as pulse_meter's `timeout`) without one.
+  - It runs while pulses keep arriving less than `GAP_MS` apart.
   - The alarm turns on once a fill has run for Fill Alarm After minutes.
   - A slow leak at less than 1 L per 5 min isn't « running ».
   - The clock is `millis()`, like Manual Override's, so it survives a dead SNTP server and restarts on reboot.
@@ -105,8 +105,8 @@ Agreed up front, so the card, the page and the mock can proceed before the firmw
 
 | Name | Type | Category | Notes |
 |---|---|---|---|
-| Fill Meter | switch (template, optimistic) | config | `restore_mode: RESTORE_DEFAULT_ON`; off clears Fill Running, Too Long, Acknowledged and the detection |
-| Fill Alarm After | number (min, 0–1440, step 5, box) | config | default 60, `restore_value: true`, 0 = no alarm |
+| Fill Meter | switch (template) | config | reads the restored global `fill_meter_enabled` (default true), `restore_mode: DISABLED`, like Auto Update; off clears Fill Running, Too Long, Acknowledged and the pulse test |
+| Fill Alarm After | number (min, 0–1440, step 5, box) | config | reads the restored global `fill_alarm_minutes` (default 60), 0 = no alarm |
 | Detect Fill Meter | button | config | starts the pulse test; ignored (logged) while the meter is off |
 | Fill Meter Status | text_sensor | diagnostic | `off`, `untested`, `listening`, `detected`, `not_detected` |
 | Fill Meter Last Pulse | text_sensor | diagnostic | local `YYYY-MM-DD HH:MM`, `--` never / no clock |
@@ -117,13 +117,13 @@ Agreed up front, so the card, the page and the mock can proceed before the firmw
 
 Unchanged but now conditional: Piscine - Débit remplissage, Piscine - Volume total remplissage, Fill Water Today read `unknown` while the meter is off. Fill Water Days and Fill Water Months keep their history, and disabled days are `-`.
 
-The detection result (`detected`, plus when) is kept in a restored global (`fill_meter_detected_at`, epoch seconds, 0 = never), so the status survives a reboot. A global's NVS key is the md5 of its id, and the switch's key is derived from its name, so **neither may be renamed later**: see the rule in [secret-free-firmware.md](secret-free-firmware.md).
+Whether the meter is proven (`detected`) is kept in a restored global (`fill_meter_detected`), so the status survives a reboot. A pulse test or any fill of 3 L within its first 5 min sets it; a failed test clears it. A global's NVS key is the md5 of its id, so **`fill_meter_enabled`, `fill_alarm_minutes`, `fill_meter_detected`, `fill_last_pulse_epoch` and `fill_day_measured` may never be renamed**: see the rule in [secret-free-firmware.md](secret-free-firmware.md).
 
 ## Status
 
 | WP | What | Depends on | Branch | Status | PR |
 |---|---|---|---|---|---|
-| F1 | Firmware: switch, alarm + acknowledgement, detection, gating of the counters | — | | todo | |
+| F1 | Firmware: switch, alarm + acknowledgement, detection, gating of the counters | — | feat/optional-fill-meter-f1-firmware | review | #49 |
 | F2 | Card: hide « Remplissage », alarm banners, pulsing light, `fill_settings` rows | contract above | | todo | |
 | F3 | Controller's page + mock: tab, Capteurs rows, Réglages, banner | contract; F1's YAML for the mock | | todo | |
 | F4 | HA side: blueprint, dashboard, `ha-dashboard-check` | F1 (ids for `ha-dashboard-check`) | | todo | |
@@ -137,38 +137,44 @@ The compatibility rule above makes any merge order into the feature branch safe.
 
 ## Work packages
 
-### F1: firmware (`pool-controller.yaml`)
-- [ ] `grp_fill` sorting group, and the contract entities with `entity_category` as listed: config ones appear under « Configuration » in HA's device page
-- [ ] globals:
-  - `fill_last_pulse_ms`, `fill_started_ms` and `fill_alarm_acked` (not restored);
-  - `fill_last_pulse_epoch` (restored, for Last Pulse across reboots);
-  - `fill_meter_detected_at` (restored);
-  - `fill_detect_until_ms` and `fill_detect_litres` (not restored)
-- [ ] `total.on_value`:
-  - return early while Fill Meter is off;
-  - otherwise stamp the last pulse (ms and epoch);
-  - open a fill when the gap since the previous pulse was at least `FILL_GAP`;
-  - add the litres to the running detection;
-  - then count `fill_today` as now
-- [ ] flow, volume and Fill Water Today: a `lambda` filter (or a check in the template's lambda) that returns `NAN` while off
-- [ ] the existing 30 s `interval:`:
-  - close a fill after `FILL_GAP` without a pulse, which also clears the acknowledgement;
-  - update Fill Running and Too Long;
-  - end a detection window (`not_detected`);
-  - publish only on change, so the recorder isn't flooded
-- [ ] Detect Fill Meter: status `listening`, arm the window; `detected` as soon as `FILL_DETECT_LITRES` are counted (stamp `fill_meter_detected_at`)
-- [ ] Acknowledge Fill Alarm: sets `fill_alarm_acked` only while Fill Running Too Long is on
-- [ ] midnight close in `filtration_accrue`: a day closed while off goes into Fill Water Days as `0xFFFF` and adds nothing to the month
-- [ ] Fill Meter `on_turn_off`: clear running, too long, acknowledged and the detection window; publish NaN. `on_turn_on`: status `untested`, or `detected` if `fill_meter_detected_at` is set
-- [ ] each step logged (`fill:` tag): fill start and end with litres and duration, alarm on/off, acknowledged, detection result
-- [ ] the update gate (`updates.yaml` `update_gate`):
-  - it reads Fill Running instead of `piscine_debit.state > 0`, so an install waits for the same fill the alarm sees;
+### F1: firmware (`fill-meter.yaml`, `fill_meter.h`, `pool-controller.yaml`)
+Done as a package, like `updates.yaml`: the logic is pure C++ in `fill_meter.h`, tested on the host (`tools/tests/fill_meter_test.cpp`, `make firmware-test`), and the YAML only wires it.
+- [x] `fill-meter.yaml` (packages: `fill_meter`): `grp_fill` sorting group and the contract entities, with `entity_category` as listed (config ones appear under « Configuration » in HA's device page)
+- [x] globals:
+  - settings, restored: `fill_meter_enabled` (default true) and `fill_alarm_minutes` (default 60). The switch and the number read them, like Auto Update, and `settings_save` writes them to flash at once;
+  - restored: `fill_meter_detected`, `fill_last_pulse_epoch`, `fill_day_measured`;
+  - not kept: `pool_fill::state()` (the running fill, its alarm and acknowledgement, the pulse test), a static in `fill_meter.h`: ESPHome declares globals before it includes the headers, so a global can't have a type defined there
+- [x] the meter (`pool-controller.yaml`):
+  - flow and volume filters return `NAN` while off;
+  - the volume filter passes over the litres counted while off, so turning the meter back on doesn't add them;
+  - its `on_value` counts `fill_today`, then runs `fill_pulse`;
+  - Fill Water Today is `NAN` while off
+- [x] `fill_pulse`:
+  - stamps the last pulse;
+  - `pool_fill::on_litres` opens a fill after a gap of at least `GAP_MS`, feeds the pulse test, and proves the meter on any fill of 3 L within its first 5 min
+- [x] `fill_tick` (a 30 s `interval:`, and when Fill Alarm After changes):
+  - `pool_fill::tick` ends a fill after `GAP_MS`, which also clears the acknowledgement;
+  - raises or drops the alarm;
+  - ends a pulse test (`not_detected`, and the meter is no longer proven);
+  - the binary sensors are template lambdas, so they publish only on change
+- [x] Detect Fill Meter: `pool_fill::start_test`; ignored (logged) while off
+- [x] Acknowledge Fill Alarm: `pool_fill::acknowledge`, only while the alarm is on
+- [x] midnight close in `filtration_accrue`:
+  - a day the meter was off all day (`fill_day_measured`) goes into Fill Water Days as `0xFFFF` and adds nothing to the month;
+  - the new day is measured if the meter is on, or once it is turned on
+- [x] Fill Meter off: `pool_fill::disable` (no fill, alarm, acknowledgement or test), flow and volume published as NaN. On: flow 0, and the day counts
+- [x] each step logged (`fill` tag): fill start and end with litres and duration, alarm on/off, acknowledged, test result
+- [x] the update gate (`updates.yaml` `update_gate`):
+  - it reads Fill Running (`pool_fill::state().running`) instead of `piscine_debit.state > 0`, so an install waits for the same fill the alarm sees;
   - while the meter is off nothing blocks an install;
   - `pool_updates::gate_blocker` takes a bool;
   - `tools/tests/updates_test.cpp` covers it
-- [ ] constants `FILL_GAP` (5 min), `FILL_DETECT_LITRES` (3) and `FILL_DETECT_WINDOW` (5 min) sit next to the other literal thresholds
-- [ ] `make validate`, `make build` (note the flash % in the PR), `make mock-ui-check`
-- [ ] **Docs:** the POOL-CONTROLLER.md and README.md items for F1 in « Documentation »; YAML comments on each new entity and global, in the file's style (what, why, and what it guards against)
+- [x] constants `GAP_MS` (5 min), `DETECT_LITRES` (3) and `DETECT_WINDOW_MS` (5 min) at the top of `fill_meter.h`
+- [x] `make firmware-test`, `make validate`, `make build` (ESPHome 2026.11.0b6, with main at #46: flash 1,214,219 B, 66.2 %; RAM 59,092 B, 32.7 %), `make mock-ui-check`, `make ha-dashboard-check`
+- [x] **Docs:**
+  - the POOL-CONTROLLER.md and README.md items for F1 in « Documentation », plus README's repo layout;
+  - the `fill-meter.yaml` header (what each entity means, the stable global ids);
+  - YAML comments on each new entity and global, in the file's style
 
 ### F2: card (`home-assistant/piscine-card.js`)
 - [ ] `DEFAULT_ENTITIES` gains:
@@ -264,7 +270,7 @@ What each file gains. The WP named does it; F5 checks it all at the end.
 |---|---|---|---|
 | POOL-CONTROLLER.md | « What it does » | the fill meter is optional; it counts fills and alarms on long ones | F1 |
 | POOL-CONTROLLER.md | « Hardware » | the meter is optional; pin `water_meter_pin`; what to do without one (turn Fill Meter off) | F1 |
-| POOL-CONTROLLER.md | new « Fill meter » (after « Manual Override timeout and alert ») | enabling and disabling, and what « off » does to each entity and to the day record; the pulse test and its constants; what « running » means (`FILL_GAP`, slow leaks); the alarm and Fill Alarm After; acknowledgement and when it resets; behaviour on reboot | F1 |
+| POOL-CONTROLLER.md | new « Fill meter » (after « Manual Override timeout and alert ») | enabling and disabling, and what « off » does to each entity and to the day record; the pulse test and its constants; what « running » means (`GAP_MS`, slow leaks); the alarm and Fill Alarm After; acknowledgement and when it resets; behaviour on reboot | F1 |
 | POOL-CONTROLLER.md | « First setup » | step 4's optional « Compteur d'eau » block | F3 |
 | POOL-CONTROLLER.md | « Controller settings » | Fill Meter, Fill Alarm After and Detect Fill Meter: where they are (page Réglages, HA device page › Configuration), defaults | F1 |
 | POOL-CONTROLLER.md | « Updates » | an install waits for Fill Running (no longer a non-zero flow); nothing waits while the meter is off | F1 |

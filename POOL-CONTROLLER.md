@@ -9,9 +9,11 @@ repo/tooling info (building it yourself), see [README.md](README.md).
 Runs a variable-speed pool pump on an autonomous daily filtration schedule —
 computed on-device from water temperature and today's sunrise/sunset, not
 set by hand — with a manual override and a freeze-protection rule that
-always takes priority. It's designed to keep running correctly even if Home
-Assistant is offline — HA is for configuration and visibility, not a
-dependency for correct operation.
+always takes priority. With an optional water meter on the fill line, it
+also counts the water added and raises an alarm when a fill runs too long
+(see [Fill meter](#fill-meter)). It's designed to keep running correctly
+even if Home Assistant is offline — HA is for configuration and visibility,
+not a dependency for correct operation.
 
 ## Hardware
 
@@ -86,8 +88,10 @@ dependency for correct operation.
 
 - **GPIO33** — optional: a pulse water meter on the pool's fill-in line (a
   reed-switch dry contact, 1 pulse per litre), its signal wire to GPIO33
-  (internal pull-up), the other to GND. It gives the fill flow and counts
-  the water added; an update waits for a fill to end.
+  (internal pull-up), the other to GND. It gives the fill flow, counts the
+  water added and alarms on a fill that runs too long; an update waits for
+  a fill to end. Without one, turn **Fill Meter** off: see
+  [Fill meter](#fill-meter).
 
 These GPIOs are the published firmware's: the install page installs them
 as they are. Other pins mean building it yourself (README, Development
@@ -173,7 +177,9 @@ which an update doesn't touch).
   schedule.
 - **The gate.** Every install, Home Assistant's included, waits while a
   Manual Override or a fill runs (a reboot would end the override, and lose
-  the meter's pulses), then starts by itself. **Cancel Update** (« Annuler
+  the meter's pulses), then starts by itself. « A fill runs » is **Fill
+  Running** (see [Fill meter](#fill-meter)), so nothing waits for a fill
+  while Fill Meter is off. **Cancel Update** (« Annuler
   la demande ») drops a waiting install.
 - **Update Status** says where it is: `non vérifié`, `vérification`,
   `à jour`, `disponible`, `en attente (mode manuel)`, `en attente
@@ -272,6 +278,12 @@ network) and kept in its NVS, which a firmware update never touches.
   [Factory reset](#factory-reset).
 - **Auto Update, Update Check Interval, Check for Update, Cancel Update,
   Update Status, Firmware** — see [Updates](#updates).
+- **Fill Meter, Fill Alarm After, Detect Fill Meter** (from
+  [fill-meter.yaml](fill-meter.yaml)) — whether the fill-line water meter
+  is there (on by default), how long a fill may run before the alarm (60
+  min by default, `0` = never), and its pulse test. On the controller's
+  page in Avancé › Réglages, in Home Assistant under the device's
+  Configuration. See [Fill meter](#fill-meter).
 
 Page Password, OTA Password and API Key are write-only: the controller never
 sends them back, to a page or to Home Assistant (a text in password mode
@@ -434,12 +446,15 @@ Re-evaluated every 30 seconds, highest priority wins:
      midnight, kept across reboots (the meter's own total restarts at 0 on
      boot). **Fill Water Days** (diagnostic) lists the last 30 completed
      days, newest first, from the newest one's date — `2026-11-16: 0 19 0 -
-     940 …`, `-` for a day the device was off or had no clock — and **Fill
+     940 …`, `-` for a day the device was off, had no clock, or had Fill
+     Meter off all day — and **Fill
      Water Months** this month's completed days, then the 11 months before —
      `2026-11: 23 30 950 …`. The device closes each day into them at
      midnight (one flash write a day); `--` before the first midnight. Like
      Daily History, they exist for the device's own page, which has no
-     recorder: Home Assistant has the meter's own statistics.
+     recorder: Home Assistant has the meter's own statistics. With Fill
+     Meter off, Fill Water Today reads unknown, like the meter's flow and
+     total; the days and months keep their history.
    - **Fill Water Import** (config, write-only, not on the device's page)
      fills that record from elsewhere — Home Assistant's history of the
      meter — since it only starts the day the firmware first closed one. It
@@ -528,6 +543,12 @@ reason.
     leave the pump idle for up to 30 seconds even when the restored
     schedule or freeze protection call for it to be running right now.
 
+- **The fill alarm is on-device too.** Fill Running Too Long and its
+  acknowledgement are decided on the controller, from its own `millis()`
+  clock, so its page shows the alarm with Home Assistant down. Home
+  Assistant only turns it into notifications (a blueprint, see
+  [Fill meter](#fill-meter)).
+
 - **A local web UI on the device itself.** `web_server:` serves
   `http://pool-controller.local/` straight from the ESP32 — every control
   and reading from the HA entities card, so the pump can still be checked
@@ -592,6 +613,10 @@ reason.
      when an open-ended Manual Override (timeout `0`) has been on something
      other than `Auto` for over 30 minutes (see below); a timed override
      never raises it, since the controller ends that one itself.
+   - **Fill meter** (see [Fill meter](#fill-meter)): Fill Meter, Fill Alarm
+     After and Detect Fill Meter under Configuration; Fill Meter Status and
+     Fill Meter Last Pulse under Diagnostic; Fill Running, Fill Running Too
+     Long (`problem`), Fill Alarm Acknowledged and Acknowledge Fill Alarm.
    - **Controller settings** (see [Controller settings](#controller-settings)):
      Setup State, Detected Probes, Schedule Waiting For; Page Password, OTA
      Password, API Key (write-only), Latitude, Longitude, Timezone, Timezone
@@ -898,3 +923,57 @@ local date+time for dashboards — a "back to Auto at 18:30" line, or the
 extent of the override on a day timeline — computed on the device from the
 same stamp, so it can never disagree with when the expiry actually fires.
 It reads `--` in `Auto`, with the timeout at `0`, or before SNTP has synced.
+
+## Fill meter
+
+The water meter on the fill line is optional: [fill-meter.yaml](fill-meter.yaml)
+turns it on or off, tests it, and watches for a fill that runs too long.
+Its logic is in [fill_meter.h](fill_meter.h), tested on the host
+(`make firmware-test`).
+
+**Fill Meter** (switch, Configuration; on by default, so a controller that
+was counting keeps counting after the update). Off:
+- the meter's pulses are ignored: Piscine - Débit remplissage, Piscine -
+  Volume total remplissage and Fill Water Today read unknown, and the litres
+  the meter counts meanwhile are never added later;
+- a day the meter was off all day closes as `-` in Fill Water Days (not
+  0 L), and adds nothing to its month; the history stays;
+- no fill, no alarm, no pulse test, and a firmware install never waits for a
+  fill;
+- the entities stay (ESPHome can't remove them at run time): the pool card
+  and the controller's page hide « Remplissage » instead.
+
+On the controller's page it is in Avancé › Réglages; in Home Assistant under
+the device's Configuration (not in the pool card's Réglages).
+
+**Detecting the meter.** It is a dry contact with a pull-up, so it has no
+address, and it reads the same unplugged or idle: only a pulse proves it is
+wired. **Detect Fill Meter** starts a pulse test: open the fill tap, and
+**Fill Meter Status** goes from `listening` to `detected` once 3 L are
+counted within 5 min, or `not_detected` when the 5 min pass (check the
+wiring). Any fill that reaches 3 L within its first 5 min proves the meter
+too, so a meter that was already counting needs no test. Its words: `off`,
+`untested`, `listening`, `detected`, `not_detected`; `detected` is kept
+across reboots, and a failed test clears it. **Fill Meter Last Pulse** is
+when it last counted a litre (`--` never), to spot a meter that went quiet.
+
+**A fill** (**Fill Running**) starts with the first litre after 5 min
+without one, and ends 5 min after its last litre: pulse_meter's `timeout`,
+so it agrees with the flow reading 0. A leak slower than 1 L in 5 min never
+counts as a fill. The clock is `millis()`: no need for the time of day, and
+a reboot starts with no fill.
+
+**The alarm.** **Fill Running Too Long** (`device_class: problem`) turns on
+once a fill has run **Fill Alarm After** minutes (60 by default, `0` =
+never), checked every 30 s, and off when the fill ends (or the meter is
+turned off, or Fill Alarm After is raised past it). **Acknowledge Fill
+Alarm** sets **Fill Alarm Acknowledged** until the fill ends: the alarm
+itself stays on while the fill runs, but Home Assistant's reminders stop.
+The next fill that runs too long alarms again.
+
+Home Assistant notifies from these through the blueprint in
+`home-assistant/blueprints/`: a reminder every 15 min while the alarm is on
+and not acknowledged, with « Acquitter » on the phone notification.
+
+The three thresholds (the 5-min gap, 3 L and 5 min for the test) are
+constants at the top of [fill_meter.h](fill_meter.h).

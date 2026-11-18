@@ -1,0 +1,257 @@
+# The fill-line water meter (Piscine - Débit / Volume total remplissage in
+# pool-controller.yaml) as an option: turned on or off, tested, and watched
+# for a fill that runs too long. Included by pool-controller.yaml (packages:
+# fill_meter); its logic is in fill_meter.h. See
+# docs/plans/optional-fill-meter.md for the design and its entity contract.
+#
+#   Fill Meter               on: the meter counts; off: its pulses are ignored,
+#                            Débit, Volume and Fill Water Today read unknown, a
+#                            day closed with the meter off all day is « - »,
+#                            and nothing below runs. On by default.
+#   Fill Alarm After         minutes a fill may run before Fill Running Too
+#                            Long; 0 = never. 60 by default.
+#   Detect Fill Meter        the pulse test: open the fill tap; « detected »
+#                            once 3 L are counted within 5 min, else
+#                            « not_detected ». Any fill that reaches 3 L within
+#                            its first 5 min proves the meter too.
+#   Fill Meter Status        off | untested | listening | detected |
+#                            not_detected (the card and the page parse them)
+#   Fill Meter Last Pulse    when the meter last counted a litre
+#   Fill Running             a fill: from the first litre after 5 min without
+#                            one, until 5 min without one (pulse_meter's
+#                            timeout, so it agrees with Débit reading 0)
+#   Fill Running Too Long    the alarm (device_class problem): a fill longer
+#                            than Fill Alarm After. Home Assistant notifies
+#                            from it (home-assistant/blueprints/)
+#   Acknowledge Fill Alarm   stops the reminders until the fill ends; Fill
+#   Fill Alarm Acknowledged  Running Too Long itself stays on while it runs
+#
+# The fill clock is millis(), like Manual Override's: it doesn't need the
+# time of day, and a reboot starts with no fill (and no alarm).
+#
+# The running fill, its alarm and acknowledgement and the pulse test are
+# pool_fill::state() (fill_meter.h), not kept: a reboot starts with none.
+#
+# GLOBAL IDS ARE STABLE FOREVER (NVS key = md5 of the id): fill_meter_enabled,
+# fill_alarm_minutes, fill_meter_detected, fill_last_pulse_epoch,
+# fill_day_measured.
+
+esphome:
+  includes:
+    - fill_meter.h
+  on_boot:
+    # Fill Alarm After reads a global and doesn't poll: its first state.
+    - priority: -100
+      then:
+        - component.update: fill_alarm_number
+        - component.update: fill_meter_status_text
+
+web_server:
+  sorting_groups:
+    - id: grp_fill
+      name: "Fill Meter"
+      sorting_weight: 45
+
+globals:
+  # The settings (written at once by settings_save, device-settings.yaml).
+  - id: fill_meter_enabled
+    type: bool
+    restore_value: true
+    initial_value: 'true'
+  - id: fill_alarm_minutes
+    type: uint32_t
+    restore_value: true
+    initial_value: '60'
+  # Whether the meter has proven it counts (a pulse test, or any fill of 3 L
+  # within its first 5 min); a test that hears too little clears it.
+  - id: fill_meter_detected
+    type: bool
+    restore_value: true
+    initial_value: 'false'
+  # When the meter last counted a litre (epoch seconds, 0 = never or no clock).
+  - id: fill_last_pulse_epoch
+    type: uint32_t
+    restore_value: true
+    initial_value: '0'
+  # Whether today counts in Fill Water Days: the meter was on at some point of
+  # it. Set at midnight from Fill Meter, and by turning it on.
+  - id: fill_day_measured
+    type: bool
+    restore_value: true
+    initial_value: 'true'
+
+script:
+  # The meter counted `litres` (pool-controller.yaml, Volume's on_value).
+  - id: fill_pulse
+    mode: queued
+    parameters:
+      litres: int
+    then:
+      - lambda: |-
+          auto now = id(local_time).now();
+          if (now.is_valid()) id(fill_last_pulse_epoch) = now.timestamp;
+          auto e = pool_fill::on_litres(pool_fill::state(), id(fill_meter_detected), millis(), (uint32_t) litres);
+          if (e.fill_ended)
+            ESP_LOGI("fill", "Fill ended: %u L in %u min", (unsigned) e.ended_litres, (unsigned) (e.ended_duration_ms / 60000));
+          if (e.alarm_off) ESP_LOGI("fill", "Fill alarm off");
+          if (e.fill_started) ESP_LOGI("fill", "Fill started");
+          if (e.detected) ESP_LOGI("fill", "Fill meter detected: it counts");
+          if (e.fill_started || e.detected) id(fill_meter_status_text).update();
+          if (e.fill_started) id(fill_last_pulse_text).update();
+
+  # Every 30 s and when Fill Alarm After changes: ends a fill after 5 min
+  # without a litre, raises or drops the alarm, ends a pulse test.
+  - id: fill_tick
+    then:
+      - lambda: |-
+          if (!id(fill_meter_enabled)) return;
+          auto e = pool_fill::tick(pool_fill::state(), id(fill_meter_detected), millis(), id(fill_alarm_minutes));
+          if (e.fill_ended)
+            ESP_LOGI("fill", "Fill ended: %u L in %u min", (unsigned) e.ended_litres, (unsigned) (e.ended_duration_ms / 60000));
+          if (e.alarm_on)
+            ESP_LOGW("fill", "Fill alarm: a fill has run for %u min or more", (unsigned) id(fill_alarm_minutes));
+          if (e.alarm_off) ESP_LOGI("fill", "Fill alarm off");
+          if (e.test_failed)
+            ESP_LOGW("fill", "Fill meter test: fewer than %u L in %u min, check its wiring",
+                     (unsigned) pool_fill::DETECT_LITRES, (unsigned) (pool_fill::DETECT_WINDOW_MS / 60000));
+          if (e.test_failed || e.fill_ended) id(fill_meter_status_text).update();
+
+  # Fill Meter turned on or off: what reads it.
+  - id: fill_meter_changed
+    then:
+      - component.update: fill_today_sensor
+      - component.update: fill_meter_status_text
+      - script.execute: settings_save
+
+interval:
+  - interval: 30s
+    then:
+      - script.execute: fill_tick
+
+switch:
+  - platform: template
+    name: "Fill Meter"
+    id: fill_meter_switch
+    web_server: {sorting_group_id: grp_fill, sorting_weight: 10}
+    icon: mdi:water-check
+    entity_category: config
+    # The global holds the choice; without this, ESPHome's default ALWAYS_OFF
+    # runs turn_off_action at every boot and saves « off » over it.
+    restore_mode: DISABLED
+    lambda: 'return id(fill_meter_enabled);'
+    turn_on_action:
+      - lambda: |-
+          if (id(fill_meter_enabled)) return;
+          id(fill_meter_enabled) = true;
+          id(fill_day_measured) = true;
+          id(piscine_debit).publish_state(0);
+          ESP_LOGI("fill", "Fill meter on");
+      - script.execute: fill_meter_changed
+    turn_off_action:
+      - lambda: |-
+          if (!id(fill_meter_enabled)) return;
+          auto e = pool_fill::disable(pool_fill::state());
+          if (e.fill_ended)
+            ESP_LOGI("fill", "Fill ended: %u L in %u min", (unsigned) e.ended_litres, (unsigned) (e.ended_duration_ms / 60000));
+          if (e.alarm_off) ESP_LOGI("fill", "Fill alarm off");
+          id(fill_meter_enabled) = false;
+          // Unknown rather than a last value: both filters return NaN now.
+          id(piscine_debit).publish_state(NAN);
+          id(piscine_volume_total).publish_state(NAN);
+          ESP_LOGI("fill", "Fill meter off: its pulses are ignored until it is turned back on");
+      - script.execute: fill_meter_changed
+
+number:
+  - platform: template
+    name: "Fill Alarm After"
+    id: fill_alarm_number
+    web_server: {sorting_group_id: grp_fill, sorting_weight: 20}
+    icon: mdi:timer-alert-outline
+    entity_category: config
+    unit_of_measurement: min
+    mode: box
+    min_value: 0
+    max_value: 1440
+    step: 5
+    update_interval: never
+    lambda: 'return (float) id(fill_alarm_minutes);'
+    set_action:
+      - lambda: |-
+          id(fill_alarm_minutes) = (uint32_t) lroundf(x);
+          if (id(fill_alarm_minutes)) ESP_LOGI("fill", "Fill alarm after %u min", (unsigned) id(fill_alarm_minutes));
+          else ESP_LOGI("fill", "Fill alarm off (Fill Alarm After 0)");
+      - component.update: fill_alarm_number
+      - script.execute: fill_tick
+      - script.execute: settings_save
+
+button:
+  - platform: template
+    name: "Detect Fill Meter"
+    id: fill_detect_button
+    web_server: {sorting_group_id: grp_fill, sorting_weight: 30}
+    icon: mdi:water-sync
+    entity_category: config
+    on_press:
+      - lambda: |-
+          if (!id(fill_meter_enabled)) {
+            ESP_LOGW("fill", "Fill meter test: the meter is off, turn Fill Meter on first");
+            return;
+          }
+          pool_fill::start_test(pool_fill::state(), millis());
+          ESP_LOGI("fill", "Fill meter test: listening for %u L within %u min, open the fill tap",
+                   (unsigned) pool_fill::DETECT_LITRES, (unsigned) (pool_fill::DETECT_WINDOW_MS / 60000));
+      - component.update: fill_meter_status_text
+  - platform: template
+    name: "Acknowledge Fill Alarm"
+    id: fill_ack_button
+    web_server: {sorting_group_id: grp_fill, sorting_weight: 70}
+    icon: mdi:bell-check
+    on_press:
+      - lambda: |-
+          if (pool_fill::acknowledge(pool_fill::state()))
+            ESP_LOGI("fill", "Fill alarm acknowledged: no more reminders until this fill ends");
+          else
+            ESP_LOGW("fill", "Acknowledge Fill Alarm: no alarm to acknowledge");
+
+text_sensor:
+  - platform: template
+    name: "Fill Meter Status"
+    id: fill_meter_status_text
+    web_server: {sorting_group_id: grp_fill, sorting_weight: 40}
+    icon: mdi:water-check-outline
+    entity_category: diagnostic
+    update_interval: 30s
+    lambda: |-
+      return std::string(pool_fill::status_text(
+          pool_fill::status(id(fill_meter_enabled), id(fill_meter_detected), pool_fill::state())));
+  - platform: template
+    name: "Fill Meter Last Pulse"
+    id: fill_last_pulse_text
+    web_server: {sorting_group_id: grp_fill, sorting_weight: 50}
+    icon: mdi:clock-outline
+    entity_category: diagnostic
+    update_interval: 60s
+    lambda: |-
+      if (id(fill_last_pulse_epoch) == 0) return std::string("--");
+      return ESPTime::from_epoch_local(id(fill_last_pulse_epoch)).strftime("%Y-%m-%d %H:%M");
+
+binary_sensor:
+  - platform: template
+    name: "Fill Running"
+    id: fill_running_sensor
+    web_server: {sorting_group_id: grp_fill, sorting_weight: 55}
+    device_class: running
+    lambda: 'return id(fill_meter_enabled) && pool_fill::state().running;'
+  - platform: template
+    name: "Fill Running Too Long"
+    id: fill_too_long_sensor
+    web_server: {sorting_group_id: grp_fill, sorting_weight: 60}
+    device_class: problem
+    icon: mdi:water-alert
+    lambda: 'return pool_fill::state().too_long;'
+  - platform: template
+    name: "Fill Alarm Acknowledged"
+    id: fill_acked_sensor
+    web_server: {sorting_group_id: grp_fill, sorting_weight: 65}
+    icon: mdi:bell-check-outline
+    lambda: 'return pool_fill::state().acked;'

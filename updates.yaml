@@ -17,11 +17,13 @@
 # update_install_request. The http_request entity itself is internal, so
 # nothing reaches it but this package. An install then waits while a Manual
 # Override or a fill runs (a reboot ends the override, and loses the meter's
-# pulses of the fill), and starts by itself once both are over, unless Cancel
-# Update (the page's « Annuler la demande ») drops it meanwhile. Update Status
-# says where it is: non vérifié, vérification, à jour, disponible,
-# en attente (mode manuel | remplissage), installation, erreur (vérification |
-# installation). The Home Assistant card parses these words: keep them.
+# pulses of the fill; « a fill runs » is Fill Running, fill-meter.yaml, so
+# never while the meter is off), and starts by itself once both are over,
+# unless Cancel Update (the page's « Annuler la demande ») drops it
+# meanwhile. Update Status says where it is: non vérifié, vérification, à
+# jour, disponible, en attente (mode manuel | remplissage), installation,
+# erreur (vérification | installation). The Home Assistant card parses these
+# words: keep them.
 #
 # Checks: every Update Check Interval (À la demande, 6 h, 24 h, 7 j), the
 # first one a minute after boot; Check for Update (the page's « Vérifier »)
@@ -231,7 +233,7 @@ script:
             return;
           }
           auto blocker = pool_updates::gate_blocker(id(manual_override).current_option() != "Auto",
-                                                    id(piscine_debit).state);
+                                                    pool_fill::state().running);
           if (blocker != pool_updates::Blocker::NONE) {
             if ((uint8_t) blocker != id(update_waiting_for))
               ESP_LOGI("updates", "Install of %s waits: %s in progress",

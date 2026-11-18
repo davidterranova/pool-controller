@@ -73,10 +73,13 @@ wifi:
 # timezone, probe roles, Setup State, Factory Reset): device-settings.yaml.
 # Firmware updates from the releases (checks, Auto Update, the install gate
 # that waits for a Manual Override or a fill to end): updates.yaml.
+# The fill meter as an option (Fill Meter on/off, its pulse test, the
+# long-fill alarm): fill-meter.yaml.
 packages:
   wifi_setup: !include wifi-setup.yaml
   device_settings: !include device-settings.yaml
   updates: !include updates.yaml
+  fill_meter: !include fill-meter.yaml
 
 logger:
   level: INFO
@@ -238,7 +241,8 @@ sensor:
     web_server: {sorting_group_id: grp_sensors, sorting_weight: 30}
   # AJN15TI water meter fill-in, reed switch dry contact -- passive, no
   # power needed. K = 1 pulse/liter, so pulse_meter's native pulses/minute
-  # already reads as L/min with a 1.0 multiply.
+  # already reads as L/min with a 1.0 multiply. Optional: with Fill Meter off
+  # (fill-meter.yaml) both readings are unknown and nothing is counted.
   - platform: pulse_meter
     pin:
       number: ${water_meter_pin}
@@ -253,6 +257,7 @@ sensor:
     accuracy_decimals: 2
     filters:
       - multiply: 1.0
+      - lambda: 'return id(fill_meter_enabled) ? x : NAN;'
     internal_filter: 100ms
     timeout: 5min
 
@@ -267,21 +272,31 @@ sensor:
       accuracy_decimals: 0
       filters:
         - multiply: 1.0
+        # With Fill Meter off: unknown, and the litres the meter still counts
+        # are passed over, so turning it back on doesn't add them to today.
+        - lambda: |-
+            if (std::isnan(x) || id(fill_meter_enabled)) return x;
+            id(fill_total_seen) = (uint32_t) x;
+            return NAN;
       # Today's litres (fill_today in globals:): the total restarts at 0 on
-      # boot, so what counts is what it added since the last reading.
+      # boot, so what counts is what it added since the last reading. Then
+      # the fill it belongs to (fill-meter.yaml: Fill Running, its alarm,
+      # the pulse test).
       on_value:
         - lambda: |-
+            if (std::isnan(x)) return;  // Fill Meter off
             uint32_t total = (uint32_t) x;
             uint32_t added = total >= id(fill_total_seen) ? total - id(fill_total_seen) : total;
             id(fill_total_seen) = total;
             if (added == 0) return;
             id(filtration_accrue).execute();  // midnight first, so the litres land in the right day
             id(fill_today) += added;
+            id(fill_pulse).execute((int) added);
   # Fill water since midnight, in litres, from the meter above: kept across
   # reboots (the meter's own total isn't) and closed into Fill Water Days and
   # Months at midnight. For the device's own page, which has no recorder to
   # make a daily figure from the total; every 30 s, not every litre, so a
-  # fill doesn't flood Home Assistant's recorder.
+  # fill doesn't flood Home Assistant's recorder. Unknown with Fill Meter off.
   - platform: template
     name: "Fill Water Today"
     web_server: {sorting_group_id: grp_sensors, sorting_weight: 75}
@@ -292,7 +307,7 @@ sensor:
     icon: mdi:water-plus
     accuracy_decimals: 0
     update_interval: 30s
-    lambda: 'return (float) id(fill_today);'
+    lambda: 'return id(fill_meter_enabled) ? (float) id(fill_today) : NAN;'
   # The pool's lowest and highest temperature so far today, from Pool Return
   # Temperature's pumping readings only (see its on_value above). Unknown
   # until the pump has run 10 min today. Closed into Daily History at
@@ -1463,7 +1478,8 @@ script:
               id(daily_history).update();
               id(daily_plan_history).update();
               // Fill water: the day into the last 30 (days the device missed
-              // stay unknown) and into its month.
+              // stay unknown, and so does a day the meter was off all day)
+              // and into its month.
               auto civil = [](uint32_t ymd) -> int32_t {  // days since 1970-01-01 (H. Hinnant's days_from_civil)
                 int y = ymd / 10000, m = ymd / 100 % 100, d = ymd % 100;
                 y -= m <= 2;
@@ -1477,7 +1493,7 @@ script:
                 int n = gap < 30 ? gap : 30;
                 for (int i = 29; i >= n; i--) id(fill_days)[i] = id(fill_days)[i - n];
                 for (int i = 1; i < n; i++) id(fill_days)[i] = 0xFFFF;
-                id(fill_days)[0] = id(fill_today) < 0xFFFF ? id(fill_today) : 0xFFFE;
+                id(fill_days)[0] = !id(fill_day_measured) ? 0xFFFF : id(fill_today) < 0xFFFF ? id(fill_today) : 0xFFFE;
                 id(fill_days_date) = closed;
                 uint32_t ym = closed / 100, key = id(fill_months_key);
                 int mgap = key ? (int) (ym / 100 * 12 + ym % 100) - (int) (key / 100 * 12 + key % 100) : 12;
@@ -1488,11 +1504,13 @@ script:
                   id(fill_months)[0] = 0;
                   id(fill_months_key) = ym;
                 }
-                if (mgap >= 0) id(fill_months)[0] += id(fill_today);
+                if (mgap >= 0 && id(fill_day_measured)) id(fill_months)[0] += id(fill_today);
               }
             }
-            // A new day of fill water, whether or not the last one was dated.
+            // A new day of fill water, whether or not the last one was dated;
+            // measured if the meter is on (or turned on before it ends).
             id(fill_today) = 0;
+            id(fill_day_measured) = id(fill_meter_enabled);
             id(fill_today_sensor).update();
             id(fill_days_text).update();
             id(fill_months_text).update();

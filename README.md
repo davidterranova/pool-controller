@@ -3,8 +3,9 @@
 ESPHome firmware for an ESP32-WROOM that runs a swimming pool's variable-speed
 pump: an autonomous on-device filtration schedule (computed from water
 temperature and sunrise/sunset, plus manual override), a freeze-protection
-safety rule that always wins, and three temperature sensors — all exposed to
-Home Assistant, but not dependent on it. The device keeps running its
+safety rule that always wins, three temperature sensors, and an optional
+fill-line water meter with a long-fill alarm — all exposed to Home
+Assistant, but not dependent on it. The device keeps running its
 schedule whether or not HA is reachable.
 
 **Install it from the browser: <https://pool-controller.kitesize.fr/>**
@@ -21,6 +22,7 @@ tooling, and building the firmware yourself.
 | `pool-controller.yaml` | The ESPHome device config — this *is* the firmware source. |
 | `wifi-setup.yaml` | Package included by `pool-controller.yaml`: fallback hotspot, joining a network from the page, Wi-Fi statistics, clock from the browser (see below). |
 | `device-settings.yaml`, `device_settings.h` | Package included by `pool-controller.yaml`: the controller's settings, set at run time and kept on the device (page and OTA passwords, API key, position, timezone, probe roles, Setup State, Factory Reset). Nothing personal is compiled in. |
+| `fill-meter.yaml`, `fill_meter.h` | Package included by `pool-controller.yaml`: the fill-line water meter as an option (Fill Meter on/off, its pulse test, the long-fill alarm and its acknowledgement). `fill_meter.h` is pure logic, tested on the host (`make firmware-test`). |
 | `Makefile` | Validate / build / flash / OTA / status tooling. |
 | `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS). `dashboard/`: dashboard components for these entities and the scripts the card calls, with a guide ([home-assistant/dashboard/README.md](home-assistant/dashboard/README.md)). |
 | `hacs.json` | Tells the Marketplace (HACS) which file this repo publishes: the card above, from each GitHub release. |
@@ -30,7 +32,7 @@ tooling, and building the firmware yourself.
 | `tools/migrate/` | `make migrate`: moves a controller built with `secrets.yaml` to this firmware in one OTA (see [Coming from a secrets.yaml build](#coming-from-a-secretsyaml-build)). |
 | `docs/install/` | The install page, served at the root of <https://pool-controller.kitesize.fr/> (see [The install page](#the-install-page-docsinstall)). |
 | `webui/` | The device's own web page, built around the same `piscine-card` (see below). `make webui` bundles it into `webui/dist/` (gitignored), which the firmware embeds. |
-| `docs/plans/` | Plans for work spanning several PRs, with their progress: [secret-free firmware and OTA updates](docs/plans/secret-free-firmware.md). |
+| `docs/plans/` | Plans for work spanning several PRs, with their progress: [secret-free firmware and OTA updates](docs/plans/secret-free-firmware.md), [optional fill meter](docs/plans/optional-fill-meter.md). |
 | `.gitignore` | Excludes `.ota-password` (see `make ota`), `secrets.yaml` (older builds, `make migrate`), `.migrate/`, `.esphome/` (build cache), `.vscode/`. |
 | `LICENSE` | MIT. |
 
@@ -437,6 +439,11 @@ An installed controller updates itself from the releases: see
 build, `make ota` (no cable; see [Development builds](#development-builds));
 `make flash` (USB) only for a first flash, or a controller that can't reach
 Wi-Fi at all.
+
+The fill meter (Fill Meter, 1.8.0) is on after the update, as it was
+before: a controller without a meter on its fill line turns it off once
+(Avancé › Réglages, or the device's Configuration in Home Assistant). See
+[POOL-CONTROLLER.md, Fill meter](POOL-CONTROLLER.md#fill-meter).
 
 ## Releases
 
