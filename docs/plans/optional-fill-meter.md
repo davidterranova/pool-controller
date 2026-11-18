@@ -123,7 +123,7 @@ Whether the meter is proven (`detected`) is kept in a restored global (`fill_met
 
 | WP | What | Depends on | Branch | Status | PR |
 |---|---|---|---|---|---|
-| F1 | Firmware: switch, alarm + acknowledgement, detection, gating of the counters | — | feat/optional-fill-meter-f1-firmware | review | |
+| F1 | Firmware: switch, alarm + acknowledgement, detection, gating of the counters | — | feat/optional-fill-meter-f1-firmware | review | #49 |
 | F2 | Card: hide « Remplissage », alarm banners, pulsing light, `fill_settings` rows | contract above | | todo | |
 | F3 | Controller's page + mock: tab, Capteurs rows, Réglages, banner | contract; F1's YAML for the mock | | todo | |
 | F4 | HA side: blueprint, dashboard, `ha-dashboard-check` | F1 (ids for `ha-dashboard-check`) | | todo | |
