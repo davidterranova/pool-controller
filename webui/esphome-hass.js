@@ -3,9 +3,11 @@
  * piscine-card written for HA runs unchanged on the ESP32's page.
  *
  *   /events (SSE)   ping (config, then uptime), state (one entity), log (one line, ANSI-coloured)
- *   POST /{domain}/{name}/{action}?…   number set, select set, button press, fan/switch turn_on|off
+ *   POST /{domain}/{name}/{action}?…   number set, select set, button press, fan/switch turn_on|off,
+ *                                       update install
  *
- * Entity ids are ESPHome's `name_id` ("select/Manual Override"); the card is configured with those
+ * Entity ids are "domain/Name" ("select/Manual Override"): ESPHome 2026.11 sends them as `id`; older
+ * versions sent them as `name_id` beside an `id` of "domain-object_id", hence entityId(). The card is configured with those
  * instead of HA's entity ids. What HA has and the device doesn't:
  *   - scripts: piscine_forcer_vitesse / piscine_retour_auto only set the Manual Override select (and
  *     its timeout), so callService maps them onto the same REST calls;
@@ -65,8 +67,18 @@ export const E = {
   fillToday: "sensor/Fill Water Today",
   fillDays: "text_sensor/Fill Water Days",
   fillMonths: "text_sensor/Fill Water Months",
+  // Write-only, a one-off tool Home Assistant drives (its history into the record above): known, so the page lists
+  // it nowhere (not under Capteurs internes › Autres entités).
+  fillImport: "text/Fill Water Import",
   fwVersion: "text_sensor/Firmware Version",
   esphomeVersion: "text_sensor/ESPHome Version",
+  // From updates.yaml: the page falls back to comparing with GitHub on a firmware without them.
+  fwUpdate: "update/Firmware",
+  updateStatus: "text_sensor/Update Status",
+  autoUpdate: "switch/Auto Update",
+  updateInterval: "select/Update Check Interval",
+  checkUpdate: "button/Check for Update",
+  cancelUpdate: "button/Cancel Update",
   // From wifi-setup.yaml: the page hides what a firmware without it doesn't have.
   wifiMode: "text_sensor/WiFi Mode",
   wifiSignal: "sensor/WiFi Signal",
@@ -82,6 +94,24 @@ export const E = {
   join: "button/Join WiFi Network",
   clock: "datetime/Device Clock",
   clockSource: "text_sensor/Clock Source",
+  // From device-settings.yaml (setup.js): what used to be compiled in. Secrets are write-only.
+  setupState: "text_sensor/Setup State",
+  pagePassword: "text/Page Password",
+  otaPassword: "text/OTA Password",
+  apiKey: "text/API Key",
+  generateKey: "button/Generate API Key",
+  forgetKey: "button/Forget API Key",
+  latitude: "number/Latitude",
+  longitude: "number/Longitude",
+  timezone: "text/Timezone",
+  timezoneName: "text/Timezone Name",
+  detectedProbes: "text_sensor/Detected Probes",
+  poolProbe: "select/Pool Probe",
+  padProbe: "select/Pad Probe",
+  outdoorProbe: "select/Outdoor Probe",
+  rescanProbes: "button/Rescan Probes",
+  factoryReset: "button/Factory Reset",
+  waitingFor: "text_sensor/Schedule Waiting For",
 };
 
 /** What the recorder keeps (every change): the card draws today's overrides from it. */
@@ -94,6 +124,14 @@ const splitId = (id) => {
   const i = id.indexOf("/");
   return [id.slice(0, i), id.slice(i + 1)];
 };
+
+/** An entity's "domain/Name" id: `id` from ESPHome 2026.11, `name_id` before (when `id` was
+ * "domain-object_id"). Null for a message that carries neither. */
+export function entityId(msg) {
+  if (msg.name_id) return msg.name_id;
+  const id = String(msg.id || "");
+  return id.includes("/") ? id : null;
+}
 
 export class EspHass extends EventTarget {
   constructor() {
@@ -121,8 +159,14 @@ export class EspHass extends EventTarget {
   connect() {
     const es = new EventSource("/events");
     es.addEventListener("open", () => this._setLink(true));
-    // EventSource retries on its own; until then the controller is unreachable from here.
-    es.addEventListener("error", () => this.connected && this._setLink(false));
+    // EventSource retries on its own; until then the controller is unreachable from here. It gives up
+    // for good on an answer other than 200, such as the 401 of a page password set or changed since:
+    // a plain request lets the browser ask for the login, then a new stream starts.
+    es.addEventListener("error", () => {
+      if (this.connected) this._setLink(false);
+      if (es.readyState !== EventSource.CLOSED) return;
+      setTimeout(() => fetch("/", { cache: "no-store" }).catch(() => {}).finally(() => this.connect()), 5000);
+    });
     es.addEventListener("ping", (ev) => {
       this.lastEventAt = Date.now();
       const data = JSON.parse(ev.data || "{}");
@@ -143,7 +187,7 @@ export class EspHass extends EventTarget {
   }
 
   _onState(msg) {
-    const id = msg.name_id;
+    const id = entityId(msg);
     if (!id) return;
     const [domain, name] = splitId(id);
     if (msg.domain) this.entities[id] = { ...msg };
@@ -170,6 +214,7 @@ export class EspHass extends EventTarget {
         step: conf.step !== undefined ? parseFloat(conf.step) : undefined,
         mode: conf.mode,
         options: conf.option,
+        ...(domain === "update" ? updateAttributes(msg, conf) : {}),
       },
     };
     this._estimateOverrideSince();
@@ -270,6 +315,7 @@ export class EspHass extends EventTarget {
     if (domain === "number" && service === "set_value") return this.setNumber(id, data.value);
     if (domain === "select" && service === "select_option") return this.select(id, data.option);
     if (domain === "button" && service === "press") return this.press(id);
+    if (domain === "update" && service === "install") return this.install(id);
     if (["fan", "switch"].includes(domain) && ["turn_on", "turn_off", "toggle"].includes(service)) {
       return this._post(id, service);
     }
@@ -296,6 +342,10 @@ export class EspHass extends EventTarget {
   }
   press(id) {
     return this._post(id, "press");
+  }
+  /** An update entity's install: the firmware's gate decides when it starts (updates.yaml). */
+  install(id) {
+    return this._post(id, "install");
   }
   setText(id, value) {
     return this._post(id, "set", { value });
@@ -335,7 +385,24 @@ function toHaState(domain, msg) {
       return msg.value === null || msg.value === undefined || Number.isNaN(msg.value) ? "unavailable" : String(msg.value);
     case "button":
       return "unknown";
+    case "update":
+      // HA: on = an update to install (installing included), off = up to date.
+      return { "UPDATE AVAILABLE": "on", INSTALLING: "on", "NO UPDATE": "off" }[msg.state] || "unknown";
     default:
       return msg.value === null || msg.value === undefined ? "unknown" : String(msg.value);
   }
+}
+
+/**
+ * An update entity's attributes as HA names them. The device sends the latest version as `value` with
+ * every state, the installed one and the release only with the full config (on connect).
+ */
+function updateAttributes(msg, conf) {
+  return {
+    installed_version: conf.current_version || null,
+    latest_version: msg.value || null,
+    in_progress: msg.state === "INSTALLING",
+    release_url: conf.release_url || null,
+    title: conf.title || null,
+  };
 }

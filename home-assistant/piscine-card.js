@@ -15,7 +15,6 @@
  *   temperatures: false  # optional: no outdoor / equipment-pad block at the foot of « Pompe »
  *   controller_light: false                            # optional: no light for the controller (tile, header)
  *   controller_health: { warn: 3, alert: 15, beat: 4 }  # optional: its minutes before amber, before red; seconds between beats
- *   firmware_repo: owner/repo  # optional: where « Vérifier » compares the firmware (default: this repo on GitHub)
  *
  * The card never writes the controller's Manual Override select itself:
  *   force a speed   script.piscine_forcer_vitesse (vitesse: Off|Low|Medium|High)
@@ -71,14 +70,24 @@
  *                        # Months), 30 j and 12 mois.
  *
  * « Avancé » and « Réglages » (mock-up 2026-11-17): between them, every control the controller has, as on its
- * own page's Avancé tab, so the pop-up needs no dashboard behind it. « Avancé »: today's plan with « Recalculer »,
- * the last 7 days of filtration against the plan (Daily History), the controller (its link, its Wi-Fi signal in
- * dBm, % and words), the probes with « Relire », and the firmware: Firmware Version (the commit `make` compiled,
- * git describe), ESPHome's version and build time (its entity, else Home Assistant's device registry), and
- * « Vérifier », which asks GitHub (`firmware_repo`) whether main has changed a file the firmware is built from since
- * that commit. It can't install: the firmware carries its owner's secrets, so `make ota` stays the way.
- * « Réglages »: the settings, the same rows as `variant: settings`. The tabs are the way in: « Pompe » has no link
- * to them. `settings_tab: false` drops both (the device's page has its own Avancé).
+ * own page's Avancé tab, so the pop-up needs no dashboard behind it. « Avancé », in the device page's order: today's
+ * plan with « Recalculer », the controller (its link, its Wi-Fi signal in dBm, % and words) and the probes with
+ * « Relire » (the page's « Capteurs internes »), the firmware (mock-up 2026-11-18, plan WP4), then the last 7 days of
+ * filtration against the plan (Daily History).
+ * The section runs on the controller's update entity, « Firmware » (ESPHome's `update` platform on the release
+ * manifest): installed version (with ESPHome's version and build time), latest version and its release notes,
+ * « Vérifier » (Check for Update) and « Installer » (update.install, with its progress), Auto Update and Update Check
+ * Interval. A tap on a version row opens Home Assistant's own dialog for that entity (its release notes, « Ignorer »).
+ * The firmware holds every install while a manual override or a fill runs, whoever asked (Update Status says « en
+ * attente »): the card asks first when « Installer » would wait, and says so while it waits, with « Annuler la demande »
+ * (Cancel Update). Auto Update installs only what a scheduled check finds, never after « Vérifier ». Whether a newer
+ * firmware exists is the controller's to say, and the card's own version is HACS's: the card asks GitHub nothing. A
+ * firmware without the entity (before the update entity, v1.4) has no Firmware section.
+ * « Réglages »: the settings, the same rows as `variant: settings`, then « Position »: the controller's latitude,
+ * longitude and time zone, and « Utiliser la position et le fuseau de Home Assistant », which writes hass.config's,
+ * rounded to 0.01°, the zone as its IANA name (Timezone Name) and its POSIX string (Timezone, from TZ_POSIX). The
+ * tabs are the way in: « Pompe » has no link to them. `settings_tab: false` drops both (the device's page has its
+ * own Avancé).
  *
  * At the foot of « Pompe », « Températures »: the outdoor and equipment-pad probes, a tap opening Home
  * Assistant's more-info and its history. `temperatures: false` drops it (the device's page has its own tiles).
@@ -94,7 +103,7 @@
  * temperature across the full width under the header — layout « B » approved on the mock-up (« Screen »
  * view) on 2026-11-11.
  */
-const VERSION = "1.3.1";
+const VERSION = "1.6.0";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",
@@ -143,6 +152,18 @@ const DEFAULT_ENTITIES = {
   clock: "datetime.piscine_pool_controller_device_clock",
   fwVersion: "sensor.piscine_pool_controller_firmware_version",
   esphomeVersion: "sensor.piscine_pool_controller_esphome_version",
+  // From here, a fresh install's ids (« Pool Controller »): entities the firmware got with its settings (WP2) and its
+  // updates (WP6). An older firmware has none of them, and their rows hide.
+  firmware: "update.pool_controller_firmware",
+  checkUpdate: "button.pool_controller_check_for_update",
+  cancelUpdate: "button.pool_controller_cancel_update",
+  autoUpdate: "switch.pool_controller_auto_update",
+  updateInterval: "select.pool_controller_update_check_interval",
+  updateStatus: "sensor.pool_controller_update_status",
+  latitude: "number.pool_controller_latitude",
+  longitude: "number.pool_controller_longitude",
+  timezone: "text.pool_controller_timezone",
+  timezoneName: "text.pool_controller_timezone_name",
   sForce: "script.piscine_forcer_vitesse",
   sAuto: "script.piscine_retour_auto",
 };
@@ -161,9 +182,6 @@ const T_SPAN = { "30d": "30 jours", "90d": "90 jours", "1y": "12 mois" };
 const PROBE_GLITCH_C = 12; // a day the probe spans more than this had a bad reading (0 °C, 110 °C): its mean is dropped
 /** The controller's light (`controller_health`): minutes before amber, before red; seconds between two heartbeats. */
 const HEALTH = { warn: 3, alert: 15, beat: 4 };
-/** Where the firmware comes from, for « Vérifier » (`firmware_repo`), and the files it is built from. */
-const FIRMWARE_REPO = "davidterranova/pool-controller";
-const FIRMWARE_FILES = ["pool-controller.yaml", "wifi-setup.yaml", "webui/", "home-assistant/piscine-card.js"];
 /** Never keys: the sun and the two scripts are Home Assistant's, not the controller's. */
 const NOT_CONTROLLER = new Set(["sun", "sForce", "sAuto"]);
 const WD = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
@@ -220,13 +238,6 @@ const CTL_ROWS = [
     sub: (c) => (c._s("wifiSsid") && c._s("wifiSsid") !== "unknown" ? `Réseau « ${c._s("wifiSsid")} »` : "") },
   { key: "wifiDisc", label: "Déconnexions Wi-Fi", sub: () => "Depuis le démarrage", icon: "wifi-alert", val: (c) => String(Math.round(c._n("wifiDisc"))) },
 ];
-/** Panel, tab « Avancé »: the firmware, and whether main has changed it since (the device page's Contrôleur › Firmware). */
-const FW_ROWS = [
-  { key: "fwVersion", label: "Version", icon: "tag-outline", has: (c) => !!c._fw().version, val: (c) => c._fw().version.label, sub: (c) => c._fw().version.sub },
-  { key: "esphomeVersion", label: "ESPHome", icon: "chip", has: (c) => !!c._fw().esphome, val: (c) => c._fw().esphome.version, sub: (c) => c._fw().esphome.built },
-  { key: "fwCheck", label: "Mise à jour", icon: "cloud-sync-outline", has: () => true, button: "Vérifier",
-    action: (c) => c._checkFirmware(), disabled: (c) => c._fwCheck.busy || !c._fw().version?.ref, sub: (c) => c._fwCheckSub() },
-];
 /** Panel, tab « Avancé »: the probes, as the device page's Capteurs. */
 const PROBE_ROWS = [
   { key: "water", label: "Eau (retour filtre)", icon: "thermometer-water", val: degC("water"),
@@ -245,6 +256,7 @@ const ICONS = {
   alert: "M13,14H11V9H13M13,18H11V16H13M1,21H23L12,2L1,21Z",
   snow: "M20.79,13.95L18.46,14.57L16.46,13.44V10.56L18.46,9.43L20.79,10.05L21.31,8.12L19.54,7.65L20,5.88L18.07,5.36L17.45,7.69L15.45,8.82L13,7.38V5.12L14.71,3.41L13.29,2L12,3.29L10.71,2L9.29,3.41L11,5.12V7.38L8.55,8.82L6.55,7.69L5.93,5.36L4,5.88L4.47,7.65L2.7,8.12L3.22,10.05L5.55,9.43L7.55,10.56V13.45L5.55,14.58L3.22,13.96L2.7,15.89L4.47,16.36L4,18.12L5.93,18.64L6.55,16.31L8.55,15.18L11,16.62V18.88L9.29,20.59L10.71,22L12,20.71L13.29,22L14.7,20.59L13,18.88V16.62L15.45,15.17L17.45,16.3L18.07,18.63L20,18.12L19.53,16.35L21.3,15.88L20.79,13.95M9.5,10.56L12,9.11L14.5,10.56V13.44L12,14.89L9.5,13.44V10.56Z",
   chevron: "M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z",
+  timer: "M12,20A7,7 0 0,1 5,13A7,7 0 0,1 12,6A7,7 0 0,1 19,13A7,7 0 0,1 12,20M19.03,7.39L20.45,5.97C20,5.46 19.55,5 19.04,4.56L17.62,6C16.07,4.74 14.12,4 12,4A9,9 0 0,0 3,13A9,9 0 0,0 12,22C17,22 21,17.97 21,13C21,10.88 20.26,8.93 19.03,7.39M11,14H13V8H11M15,1H9V3H15V1Z",
 };
 const svg = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
 
@@ -284,6 +296,10 @@ const stamp = (s) => {
   return dayKey(new Date()) === `${m[1]}-${m[2]}-${m[3]}` ? `${m[4]}:${m[5]}` : `${m[3]}/${m[2]} ${m[4]}:${m[5]}`;
 };
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+const r2 = (v) => Math.round(v * 100) / 100; // the controller keeps its position to 0.01° (about 1 km)
+const deg = (v) => (Number.isFinite(v) ? `${v.toFixed(2).replace(".", ",")}°` : "non définie");
+const isSet = (s) => s !== undefined && s !== "" && s !== "unknown" && s !== "unavailable";
 /** Daily History "2026-11-13: 6.42 h 25.9/26.6 °C, 2026-11-12: 6.70 h" -> { "2026-11-13": {hours, lo, hi}, … }. */
 const parseDays = (text) => Object.fromEntries([...String(text || "").matchAll(
   /(\d{4}-\d{2}-\d{2}): ([\d.]+) h(?: (-?[\d.]+)\/(-?[\d.]+) °C)?/g)]
@@ -540,6 +556,10 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .tabs button { padding:10px 10px; }
 .water { display:flex; flex-direction:column; gap:6px; }
 .water .readings { margin-bottom:12px; grid-template-columns:repeat(3,minmax(0,1fr)); }
+/* three narrow tiles on a phone: a label that wraps (« Rempli aujourd'hui ») must not push its value below the others'.
+   The tiles share the row's height; labels stay on top (two lines at most), values sit on the bottom line. */
+.water .reading { justify-content:space-between; }
+.water .reading .l { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; overflow:hidden; overflow-wrap:anywhere; }
 ha-card.water-card { display:block; color:var(--fg); padding:16px; container-type:inline-size; }
 ha-card.water-card.plain { background:var(--card); border:1px solid var(--ha-card-border-color,var(--line)); border-radius:var(--ha-card-border-radius,12px); }
 .reading.live .v { color:var(--acc); }
@@ -562,8 +582,10 @@ ha-card.water-card.plain { background:var(--card); border:1px solid var(--ha-car
 .ptile .p { font-size:14px; font-weight:500; overflow-wrap:anywhere; }
 .ptile .s { font-size:13px; color:var(--muted); }
 
-/* tab « Avancé »: today's plan, the last 7 days, the controller and its probes; tab « Réglages »: the settings
-   (together, the device page's Avancé). Each column is a container, so its rows wrap at its own width. */
+/* tab « Avancé », read in the device page's Avancé order: today's plan, the controller and its probes (its « Capteurs
+   internes »), the firmware, the last 7 days; one column on a phone, the first three on the left when wide. Tab
+   « Réglages »: the settings (together, the device page's Avancé). Each column is a container, so its rows wrap at its
+   own width. */
 .advpane, .setpane { display:flex; flex-direction:column; gap:22px; }
 .setpane { container-type:inline-size; }
 .sp-col { display:flex; flex-direction:column; gap:22px; min-width:0; container-type:inline-size; }
@@ -601,7 +623,7 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
 .esect { margin:12px 0 2px; font-size:12px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
 .esect:first-child { margin-top:4px; }
 .erow { display:flex; align-items:center; gap:14px; min-height:48px; padding:4px 0; }
-.erow .ic { width:40px; height:40px; flex:none; display:grid; place-items:center; color:var(--state-icon-color,var(--muted)); }
+.erow .ic { width:40px; height:40px; flex:none; display:grid; place-items:center; color:var(--muted); } /* not the theme's --state-icon-color: neutral, as on the device page */
 .erow .ic svg, .erow .ic ha-icon { width:24px; height:24px; --mdc-icon-size:24px; }
 .erow .name { flex:1; min-width:0; overflow-wrap:anywhere; }
 .erow .name span { display:block; }
@@ -617,6 +639,34 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
   background:var(--acc); color:var(--on-acc); flex:none; }
 .btn:disabled { background:var(--raised); color:var(--muted); cursor:not-allowed; }
 .btn.busy { opacity:.6; pointer-events:none; }
+/* « Avancé » › Firmware on the update entity, « Réglages » › Position */
+.btn.tonal { background:transparent; color:var(--acc); border:1px solid var(--line); padding:0 14px; }
+.btn.tonal:disabled { background:transparent; color:var(--muted); opacity:.6; }
+.erow .btns { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.erow:has(> .btns) .name { min-width:6.5em; } /* two buttons go under the name rather than break « Mise à jour » */
+.erow .val.acc { color:var(--acc); font-weight:500; }
+.erow.more { cursor:pointer; border-radius:12px; margin:0 -8px; padding:4px 8px; }
+.erow.more:hover, .erow.more:focus-visible { background:var(--raised); outline:none; }
+.erow .chev { display:grid; flex:none; margin-left:-4px; color:var(--muted); }
+.erow .chev svg { width:18px; height:18px; }
+.erow .name small.bad { color:var(--danger); }
+.mono { font-family:var(--code-font-family,ui-monospace,SFMono-Regular,Menlo,monospace); font-size:11px; }
+.tgl { appearance:none; -webkit-appearance:none; width:40px; height:24px; border-radius:12px; background:var(--line); position:relative;
+  flex:none; cursor:pointer; transition:background .15s; margin:0 0 0 auto; }
+.tgl::after { content:""; position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#fff;
+  transition:transform .15s; box-shadow:0 1px 2px rgba(0,0,0,.3); }
+.tgl:checked { background:var(--acc); }
+.tgl:checked::after { transform:translateX(16px); }
+.tgl:disabled, .esel:disabled { opacity:.5; cursor:not-allowed; }
+.esel { height:36px; border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--acc); font:inherit;
+  font-size:14px; font-weight:500; padding:0 8px; margin-left:auto; flex:none; }
+.prog { height:6px; border-radius:3px; background:var(--line); overflow:hidden; margin:-2px 0 8px 54px; }
+.prog i { display:block; height:100%; background:var(--acc); border-radius:3px; transition:width .2s; }
+.prog.ind i { width:35% !important; animation:indet 1.1s ease-in-out infinite; }
+@keyframes indet { 0% { transform:translateX(-100%); } 100% { transform:translateX(290%); } }
+.banner .acts { flex:1 1 100%; display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
+.banner .btn.tonal { color:inherit; }
+.posnote { font-size:12px; color:var(--muted); margin:6px 0 0; }
 @container (max-width: 520px) {
   .erow { flex-wrap:wrap; }
   .erow .ctl { flex:1 1 100%; margin-left:54px; min-width:0; }
@@ -675,18 +725,20 @@ const PANEL_HTML = `
   <div class="advpane" role="tabpanel">
     <div class="sp-col">
       <section><h4 class="sp-h">Plan du jour</h4><div id="planRows"></div></section>
-      <section><h4 class="sp-h">7 derniers jours</h4><div class="days" id="days"></div></section>
-    </div>
-    <div class="sp-col">
       <section><h4 class="sp-h">Contrôleur</h4><div id="ctlRows"></div></section>
       <section><h4 class="sp-h">Sondes</h4><div id="probeRows"></div></section>
-      <section><h4 class="sp-h">Firmware</h4><div id="fwRows"></div></section>
+    </div>
+    <div class="sp-col">
+      <section id="fwSec"><h4 class="sp-h">Firmware</h4><div id="updRows"></div></section>
+      <section><h4 class="sp-h">7 derniers jours</h4><div class="days" id="days"></div></section>
     </div>
   </div>
   <div class="setpane" role="tabpanel">
     <section><h4 class="sp-h">Réglages<span class="chip" id="pendChip" hidden>En attente</span></h4>
       <div class="banner" id="pendBanner" hidden>${svg("alert")}<span>Durée de filtration modifiée : elle ne compte qu'une fois appliquée, ce qui recalcule le plan du jour.</span><button class="btn" id="applyNow">Appliquer</button></div>
       <div id="rows"></div></section>
+    <section id="posSec" hidden><h4 class="sp-h">Position</h4><div id="posRows"></div>
+      <p class="posnote">Arrondies à 0,01° (environ 1 km) : assez pour le lever et le coucher du soleil, d'où le contrôleur tire son plan, sans situer la maison.</p></section>
   </div>
   <div class="plan">
     <div class="plan-h"><p class="lbl">Plan du jour</p><span class="num" id="planSum"></span></div>
@@ -800,8 +852,7 @@ class PiscineCard extends HTMLElement {
     this._config = { variant, layout: config.layout || "horizontal", popup_hash: config.popup_hash || "#piscine", more_path: config.more_path || null,
       recorder: config.recorder !== false, title: config.title ?? "Réglages", icons: config.icons || null,
       settings_tab: config.settings_tab !== false, temperatures: config.temperatures !== false,
-      controller_light: config.controller_light !== false, health: { ...HEALTH, ...(config.controller_health || {}) },
-      firmware_repo: config.firmware_repo || FIRMWARE_REPO };
+      controller_light: config.controller_light !== false, health: { ...HEALTH, ...(config.controller_health || {}) } };
     this._e = { ...DEFAULT_ENTITIES, ...(config.entities || {}) };
     this.setAttribute("variant", variant);
     this._built = false;
@@ -816,7 +867,10 @@ class PiscineCard extends HTMLElement {
     this._tHover = null;       // 24 h: minutes before now; 7 j / 30 j: day index
     this._stats = null;        // 30 / 90 j: { "YYYY-MM-DD": {lo, hi} }, the 23:00 rows of the hourly statistics
     this._daily = null;        // 30 j – 1 an: { "YYYY-MM-DD": {mean (the probe), lo, hi (HA's day of Min/Max Today)} }
-    this._fwCheck = { busy: false, result: null }; // « Vérifier »: GitHub's answer, {text, cls, href}
+    // « Avancé » › Firmware on the update entity: the « Installer » question open, a check under way (until, since:
+    // ms), an install seen running (so an unavailable entity next reads as its reboot), what is drawn
+    this._upd = { ask: false, checkUntil: 0, checkFrom: 0, wasBusy: false, drawn: "" };
+    this._posDrawn = "";
     this._beatSeen = null; this._beatAt = -1e9; // the light's last heartbeat: the message it was for, when (performance.now)
     this._statsAt = 0; this._statsLoading = false; this._statsErr = false;
     this._tVer = 0; this._tDrawn = "";
@@ -949,6 +1003,11 @@ class PiscineCard extends HTMLElement {
       this._update();
     });
   }
+  /** Home Assistant's own more-info dialog for one of the card's entities (its history, an update's release notes). */
+  _moreInfo(key) {
+    this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: this._e[key] } }));
+    return true;
+  }
   _toast(msg, err = false) {
     const t = this._$("toast"); if (!t) return;
     t.textContent = msg; t.classList.toggle("err", err); t.classList.add("show");
@@ -992,33 +1051,18 @@ class PiscineCard extends HTMLElement {
     return { version: PiscineCard.parseVersion(this._s("fwVersion")),
       esphome: PiscineCard.parseEsphome(this._s("esphomeVersion")) || PiscineCard.parseEsphome(dev && dev.sw_version) };
   }
-  async _checkFirmware() {
-    const v = this._fw().version;
-    if (!v || !v.ref || this._fwCheck.busy) return;
-    this._fwCheck = { busy: true, result: null }; this._update();
-    const result = await PiscineCard.checkFirmware(this._config.firmware_repo, v.ref);
-    this._fwCheck = { busy: false, result }; this._update();
-  }
-  _fwCheckSub() {
-    const { busy, result } = this._fwCheck, v = this._fw().version;
-    if (busy) return "Vérification auprès de GitHub…";
-    if (result) return result;
-    if (!v) return "Ce firmware ne dit pas de quel commit il vient : il faut l'installer avec make ota.";
-    if (!v.ref) return "Compilé hors de make : pas de commit à comparer.";
-    return "Compare cette version avec la branche main du dépôt sur GitHub.";
-  }
   /**
-   * Firmware Version, « v1.3.0-4-g1a2b3c4-dirty » (git describe, as make compiles it) -> {label, sub, ref: what to
-   * compare on GitHub (the commit, or the tag), dirty}. Also used by the device's page.
+   * Firmware Version, « v1.4.0 » (a release) or « v1.3.0-4-g1a2b3c4-dirty » (git describe, as make compiles it) ->
+   * {label, sub, dirty}. Also used by the device's page.
    */
   static parseVersion(text) {
     const t = String(text || "").trim();
     if (!t || t === "unknown" || t === "unavailable") return null;
     const m = /^(?:(v\d[\w.]*?)(?:-(\d+)-g([0-9a-f]{7,40}))?|([0-9a-f]{7,40}))(-dirty)?$/.exec(t);
-    if (!m) return { label: t, sub: "Compilé hors de make : on ne sait pas de quel commit", ref: null, dirty: false };
+    if (!m) return { label: t, sub: "Compilé hors de make : on ne sait pas de quel commit", dirty: false };
     const [, tag, n, hash, bare, dirty] = m, local = dirty ? " · avec des modifications locales" : "";
-    if (bare) return { label: bare.slice(0, 7), sub: `Commit ${bare.slice(0, 7)}${local}`, ref: bare, dirty: !!dirty };
-    return { label: n ? `${tag} +${n}` : tag, sub: (hash ? `Commit ${hash.slice(0, 7)}, ${n} commit${+n > 1 ? "s" : ""} après ${tag}` : "Version publiée") + local, ref: hash || tag, dirty: !!dirty };
+    if (bare) return { label: bare.slice(0, 7), sub: `Commit ${bare.slice(0, 7)}${local}`, dirty: !!dirty };
+    return { label: n ? `${tag} +${n}` : tag, sub: (hash ? `Commit ${hash.slice(0, 7)}, ${n} commit${+n > 1 ? "s" : ""} après ${tag}` : "Version publiée") + local, dirty: !!dirty };
   }
   /**
    * ESPHome's version and build time -> {version, built}, from ESPHome Version (« 2026.7.2 (config hash 0x528082c4,
@@ -1034,24 +1078,180 @@ class PiscineCard extends HTMLElement {
     return { version: m[1], built };
   }
   /**
-   * Has main changed the firmware since `ref` (a commit or a tag)? GitHub's compare API, three dots: a branch not
-   * merged yet compares from where it left main. A change to a file the firmware is built from (FIRMWARE_FILES) is an
-   * update; installing it stays `make ota`, since the firmware carries its owner's secrets. -> {text, cls, href}.
+   * Update Status, the firmware's updates and their gate (WP6): « non vérifié », « vérification », « à jour »,
+   * « disponible », « en attente (mode manuel) », « en attente (remplissage) », « installation », « erreur
+   * (vérification) », « erreur (installation) » (English forms too: « deferred: manual override », « failed: … »)
+   * -> {kind, why}: kind is deferred, failed, installing, checking or "" (nothing to add to the update entity);
+   * why, in the card's words. Also for the device's page.
    */
-  static async checkFirmware(repo, ref) {
-    let r;
-    try { r = await fetch(`https://api.github.com/repos/${repo}/compare/${encodeURIComponent(ref)}...main`, { headers: { Accept: "application/vnd.github+json" } }); }
-    catch (err) { return { text: "GitHub injoignable : vérifiez l'accès à Internet de cet appareil.", cls: "" }; }
-    if (r.status === 404) return { text: "Version introuvable sur GitHub : compilée depuis des modifications non publiées, rien à comparer.", cls: "" };
-    if (!r.ok) return { text: `GitHub n'a pas répondu (${r.status}${r.status === 403 || r.status === 429 ? " : trop de demandes, réessayez dans une heure" : ""}).`, cls: "" };
-    const d = await r.json(), n = d.ahead_by || 0, commits = `${n} commit${n > 1 ? "s" : ""}`;
-    const branch = d.behind_by > 0 ? " Elle vient d'une branche pas encore fusionnée." : "";
-    const files = (d.files || []).map((f) => f.filename).filter((f) => FIRMWARE_FILES.some((p) => (p.endsWith("/") ? f.startsWith(p) : f === p)));
-    if (!n) return { text: d.behind_by ? "À jour : plus récente que main (une branche pas encore fusionnée)." : "À jour : c'est la version de main.", cls: "fw-ok" };
-    if (!files.length) return { text: `À jour : ${commits} sur main depuis, aucun ne touche au firmware.${branch}`, cls: "fw-ok", href: d.html_url };
-    return { text: `Mise à jour disponible : ${commits} sur main depuis, qui changent le firmware (${files.slice(0, 3).join(", ")}${files.length > 3 ? "…" : ""}). Pour l'installer : make ota depuis le dépôt.${branch}`,
-      cls: "fw-up", href: d.html_url };
+  static parseUpdateStatus(text) {
+    const t = String(text || "").trim();
+    if (!isSet(t) || t === "--") return { kind: "", why: "" };
+    const m = /^([^:(]+?)\s*(?:[:(]\s*(.*?)\)?)?$/.exec(t) || [t, t], head = m[1], rest = m[2] || "";
+    const kind = /^(deferred|held|waiting|pending|en attente|différée?)/i.test(head) ? "deferred"
+      : /^(failed|error|échec|erreur)/i.test(head) ? "failed"
+      : /^(installing|downloading|writing|installation|téléchargement)/i.test(head) ? "installing"
+      : /^(checking|vérification)/i.test(head) ? "checking" : "";
+    const why = /override|manuel/i.test(rest) ? "override en cours" : /fill|rempl/i.test(rest) ? "remplissage en cours"
+      : kind === "failed" && /v[ée]rif|check/i.test(rest) ? "la vérification n'a pas abouti (pas de réseau, ou aucune version publiée pour l'instant)"
+      : kind === "failed" && /install/i.test(rest) ? "l'installation n'a pas abouti" : rest;
+    return { kind, why: kind ? why : "" };
   }
+  /** IANA zone (« Europe/Paris ») -> its POSIX TZ string (TZ_POSIX), or null for a name tzdata doesn't have. */
+  static posixTz(iana) {
+    if (!TZ_BY_NAME) {
+      TZ_BY_NAME = new Map();
+      for (const [posix, names] of Object.entries(TZ_POSIX)) for (const n of names.split(" ")) TZ_BY_NAME.set(n, posix);
+    }
+    return TZ_BY_NAME.get(String(iana || "")) || null;
+  }
+  /** Why the firmware would hold an install now (its gate): a manual override, or a fill. Null when nothing would. */
+  _hold() {
+    if (this._inOvr()) {
+      const until = this._ovrUntil();
+      return { long: `override manuel en cours (${SPEEDS[this._override()]}${until ? `, retour en Auto à ${fmtT(until)}` : ", sans fin"})`, ovr: true };
+    }
+    return this._n("flow") > 0 ? { long: "remplissage en cours", ovr: false } : null;
+  }
+  /** The update entity as « Avancé » › Firmware shows it; null without one (a firmware before WP6). */
+  _updModel() {
+    const u = this._st("firmware");
+    if (!u) return null;
+    const a = u.attributes || {}, off = !isSet(u.state), status = PiscineCard.parseUpdateStatus(this._s("updateStatus"));
+    const busy = !off && (!!a.in_progress || status.kind === "installing"), fw = this._fw();
+    const pct = !busy ? null : Number.isFinite(a.update_percentage) ? a.update_percentage : typeof a.in_progress === "number" ? a.in_progress : null;
+    return { off, busy, pct: pct === null ? null : Math.round(pct), rebooting: off && this._upd.wasBusy,
+      installed: (!off && a.installed_version) || fw.version?.label || "—", esphome: fw.esphome,
+      latest: off ? null : a.latest_version || null, avail: u.state === "on", notes: a.release_url || null,
+      status, checking: Date.now() < this._upd.checkUntil || status.kind === "checking",
+      hold: this._hold(), ask: this._upd.ask, online: this._online(), canCheck: !!this._st("checkUpdate"), canCancel: !!this._st("cancelUpdate"),
+      auto: this._st("autoUpdate"), interval: this._st("updateInterval"), updated: Date.parse(u.last_updated) || 0,
+      statusAt: Date.parse(this._st("updateStatus")?.last_updated) || 0 };
+  }
+  /** « Avancé » › Firmware on the update entity, as HTML (mock-up 2026-11-18): one string per state, drawn when it changes. */
+  _updHtml(m) {
+    // `more`: the row opens Home Assistant's own dialog for the update entity (release notes, « Ignorer »)
+    const row = (icon, label, sub, right, cls = "", more = false) => `<div class="erow${more ? ' more" data-act="more" role="button" tabindex="0" title="Ouvrir dans Home Assistant' : ""}">`
+      + `<span class="ic">${this._icon(icon)}</span><span class="name"><span>${label}</span>`
+      + `${sub ? `<small class="${cls}">${sub}</small>` : ""}</span>${right}${more ? `<span class="chev">${svg("chevron")}</span>` : ""}</div>`;
+    const val = (v, cls = "") => `<span class="val num${cls}">${esc(v)}</span>`;
+    const st = m.status, deferred = st.kind === "deferred" && !m.busy, latest = esc(m.latest || "");
+    const status = m.rebooting ? "Redémarrage du contrôleur…"
+      : m.off ? "Contrôleur injoignable : versions inconnues pour l'instant"
+      : m.busy ? (m.pct !== null ? `Installation : ${m.pct} %` : "Installation…")
+      : m.checking ? "Recherche d'une nouvelle version…"
+      : deferred ? `En attente : ${esc(st.why || "le contrôleur attend")}`
+      : st.kind === "failed" ? `Échec : ${esc(st.why || "l'installation n'a pas abouti")}`
+      : m.avail ? `${latest} : environ 1 min, redémarrage compris` : "Rien à installer";
+    const idle = !m.off && m.online && !m.busy;
+    const btns = (m.canCheck ? `<button class="btn tonal" data-act="check"${idle && !m.checking ? "" : " disabled"}>Vérifier</button>` : "")
+      + (m.avail ? `<button class="btn" data-act="install"${idle && !deferred && !m.ask ? "" : " disabled"}>${deferred ? "En attente" : "Installer"}</button>` : "");
+    const auto = m.auto, iv = m.interval, opts = (iv && iv.attributes.options) || [];
+    return row("tag-outline", "Version installée", m.esphome ? esc(`ESPHome ${m.esphome.version}${m.esphome.built ? ` · ${m.esphome.built.charAt(0).toLowerCase()}${m.esphome.built.slice(1)}` : ""}`) : "", val(m.installed), "", !m.off)
+      + (m.latest ? row("cloud-sync-outline", "Dernière version", (m.avail ? "Mise à jour disponible" : "À jour")
+        + (/^https?:\/\//.test(m.notes || "") ? ` · <a href="${esc(m.notes)}" target="_blank" rel="noopener">Notes de version</a>` : ""), val(m.latest, m.avail ? " acc" : ""), m.avail ? "fw-up" : "fw-ok", true) : "")
+      + row("download", "Mise à jour", status, btns ? `<span class="btns">${btns}</span>` : "", st.kind === "failed" && !m.busy && !m.off ? "bad" : "")
+      + (m.busy && m.pct !== null ? `<div class="prog"><i style="width:${m.pct}%"></i></div>` : m.busy || m.rebooting || m.checking ? `<div class="prog ind"><i></i></div>` : "")
+      + (m.ask && m.hold && m.avail ? `<div class="banner">${svg("alert")}<span>${esc(cap(m.hold.long))} : le contrôleur n'installe rien pendant ce temps. Il installera ${latest} dès la fin, `
+        + `puis redémarre (environ 30 s ; la pompe s'arrête le temps du redémarrage).${m.hold.ovr ? " Pour installer tout de suite, revenez d'abord en Auto." : ""}</span>`
+        + `<div class="acts"><button class="btn tonal" data-act="ask-no">Annuler</button><button class="btn" data-act="ask-yes">Installer à la fin</button></div></div>` : "")
+      + (deferred ? `<div class="banner">${svg("timer")}<span>Installation${latest ? ` de ${latest}` : ""} en attente : ${esc(m.hold ? m.hold.long : st.why || "le contrôleur attend")}. `
+        + "Le contrôleur la lancera de lui-même ensuite.</span>"
+        + (m.canCancel ? `<div class="acts"><button class="btn tonal" data-act="cancel"${m.online ? "" : " disabled"}>Annuler la demande</button></div>` : "") + "</div>" : "")
+      + (auto ? row("autorenew", "Mise à jour automatique", "Installe seule une nouvelle version trouvée par une vérification programmée ; « Vérifier » ne fait que chercher. Comme toute installation, elle attend la fin d'un override manuel ou d'un remplissage.",
+        `<input type="checkbox" class="tgl" data-act="auto" aria-label="Mise à jour automatique"${auto.state === "on" ? " checked" : ""}${isSet(auto.state) ? "" : " disabled"}>`) : "")
+      + (iv ? row("timer-outline", "Fréquence de vérification", /demande/i.test(iv.state) ? "Seulement sur « Vérifier » : rien ne s'installe seul" : isSet(iv.state) ? "La mise à jour automatique installe ce qu'elle trouve" : "",
+        `<select class="esel" data-act="interval" aria-label="Fréquence de vérification"${isSet(iv.state) ? "" : " disabled"}>${opts.includes(iv.state) ? "" : "<option selected></option>"}`
+        + opts.map((o) => `<option${o === iv.state ? " selected" : ""}>${esc(o)}</option>`).join("") + "</select>") : "");
+  }
+  /** Draws « Avancé » › Firmware when the update entity exists; says how a « Vérifier » ended. */
+  _renderUpdate() {
+    const host = this._$("updRows"), m = this._updModel(), U = this._upd;
+    this._$("fwSec").hidden = !m; // no update entity (a firmware before v1.4): nothing to show
+    if (!m) return;
+    if (m.busy) U.wasBusy = true; else if (!m.off) U.wasBusy = false;
+    m.rebooting = m.off && U.wasBusy;
+    // a « Vérifier » ends when the entity changes, when Update Status moves on from « vérification », or after 10 s
+    // (an answer that changes nothing changes no state)
+    const settled = m.statusAt > U.checkFrom && m.status.kind !== "checking";
+    if (U.checkUntil && (m.updated > U.checkFrom || settled || Date.now() >= U.checkUntil || m.off)) {
+      U.checkUntil = 0; m.checking = false;
+      if (m.status.kind === "failed") this._toast(cap(m.status.why), true);
+      else if (!m.off) this._toast(m.avail ? `Firmware ${m.latest} disponible` : `Firmware à jour (${m.installed})`);
+    }
+    if (U.ask && (!m.hold || !m.avail || m.busy)) U.ask = m.ask = false; // nothing holds it any more: « Installer » is enough
+    const html = this._updHtml(m);
+    if (html !== U.drawn) { U.drawn = html; host.innerHTML = html; } // only on a change: a link rebuilt every second loses its hover
+  }
+  _wireUpdate() {
+    const host = this._$("updRows"), U = this._upd;
+    const redraw = () => { U.drawn = ""; this._update(); };
+    const send = (domain, service, data, ok) => this._hass.callService(domain, service, data)
+      .then(() => ok && this._toast(ok), (err) => { this._refused(err); redraw(); });
+    const install = () => {
+      const m = this._updModel();
+      send("update", "install", { entity_id: this._e.firmware },
+        m.hold ? `Installation de ${m.latest} demandée : le contrôleur la lancera à la fin ${m.hold.ovr ? "de l'override" : "du remplissage"}` : `Installation de ${m.latest} demandée`);
+    };
+    const more = (ev) => !ev.target.closest("a") && ev.target.closest('[data-act="more"]') && this._moreInfo("firmware");
+    host.addEventListener("keydown", (ev) => { if ((ev.key === "Enter" || ev.key === " ") && more(ev)) ev.preventDefault(); });
+    host.addEventListener("click", (ev) => {
+      if (more(ev)) return;
+      const b = ev.target.closest("button[data-act]");
+      if (!b || b.disabled) return;
+      const act = b.dataset.act;
+      if (act === "check") {
+        U.checkFrom = Date.now(); U.checkUntil = U.checkFrom + 10000;
+        this._hass.callService("button", "press", { entity_id: this._e.checkUpdate }).catch((err) => { U.checkUntil = 0; this._refused(err); redraw(); });
+        this._update();
+      } else if (act === "install") { if (this._hold()) { U.ask = true; this._update(); } else install(); }
+      else if (act === "ask-no") { U.ask = false; this._update(); }
+      else if (act === "ask-yes") { U.ask = false; install(); this._update(); }
+      else if (act === "cancel") send("button", "press", { entity_id: this._e.cancelUpdate }, "Demande d'installation annulée");
+    });
+    host.addEventListener("change", (ev) => {
+      const t = ev.target;
+      if (t.dataset.act === "auto") send("switch", t.checked ? "turn_on" : "turn_off", { entity_id: this._e.autoUpdate });
+      else if (t.dataset.act === "interval" && t.value) send("select", "select_option", { entity_id: this._e.updateInterval, option: t.value });
+    });
+  }
+
+  /* ---------- panel, tab « Réglages » › Position ---------- */
+  /** Home Assistant's own position and zone (hass.config), as the controller would take them; null without one. */
+  _haPos() {
+    const c = this._hass.config;
+    if (!c || !Number.isFinite(c.latitude) || !Number.isFinite(c.longitude)) return null;
+    return { lat: r2(c.latitude), lon: r2(c.longitude), iana: c.time_zone || "", posix: PiscineCard.posixTz(c.time_zone) };
+  }
+  _renderPos() {
+    const sec = this._$("posSec");
+    sec.hidden = !this._st("latitude") && !this._st("longitude") && !this._st("timezone");
+    if (sec.hidden) return;
+    const lat = this._n("latitude"), lon = this._n("longitude"), tz = this._s("timezone"), name = this._s("timezoneName"), h = this._haPos();
+    const near = (a, b) => Number.isFinite(a) && Math.abs(a - b) < 0.005;
+    const same = h && near(lat, h.lat) && near(lon, h.lon) && (!h.posix || (tz === h.posix && name === h.iana));
+    const row = (key, icon, label, value, sub = "") => (this._st(key) ? `<div class="erow"><span class="ic">${this._icon(icon)}</span><span class="name"><span>${label}</span>`
+      + `${sub ? `<small>${sub}</small>` : ""}</span><span class="val num">${esc(value)}</span></div>` : "");
+    const html = row("latitude", "map-marker", "Latitude", deg(lat)) + row("longitude", "map-marker", "Longitude", deg(lon))
+      + row("timezone", "earth", "Fuseau horaire", isSet(name) ? name : isSet(tz) ? "chaîne POSIX saisie" : "non défini", isSet(tz) ? `POSIX <span class="mono">${esc(tz)}</span>` : "")
+      + (h ? `<div class="erow"><span class="ic">${this._icon("home-assistant")}</span><span class="name"><span>Utiliser la position et le fuseau de Home Assistant</span><small>${same
+        ? (h.posix ? "Déjà ceux de Home Assistant." : esc(`Position déjà celle de Home Assistant ; son fuseau (${h.iana}) est inconnu de la carte : réglez-le sur la page du contrôleur.`))
+        : esc(`Home Assistant : ${deg(h.lat)} · ${deg(h.lon)} · ${h.iana || "fuseau non défini"}${h.posix ? "" : " (fuseau inconnu de la carte : la position seule)"}`)}</small></span>`
+        + `<button class="btn" data-act="pos-ha"${same || !this._online() ? " disabled" : ""}>Utiliser</button></div>` : "");
+    if (html !== this._posDrawn) { this._posDrawn = html; this._$("posRows").innerHTML = html; }
+  }
+  /** Writes hass.config's position, and its zone when TZ_POSIX has it: Timezone (POSIX, applied) and Timezone Name together. */
+  _posFromHa(btn) {
+    const h = this._haPos();
+    if (!h) return;
+    const writes = [["latitude", "number", h.lat], ["longitude", "number", h.lon], ...(h.posix ? [["timezone", "text", h.posix], ["timezoneName", "text", h.iana]] : [])]
+      .filter(([key]) => this._st(key));
+    btn.classList.add("busy");
+    Promise.all(writes.map(([key, domain, value]) => this._hass.callService(domain, "set_value", { entity_id: this._e[key], value })))
+      .then(() => this._toast(`${h.posix ? "Position et fuseau de Home Assistant envoyés" : "Position de Home Assistant envoyée"} : plan du jour recalculé`), (err) => this._refused(err))
+      .finally(() => { btn.classList.remove("busy"); this._posDrawn = ""; this._update(); });
+  }
+
   /** « Hors ligne depuis 6 min », « Contrôleur muet depuis 5 min », else `live`. */
   _lightText(L, live = `Contrôleur · ${agoTxt(L.quiet)}`, mute = "Contrôleur muet") {
     if (L.off !== null) return Number.isFinite(L.off) ? `Hors ligne depuis ${fmtD(L.off)}` : "Hors ligne";
@@ -1619,10 +1819,10 @@ class PiscineCard extends HTMLElement {
     for (const sc of this._sects) sc.el.hidden = sc.rows.every((r) => r.row.hidden);
   }
 
-  /* ---------- panel, tab « Avancé »: Plan du jour, 7 derniers jours, Contrôleur, Sondes (and « Réglages »' rows) ---------- */
+  /* ---------- panel, tab « Avancé »: Plan du jour, Contrôleur, Sondes, Firmware, 7 derniers jours (and « Réglages »' rows) ---------- */
   _wireSetPane() {
     this._wireSettingRows();
-    for (const [host, defs] of [[this._$("planRows"), PLAN_ROWS], [this._$("ctlRows"), CTL_ROWS], [this._$("probeRows"), PROBE_ROWS], [this._$("fwRows"), FW_ROWS]]) {
+    for (const [host, defs] of [[this._$("planRows"), PLAN_ROWS], [this._$("ctlRows"), CTL_ROWS], [this._$("probeRows"), PROBE_ROWS]]) {
       let sect = null;
       for (const def of defs) {
         if (def.sect) { sect = document.createElement("div"); sect.className = "esect"; sect.textContent = def.sect; host.appendChild(sect); continue; }
@@ -1631,31 +1831,33 @@ class PiscineCard extends HTMLElement {
           + (def.button ? `<button class="btn"></button>` : `<span class="val num"></span>`);
         row.querySelector(".name span").textContent = def.label;
         const r = { def, row, sect, val: row.querySelector(".val"), sub: row.querySelector("small"), btn: row.querySelector("button"), icon: null };
-        if (r.btn) { r.btn.textContent = def.button; r.btn.addEventListener("click", () => (def.action ? def.action(this) : this._press(r.btn, def.key, def.ok))); }
+        if (r.btn) { r.btn.textContent = def.button; r.btn.addEventListener("click", () => this._press(r.btn, def.key, def.ok)); }
         host.appendChild(row);
         this._paneRows.push(r);
       }
     }
+    this._wireUpdate();
+    this._$("posRows").addEventListener("click", (ev) => {
+      const b = ev.target.closest('button[data-act="pos-ha"]');
+      if (b && !b.disabled) this._posFromHa(b);
+    });
   }
   _renderAdvPane() {
     for (const r of this._paneRows) {
       const e = this._st(r.def.key);
-      r.row.hidden = r.def.has ? !r.def.has(this) : !e;
+      r.row.hidden = !e;
       if (r.row.hidden) continue;
       const ic = (e && e.attributes.icon) || r.def.icon;
       if (r.icon !== ic) { r.row.querySelector(".ic").innerHTML = this._icon(ic); r.icon = ic; }
-      const sub = r.def.sub ? r.def.sub(this) : "", sx = typeof sub === "object" ? sub : { text: sub };
-      const subKey = [sx.text, sx.cls, sx.href].join("|");
-      if (r.subKey !== subKey) { // only when it changes: a link rebuilt every second would lose its hover
-        r.subKey = subKey; r.sub.textContent = sx.text || ""; r.sub.className = sx.cls || ""; r.sub.hidden = !sx.text;
-        if (sx.href) { const a = document.createElement("a"); a.href = sx.href; a.target = "_blank"; a.rel = "noopener"; a.textContent = "Voir les changements"; r.sub.append(" ", a); }
-      }
-      if (r.btn) { r.btn.disabled = r.def.disabled ? r.def.disabled(this) : !this._online(); continue; }
+      const sub = r.def.sub ? r.def.sub(this) : "";
+      if (r.subText !== sub) { r.subText = sub; r.sub.textContent = sub; r.sub.hidden = !sub; }
+      if (r.btn) { r.btn.disabled = !this._online(); continue; }
       r.val.textContent = r.def.val(this);
       const tone = r.def.tone ? r.def.tone(this) : "";
       r.val.classList.toggle("bad", tone === "bad"); r.val.classList.toggle("warn", tone === "warn");
     }
     for (const r of this._paneRows) if (r.sect) r.sect.hidden = this._paneRows.every((x) => x.sect !== r.sect || x.row.hidden);
+    this._renderUpdate();
     this._renderDays();
   }
   /** Closed days from the device's Daily History, plus today so far: hours filtered, the plan's mark, the pool's min–max. */
@@ -1721,7 +1923,7 @@ class PiscineCard extends HTMLElement {
     // without the recorder only Daily History's 7 days exist: no range to choose
     this._$("tRange").hidden = !this._config.recorder;
     this.shadowRoot.querySelectorAll(".ptile").forEach((b) => b.addEventListener("click", () => {
-      this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: this._e[b.dataset.key] } }));
+      this._moreInfo(b.dataset.key);
     }));
     this._wireSetPane();
 
@@ -1948,7 +2150,7 @@ class PiscineCard extends HTMLElement {
       b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1;
     });
     if (this._tab === "adv") this._renderAdvPane();
-    if (this._tab === "settings") this._updateSettings();
+    if (this._tab === "settings") { this._updateSettings(); this._renderPos(); }
 
     // « Températures » at the foot of « Pompe »
     const probes = { outdoor: this._st("outdoor"), pad: this._st("pad") };
@@ -2048,6 +2250,110 @@ class PiscineCard extends HTMLElement {
     this._renderWater();
   }
 }
+
+/**
+ * IANA zone -> POSIX TZ string, for « Utiliser la position et le fuseau de Home Assistant » (PiscineCard.posixTz):
+ * every name tzdata knows, zones and links, grouped by the rule in force (each TZif file's footer). Generated.
+ */
+/* TZ_POSIX begin: tools/tz-posix.py, tzdata 2026f, 598 zones; don't edit by hand */
+const TZ_POSIX = {
+  "GMT0": "Africa/Abidjan Africa/Accra Africa/Bamako Africa/Banjul Africa/Bissau Africa/Conakry Africa/Dakar Africa/Freetown Africa/Lome Africa/Monrovia Africa/Nouakchott Africa/Ouagadougou Africa/Sao_Tome Africa/Timbuktu America/Danmarkshavn Atlantic/Reykjavik Atlantic/St_Helena Etc/GMT Etc/GMT+0 Etc/GMT-0 Etc/GMT0 Etc/Greenwich GMT GMT+0 GMT-0 GMT0 Greenwich Iceland",
+  "EAT-3": "Africa/Addis_Ababa Africa/Asmara Africa/Asmera Africa/Dar_es_Salaam Africa/Djibouti Africa/Kampala Africa/Mogadishu Africa/Nairobi Indian/Antananarivo Indian/Comoro Indian/Mayotte",
+  "CET-1": "Africa/Algiers Africa/Tunis",
+  "WAT-1": "Africa/Bangui Africa/Brazzaville Africa/Douala Africa/Kinshasa Africa/Lagos Africa/Libreville Africa/Luanda Africa/Malabo Africa/Ndjamena Africa/Niamey Africa/Porto-Novo",
+  "CAT-2": "Africa/Blantyre Africa/Bujumbura Africa/Gaborone Africa/Harare Africa/Juba Africa/Khartoum Africa/Kigali Africa/Lubumbashi Africa/Lusaka Africa/Maputo Africa/Windhoek",
+  "EET-2EEST,M4.5.5/0,M10.5.4/24": "Africa/Cairo Egypt",
+  "<+00>0": "Africa/Casablanca Africa/El_Aaiun",
+  "CET-1CEST,M3.5.0,M10.5.0/3": "Africa/Ceuta Arctic/Longyearbyen Atlantic/Jan_Mayen CET Europe/Amsterdam Europe/Andorra Europe/Belgrade Europe/Berlin Europe/Bratislava Europe/Brussels Europe/Budapest Europe/Busingen Europe/Copenhagen Europe/Gibraltar Europe/Ljubljana Europe/Luxembourg Europe/Madrid Europe/Malta Europe/Monaco Europe/Oslo Europe/Paris Europe/Podgorica Europe/Prague Europe/Rome Europe/San_Marino Europe/Sarajevo Europe/Skopje Europe/Stockholm Europe/Tirane Europe/Vaduz Europe/Vatican Europe/Vienna Europe/Warsaw Europe/Zagreb Europe/Zurich MET Poland",
+  "SAST-2": "Africa/Johannesburg Africa/Maseru Africa/Mbabane",
+  "EET-2": "Africa/Tripoli Europe/Kaliningrad Libya",
+  "HST10HDT,M3.2.0,M11.1.0": "America/Adak America/Atka US/Aleutian",
+  "AKST9AKDT,M3.2.0,M11.1.0": "America/Anchorage America/Juneau America/Metlakatla America/Nome America/Sitka America/Yakutat US/Alaska",
+  "AST4": "America/Anguilla America/Antigua America/Aruba America/Barbados America/Blanc-Sablon America/Curacao America/Dominica America/Grenada America/Guadeloupe America/Kralendijk America/Lower_Princes America/Marigot America/Martinique America/Montserrat America/Port_of_Spain America/Puerto_Rico America/Santo_Domingo America/St_Barthelemy America/St_Kitts America/St_Lucia America/St_Thomas America/St_Vincent America/Tortola America/Virgin",
+  "<-03>3": "America/Araguaina America/Argentina/Buenos_Aires America/Argentina/Catamarca America/Argentina/ComodRivadavia America/Argentina/Cordoba America/Argentina/Jujuy America/Argentina/La_Rioja America/Argentina/Mendoza America/Argentina/Rio_Gallegos America/Argentina/Salta America/Argentina/San_Juan America/Argentina/San_Luis America/Argentina/Tucuman America/Argentina/Ushuaia America/Asuncion America/Bahia America/Belem America/Buenos_Aires America/Catamarca America/Cayenne America/Cordoba America/Coyhaique America/Fortaleza America/Jujuy America/Maceio America/Mendoza America/Montevideo America/Paramaribo America/Punta_Arenas America/Recife America/Rosario America/Santarem America/Sao_Paulo Antarctica/Palmer Antarctica/Rothera Atlantic/Stanley Brazil/East Etc/GMT+3",
+  "EST5": "America/Atikokan America/Cancun America/Cayman America/Coral_Harbour America/Jamaica America/Panama America/Rainy_River America/Winnipeg Canada/Central EST Jamaica",
+  "CST6": "America/Bahia_Banderas America/Belize America/Chihuahua America/Costa_Rica America/Edmonton America/El_Salvador America/Guatemala America/Inuvik America/Managua America/Merida America/Mexico_City America/Monterrey America/Regina America/Swift_Current America/Tegucigalpa America/Yellowknife Canada/Mountain Canada/Saskatchewan Mexico/General",
+  "<-04>4": "America/Boa_Vista America/Campo_Grande America/Caracas America/Cuiaba America/Guyana America/La_Paz America/Manaus America/Porto_Velho Brazil/West Etc/GMT+4",
+  "<-05>5": "America/Bogota America/Eirunepe America/Guayaquil America/Lima America/Porto_Acre America/Rio_Branco Brazil/Acre Etc/GMT+5",
+  "MST7MDT,M3.2.0,M11.1.0": "America/Boise America/Cambridge_Bay America/Ciudad_Juarez America/Denver America/Shiprock MST7MDT Navajo US/Mountain",
+  "CST6CDT,M3.2.0,M11.1.0": "America/Chicago America/Indiana/Knox America/Indiana/Tell_City America/Knox_IN America/Matamoros America/Menominee America/North_Dakota/Beulah America/North_Dakota/Center America/North_Dakota/New_Salem America/Ojinaga America/Rankin_Inlet America/Resolute CST6CDT US/Central US/Indiana-Starke",
+  "MST7": "America/Creston America/Dawson America/Dawson_Creek America/Fort_Nelson America/Hermosillo America/Mazatlan America/Phoenix America/Vancouver America/Whitehorse Canada/Pacific Canada/Yukon MST Mexico/BajaSur US/Arizona",
+  "EST5EDT,M3.2.0,M11.1.0": "America/Detroit America/Fort_Wayne America/Grand_Turk America/Indiana/Indianapolis America/Indiana/Marengo America/Indiana/Petersburg America/Indiana/Vevay America/Indiana/Vincennes America/Indiana/Winamac America/Indianapolis America/Iqaluit America/Kentucky/Louisville America/Kentucky/Monticello America/Louisville America/Montreal America/Nassau America/New_York America/Nipigon America/Pangnirtung America/Port-au-Prince America/Thunder_Bay America/Toronto Canada/Eastern EST5EDT US/East-Indiana US/Eastern US/Michigan",
+  "PST8PDT,M3.2.0,M11.1.0": "America/Ensenada America/Los_Angeles America/Santa_Isabel America/Tijuana Mexico/BajaNorte PST8PDT US/Pacific",
+  "AST4ADT,M3.2.0,M11.1.0": "America/Glace_Bay America/Goose_Bay America/Halifax America/Moncton America/Thule Atlantic/Bermuda Canada/Atlantic",
+  "<-02>2<-01>,M3.5.0/-1,M10.5.0/0": "America/Godthab America/Nuuk America/Scoresbysund",
+  "CST5CDT,M3.2.0/0,M11.1.0/1": "America/Havana Cuba",
+  "<-03>3<-02>,M3.2.0,M11.1.0": "America/Miquelon",
+  "<-02>2": "America/Noronha Atlantic/South_Georgia Brazil/DeNoronha Etc/GMT+2",
+  "<-04>4<-03>,M9.1.6/24,M4.1.6/24": "America/Santiago Chile/Continental",
+  "NST3:30NDT,M3.2.0,M11.1.0": "America/St_Johns Canada/Newfoundland",
+  "<+08>-8": "Antarctica/Casey Asia/Brunei Asia/Choibalsan Asia/Irkutsk Asia/Kuala_Lumpur Asia/Kuching Asia/Singapore Asia/Ulaanbaatar Asia/Ulan_Bator Etc/GMT-8 Singapore",
+  "<+07>-7": "Antarctica/Davis Asia/Bangkok Asia/Barnaul Asia/Ho_Chi_Minh Asia/Hovd Asia/Krasnoyarsk Asia/Novokuznetsk Asia/Novosibirsk Asia/Phnom_Penh Asia/Saigon Asia/Tomsk Asia/Vientiane Etc/GMT-7 Indian/Christmas",
+  "<+10>-10": "Antarctica/DumontDUrville Asia/Ust-Nera Asia/Vladivostok Etc/GMT-10 Pacific/Chuuk Pacific/Port_Moresby Pacific/Truk Pacific/Yap",
+  "AEST-10AEDT,M10.1.0,M4.1.0/3": "Antarctica/Macquarie Australia/ACT Australia/Canberra Australia/Currie Australia/Hobart Australia/Melbourne Australia/NSW Australia/Sydney Australia/Tasmania Australia/Victoria",
+  "<+05>-5": "Antarctica/Mawson Antarctica/Vostok Asia/Almaty Asia/Aqtau Asia/Aqtobe Asia/Ashgabat Asia/Ashkhabad Asia/Atyrau Asia/Dushanbe Asia/Oral Asia/Qostanay Asia/Qyzylorda Asia/Samarkand Asia/Tashkent Asia/Yekaterinburg Etc/GMT-5 Indian/Kerguelen Indian/Maldives",
+  "NZST-12NZDT,M9.5.0,M4.1.0/3": "Antarctica/McMurdo Antarctica/South_Pole NZ Pacific/Auckland",
+  "<+03>-3": "Antarctica/Syowa Asia/Aden Asia/Amman Asia/Baghdad Asia/Bahrain Asia/Damascus Asia/Istanbul Asia/Kuwait Asia/Qatar Asia/Riyadh Etc/GMT-3 Europe/Istanbul Europe/Minsk Turkey",
+  "<+00>0<+02>-2,M3.5.0/1,M10.5.0/3": "Antarctica/Troll",
+  "<+12>-12": "Asia/Anadyr Asia/Kamchatka Etc/GMT-12 Kwajalein Pacific/Fiji Pacific/Funafuti Pacific/Kwajalein Pacific/Majuro Pacific/Nauru Pacific/Tarawa Pacific/Wake Pacific/Wallis",
+  "<+04>-4": "Asia/Baku Asia/Dubai Asia/Muscat Asia/Tbilisi Asia/Yerevan Etc/GMT-4 Europe/Astrakhan Europe/Samara Europe/Saratov Europe/Ulyanovsk Indian/Mahe Indian/Mauritius Indian/Reunion",
+  "EET-2EEST,M3.5.0/0,M10.5.0/0": "Asia/Beirut",
+  "<+06>-6": "Asia/Bishkek Asia/Dacca Asia/Dhaka Asia/Kashgar Asia/Omsk Asia/Thimbu Asia/Thimphu Asia/Urumqi Etc/GMT-6 Indian/Chagos",
+  "IST-5:30": "Asia/Calcutta Asia/Kolkata",
+  "<+09>-9": "Asia/Chita Asia/Dili Asia/Khandyga Asia/Yakutsk Etc/GMT-9 Pacific/Palau",
+  "CST-8": "Asia/Chongqing Asia/Chungking Asia/Harbin Asia/Macao Asia/Macau Asia/Shanghai Asia/Taipei PRC ROC",
+  "<+0530>-5:30": "Asia/Colombo",
+  "EET-2EEST,M3.5.0/3,M10.5.0/4": "Asia/Famagusta Asia/Nicosia EET Europe/Athens Europe/Bucharest Europe/Chisinau Europe/Helsinki Europe/Kiev Europe/Kyiv Europe/Mariehamn Europe/Nicosia Europe/Riga Europe/Sofia Europe/Tallinn Europe/Tiraspol Europe/Uzhgorod Europe/Vilnius Europe/Zaporozhye",
+  "EET-2EEST,M3.4.4/50,M10.4.4/50": "Asia/Gaza Asia/Hebron",
+  "HKT-8": "Asia/Hong_Kong Hongkong",
+  "WIB-7": "Asia/Jakarta Asia/Pontianak",
+  "WIT-9": "Asia/Jayapura",
+  "IST-2IDT,M3.4.4/26,M10.5.0": "Asia/Jerusalem Asia/Tel_Aviv Israel",
+  "<+0430>-4:30": "Asia/Kabul",
+  "PKT-5": "Asia/Karachi",
+  "<+0545>-5:45": "Asia/Kathmandu Asia/Katmandu",
+  "<+11>-11": "Asia/Magadan Asia/Sakhalin Asia/Srednekolymsk Etc/GMT-11 Pacific/Bougainville Pacific/Efate Pacific/Guadalcanal Pacific/Kosrae Pacific/Noumea Pacific/Pohnpei Pacific/Ponape",
+  "WITA-8": "Asia/Makassar Asia/Ujung_Pandang",
+  "PST-8": "Asia/Manila",
+  "KST-9": "Asia/Pyongyang Asia/Seoul ROK",
+  "<+0630>-6:30": "Asia/Rangoon Asia/Yangon Indian/Cocos",
+  "<+0330>-3:30": "Asia/Tehran Iran",
+  "JST-9": "Asia/Tokyo Japan",
+  "<-01>1<+00>,M3.5.0/0,M10.5.0/1": "Atlantic/Azores",
+  "WET0WEST,M3.5.0/1,M10.5.0": "Atlantic/Canary Atlantic/Faeroe Atlantic/Faroe Atlantic/Madeira Europe/Lisbon Portugal WET",
+  "<-01>1": "Atlantic/Cape_Verde Etc/GMT+1",
+  "ACST-9:30ACDT,M10.1.0,M4.1.0/3": "Australia/Adelaide Australia/Broken_Hill Australia/South Australia/Yancowinna",
+  "AEST-10": "Australia/Brisbane Australia/Lindeman Australia/Queensland",
+  "ACST-9:30": "Australia/Darwin Australia/North",
+  "<+0845>-8:45": "Australia/Eucla",
+  "<+1030>-10:30<+11>-11,M10.1.0,M4.1.0": "Australia/LHI Australia/Lord_Howe",
+  "AWST-8": "Australia/Perth Australia/West",
+  "<-06>6<-05>,M9.1.6/22,M4.1.6/22": "Chile/EasterIsland Pacific/Easter",
+  "GMT0IST,M3.5.0/1,M10.5.0": "Eire Europe/Dublin",
+  "<-10>10": "Etc/GMT+10 Pacific/Rarotonga Pacific/Tahiti",
+  "<-11>11": "Etc/GMT+11 Pacific/Niue",
+  "<-12>12": "Etc/GMT+12",
+  "<-06>6": "Etc/GMT+6 Pacific/Galapagos",
+  "<-07>7": "Etc/GMT+7",
+  "<-08>8": "Etc/GMT+8 Pacific/Pitcairn",
+  "<-09>9": "Etc/GMT+9 Pacific/Gambier",
+  "<+01>-1": "Etc/GMT-1",
+  "<+13>-13": "Etc/GMT-13 Pacific/Apia Pacific/Enderbury Pacific/Fakaofo Pacific/Kanton Pacific/Tongatapu",
+  "<+14>-14": "Etc/GMT-14 Pacific/Kiritimati",
+  "<+02>-2": "Etc/GMT-2",
+  "UTC0": "Etc/UCT Etc/UTC Etc/Universal Etc/Zulu UCT UTC Universal Zulu",
+  "GMT0BST,M3.5.0/1,M10.5.0": "Europe/Belfast Europe/Guernsey Europe/Isle_of_Man Europe/Jersey Europe/London GB GB-Eire",
+  "MSK-3": "Europe/Kirov Europe/Moscow Europe/Simferopol Europe/Volgograd W-SU",
+  "<-00>0": "Factory",
+  "HST10": "HST Pacific/Honolulu Pacific/Johnston US/Hawaii",
+  "<+1245>-12:45<+1345>,M9.5.0/2:45,M4.1.0/3:45": "NZ-CHAT Pacific/Chatham",
+  "ChST-10": "Pacific/Guam Pacific/Saipan",
+  "<-0930>9:30": "Pacific/Marquesas",
+  "SST11": "Pacific/Midway Pacific/Pago_Pago Pacific/Samoa US/Samoa",
+  "<+11>-11<+12>,M10.1.0,M4.1.0/3": "Pacific/Norfolk",
+};
+/* TZ_POSIX end */
+let TZ_BY_NAME = null;
 
 if (!customElements.get("piscine-card")) {
   customElements.define("piscine-card", PiscineCard);

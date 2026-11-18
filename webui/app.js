@@ -2,13 +2,17 @@
  * The controller's own page: « Contrôle » runs Home Assistant's piscine-card (unchanged, fed by
  * esphome-hass.js) next to HA-style tiles; « Remplissage » the card's water variant; « Avancé » the
  * settings, today's plan, the device's sensors and its live log; « Contrôleur » its Wi-Fi
- * (wifi-setup.yaml: connection, statistics, joining a network) and its firmware. The device keeps no
+ * (wifi-setup.yaml: connection, statistics, joining a network), its firmware, and what setup.js adds:
+ * its position, probes, passwords, Home Assistant key and factory reset, plus the setup wizard shown
+ * instead of the page while the controller isn't set up (device-settings.yaml). The device keeps no
  * history of its sensors, so the only charts are of what it records itself: the pool's min/max and
  * filtration of the last 7 days, and the fill water of 30 days and 12 months. Everything talks to the
- * ESP32 only (but « Vérifier », which asks GitHub), so it keeps working while Home Assistant is down.
+ * ESP32 only, so it keeps working while Home Assistant is down.
  */
 import { EspHass, E } from "./esphome-hass.js";
 import { ICONS } from "./icons.js";
+import { mountSetup } from "./setup.js";
+import { WAITING_FOR } from "./setup-model.js";
 
 const hass = new EspHass();
 const $ = (id) => document.getElementById(id);
@@ -249,7 +253,7 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
       boostDuration: E.boostDuration, boostInterval: E.boostInterval, highEvery: E.highEvery, freezeAt: E.freezeAt,
     },
   });
-  settings.classList.add("o1");
+  settings.classList.add("o3"); // Avancé: after Plan du jour and Capteurs internes (index.html)
   $("settingsHost").replaceWith(settings);
   updaters.push(() => { if (st(E.min)) settings.hass = hass; });
 }
@@ -284,7 +288,8 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
     value: () => (s(E.nextAt) && s(E.nextAt) !== "--:--" ? `${s(E.nextAt)} → ${SPEED_FR[s(E.nextTo)] || s(E.nextTo)}` : "Plus rien aujourd'hui") });
   valueRow(host, { id: E.nextBoostStart, label: "Prochaine impulsion", value: range(E.nextBoostStart, E.nextBoostEnd) });
   valueRow(host, { id: E.recomputed, label: "Plan calculé à", value: () => stamp(s(E.recomputed)) });
-  valueRow(host, { id: E.notComputed, label: "Plan du jour", problem: "Non calculé" });
+  valueRow(host, { id: E.notComputed, label: "Plan du jour", problem: "Non calculé",
+    sub: () => (s(E.notComputed) === "on" && WAITING_FOR[s(E.waitingFor)] ? `Attend ${WAITING_FOR[s(E.waitingFor)]}` : "") });
   valueRow(host, { id: E.overrideActive, label: "Override sans limite", problem: "Depuis plus de 30 min" });
   buttonRow(host, { id: E.recompute, label: "Recalculer le plan maintenant", text: "Recalculer", ok: "Plan du jour recalculé" });
 }
@@ -442,37 +447,125 @@ const orDash = (id) => () => s(id) || "—";
   });
 }
 
-/* ---- Firmware: the commit `make` compiled (Firmware Version), ESPHome's version, and « Vérifier », which asks GitHub
-   whether main has changed the firmware since. The card's own parsing and check, so both hosts say the same. */
+/* ---- Firmware: the version it runs (Firmware Version: the commit `make` compiled, or a release's tag), ESPHome's, and
+   its updates (updates.yaml): the Firmware update entity behind the controller's own gate, « Vérifier » (Check for
+   Update), « Installer », « Annuler la demande » while an install waits (Cancel Update), Auto Update (scheduled checks
+   only) and Update Check Interval. Whether a newer firmware exists is the controller's to say: the page asks GitHub
+   nothing (a firmware without updates.yaml just has no « Mise à jour » row). */
 {
   const Card = customElements.get("piscine-card"), host = $("fwRows");
   const version = () => Card.parseVersion(s(E.fwVersion)), esphome = () => Card.parseEsphome(s(E.esphomeVersion));
+  const hasUpdates = () => !!st(E.fwUpdate);
   valueRow(host, { id: E.fwVersion, label: "Version", iconName: "tag-outline", value: () => version()?.label || "—", sub: () => version()?.sub || "" });
   valueRow(host, { id: E.esphomeVersion, label: "ESPHome", iconName: "chip", value: () => esphome()?.version || "—", sub: () => esphome()?.built || "" });
-  const row = h(`<div class="erow"><span class="ic">${icon("cloud-sync-outline")}</span><span class="name"><span>Mise à jour</span><small></small></span>
-    <button class="btn">Vérifier</button></div>`);
-  host.appendChild(row);
-  const small = row.querySelector("small"), btn = row.querySelector("button");
-  let busy = false, result = null, drawn = "";
-  btn.addEventListener("click", async () => {
-    const v = version();
-    if (!v?.ref || busy) return;
-    busy = true; result = null; update();
-    result = await Card.checkFirmware("davidterranova/pool-controller", v.ref);
-    busy = false; update();
-  });
-  updaters.push(() => {
-    const v = version();
-    const r = busy ? { text: "Vérification auprès de GitHub…" } : result
-      || { text: !v ? "Ce firmware ne dit pas de quel commit il vient : il faut l'installer avec make ota."
-        : !v.ref ? "Compilé hors de make : pas de commit à comparer." : "Compare cette version avec la branche main du dépôt sur GitHub." };
-    btn.disabled = busy || !v?.ref;
-    const key = [r.text, r.cls, r.href].join("|");
-    if (key === drawn) return; // a link rebuilt every second would lose its hover
-    drawn = key;
-    small.className = r.cls || ""; small.textContent = r.text;
-    if (r.href) small.append(" ", h(`<a href="${esc(r.href)}" target="_blank" rel="noopener">Voir les changements</a>`));
-  });
+
+  /** A row whose sub-line is drawn only when it changes: a link rebuilt every second would lose its hover. */
+  const statusRow = (buttons) => {
+    const row = h(`<div class="erow"><span class="ic">${icon("cloud-sync-outline")}</span><span class="name"><span>Mise à jour</span><small></small></span>
+      ${buttons.map((b) => `<button class="btn${b.fill ? " fill" : ""}">${b.text}</button>`).join("")}</div>`);
+    host.appendChild(row);
+    let drawn = "";
+    const small = row.querySelector("small");
+    return {
+      row, buttons: [...row.querySelectorAll("button")],
+      draw(r) {
+        const key = [r.text, r.cls, r.href, r.link].join("|");
+        if (key === drawn) return;
+        drawn = key;
+        small.className = r.cls || ""; small.textContent = r.text;
+        if (r.href) small.append(" ", h(`<a href="${esc(r.href)}" target="_blank" rel="noopener">${esc(r.link || "Voir les changements")}</a>`));
+      },
+    };
+  };
+
+  /* -- updates.yaml: the controller checks the releases and installs through its gate */
+  {
+    const { row, buttons: [check, install, cancel], draw } = statusRow(
+      [{ text: "Vérifier" }, { text: "Installer", fill: true }, { text: "Annuler la demande" }]);
+    const fw = () => st(E.fwUpdate)?.attributes || {};
+    const status = () => s(E.updateStatus) || "";
+    let installed = null; // the installed version last seen: a change after a reboot is an update done
+    /** Update Status (the firmware's words) -> the sentence under « Mise à jour ». */
+    const sentence = () => {
+      const a = fw(), latest = a.latest_version || "la nouvelle version", now = a.installed_version || "—";
+      const st_ = status();
+      if (!hass.connected && (st_ === "installation" || a.in_progress)) return { text: "Redémarrage du contrôleur sur la nouvelle version…", cls: "fw-up" };
+      if (st_ === "installation" || a.in_progress) return { text: `Installation de ${latest}… Le contrôleur redémarre ensuite (environ 1 min).`, cls: "fw-up" };
+      if (st_.startsWith("en attente")) {
+        const why = st_.includes("remplissage") ? "la fin du remplissage en cours" : "la fin de l'override manuel";
+        return { text: `${latest} s'installera à ${why}.`, cls: "fw-up" };
+      }
+      if (st_ === "vérification") return { text: "Vérification de la dernière version…" };
+      // Also every check until a first release is published: the controller only knows it got no answer.
+      if (st_ === "erreur (vérification)") return { text: "La vérification a échoué : pas de réseau, ou aucune version publiée pour l'instant.", cls: "fw-err" };
+      if (st_ === "erreur (installation)") return { text: `L'installation de ${latest} a échoué ; le contrôleur garde ${now}.`, cls: "fw-err" };
+      if (st(E.fwUpdate).state === "on") return { text: `${latest} disponible (installée : ${now}).`, cls: "fw-up", href: a.release_url, link: "Notes de version" };
+      if (st(E.fwUpdate).state === "off") return { text: `À jour : ${now} est la dernière version.`, cls: "fw-ok" };
+      return { text: s(E.updateInterval) && s(E.updateInterval) !== "À la demande"
+        ? `Pas encore vérifiée : le contrôleur vérifie toutes les ${s(E.updateInterval)}.` : "Pas encore vérifiée." };
+    };
+    check.addEventListener("click", () => {
+      check.classList.add("busy");
+      run(hass.press(E.checkUpdate)).finally(() => check.classList.remove("busy"));
+    });
+    install.addEventListener("click", () => {
+      const a = fw();
+      if (!confirm(`Installer ${a.latest_version} ? Le contrôleur le télécharge, l'installe puis redémarre (environ 1 min) ; `
+        + "la pompe reprend ensuite son plan. Pendant un override manuel ou un remplissage, il attend qu'ils se terminent.")) return;
+      install.classList.add("busy");
+      run(hass.install(E.fwUpdate), "Installation demandée").finally(() => install.classList.remove("busy"));
+    });
+    cancel.addEventListener("click", () => {
+      cancel.classList.add("busy");
+      run(hass.press(E.cancelUpdate), "Demande d'installation annulée").finally(() => cancel.classList.remove("busy"));
+    });
+    updaters.push(() => {
+      row.hidden = !hasUpdates();
+      if (row.hidden) return;
+      const a = fw(), st_ = status();
+      const busy = st_ === "installation" || st_.startsWith("en attente") || a.in_progress;
+      check.disabled = !hass.connected || busy || st_ === "vérification" || !st(E.checkUpdate);
+      install.hidden = st(E.fwUpdate).state !== "on" || busy;
+      install.disabled = !hass.connected;
+      // Only while the install waits at the gate: the controller ignores it otherwise.
+      cancel.hidden = !st_.startsWith("en attente") || !st(E.cancelUpdate);
+      cancel.disabled = !hass.connected;
+      draw(sentence());
+      if (a.installed_version && installed && a.installed_version !== installed) toast(`Firmware mis à jour : ${a.installed_version}`);
+      if (a.installed_version) installed = a.installed_version;
+    });
+
+    /** A segmented control on a switch or a select: [label, value] pairs, the entity's state picks one. */
+    const segRow = ({ id, label, sub, iconName, options, set }) => {
+      const r = h(`<div class="erow"><span class="ic">${icon(iconName)}</span><span class="name"><span>${esc(label)}</span><small>${esc(sub)}</small></span>
+        <span class="ctl"><span class="seg" role="radiogroup" aria-label="${esc(label)}"></span></span></div>`);
+      const seg = r.querySelector(".seg");
+      host.appendChild(r);
+      let drawn = "";
+      updaters.push(() => {
+        r.hidden = !st(id);
+        if (r.hidden) return;
+        const opts = options(), key = JSON.stringify([opts, s(id)]);
+        if (key === drawn) return;
+        drawn = key;
+        seg.innerHTML = "";
+        for (const [text, value] of opts) {
+          const b = h(`<button role="radio" aria-checked="${s(id) === value}"></button>`);
+          b.textContent = text;
+          b.addEventListener("click", () => s(id) !== value && run(set(value)));
+          seg.appendChild(b);
+        }
+      });
+    };
+    segRow({ id: E.autoUpdate, label: "Installer automatiquement", iconName: "timer-check",
+      sub: "Une version trouvée par la vérification périodique s'installe seule, après un override manuel ou un remplissage en cours. Celle trouvée avec « Vérifier » attend « Installer ».",
+      options: () => [["Non", "off"], ["Oui", "on"]],
+      set: (v) => hass.callService("switch", v === "on" ? "turn_on" : "turn_off", { entity_id: E.autoUpdate }) });
+    segRow({ id: E.updateInterval, label: "Vérifier les mises à jour", iconName: "timer-outline",
+      sub: "Le contrôleur demande la dernière version publiée sur GitHub.",
+      options: () => (st(E.updateInterval)?.attributes.options || []).map((o) => [o, o]),
+      set: (v) => hass.select(E.updateInterval, v) });
+  }
 }
 
 /* ---- Alerts above both tabs: on the hotspot, and a clock that was never set */
@@ -511,6 +604,10 @@ const orDash = (id) => () => s(id) || "—";
     }
   });
 }
+
+/* ---- Setup: the wizard while the controller isn't set up, and the Contrôleur tab's Position, Sondes,
+   Accès, Home Assistant and Réinitialiser sections (setup.js) */
+updaters.push(mountSetup({ hass, E, ui: { icon, esc, toast, fmt1, bars } }));
 
 /* ---- Capteurs internes */
 const KNOWN = new Set(Object.values(E));

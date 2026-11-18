@@ -12,8 +12,9 @@ name: Release
 #     offers as an update; then HACS's own checks run against it.
 # A release also carries the controller's firmware (firmware.yml), once its
 # sources hold no secret: firmware.ota.bin, firmware.factory.bin and
-# manifest.json, also published on GitHub Pages under /firmware/ when the
-# repository variable PUBLISH_FIRMWARE_PAGES is true.
+# manifest.json, also published on GitHub Pages under /firmware/, beside the
+# install page at the site's root, when the repository variable
+# PUBLISH_FIRMWARE_PAGES is true.
 
 on:
   pull_request:
@@ -24,6 +25,8 @@ on:
       - hacs.json
       - LICENSE
       - "*.yaml"
+      - "*.h"
+      - components/**
       - webui/**
       - .github/workflows/release.yml
       - .github/workflows/firmware.yml
@@ -46,12 +49,13 @@ jobs:
         run: node --check home-assistant/piscine-card.js
 
       # What ships in a release: the card, and the firmware built from
-      # pool-controller.yaml, the packages beside it (any *.yaml at the root)
-      # and the device's page (webui/, which also bundles the card).
+      # pool-controller.yaml, the packages beside it (any *.yaml at the root),
+      # their C++ includes (*.h at the root), the local ESPHome components
+      # (components/) and the device's page (webui/, which also bundles the card).
       - name: A changed card or firmware has a new VERSION
         run: |
           git fetch --depth=1 origin "${{ github.base_ref }}"
-          changed=$(git diff --name-only FETCH_HEAD -- home-assistant/piscine-card.js webui ':(glob)*.yaml')
+          changed=$(git diff --name-only FETCH_HEAD -- home-assistant/piscine-card.js webui components ':(glob)*.yaml' ':(glob)*.h')
           if [ -z "$changed" ]; then
             echo "Neither the card nor the firmware changed."
             exit 0
@@ -161,7 +165,7 @@ jobs:
               if [ -n "$FIRMWARE" ]; then
                 echo
                 echo "Changes to the firmware since $previous:"
-                git log --format='- %s' "$previous..HEAD" -- webui ':(glob)*.yaml'
+                git log --format='- %s' "$previous..HEAD" -- webui components ':(glob)*.yaml' ':(glob)*.h'
               fi
             fi
           } > notes.md
@@ -175,10 +179,14 @@ jobs:
         if: env.FIRMWARE != '' && env.PAGES != 'true'
         run: echo "::notice title=Firmware not on GitHub Pages::$TAG's firmware is attached to the release only. Publishing it under /firmware/ on GitHub Pages is the owner's call; see README, Releasing."
 
-  # The release's firmware on GitHub Pages, at a stable URL controllers read
-  # for updates: <pages>/firmware/manifest.json, beside its two images. Each
-  # deploy replaces the whole site, so it is rebuilt here: /firmware/ (this
-  # release) and docs/install/ when there is one (the install page).
+  # The Pages site: the install page at its root (docs/install/'s contents,
+  # so https://pool-controller.kitesize.fr/ is the page), and the release's
+  # firmware under /firmware/, the stable URL controllers read for updates
+  # (<site>/firmware/manifest.json, beside its two images) and the page
+  # installs from (firmware/manifest.json, relative). Each deploy replaces
+  # the whole site, so both are put together here, on every release that
+  # carries the firmware. The custom domain is a repository setting (Pages
+  # deployed by Actions ignore a CNAME file), so the site holds none.
   # Off until the owner enables Pages (source: GitHub Actions) and sets the
   # repository variable PUBLISH_FIRMWARE_PAGES to true.
   pages:
@@ -193,7 +201,7 @@ jobs:
       cancel-in-progress: false
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}firmware/manifest.json
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -204,7 +212,12 @@ jobs:
 
       - name: Site
         run: |
-          if [ -d docs/install ]; then cp -R docs/install _site/install; fi
+          if [ -e docs/install/firmware ]; then
+            echo "::error file=docs/install::docs/install/firmware would overwrite the release's /firmware/."
+            exit 1
+          fi
+          test -s docs/install/index.html
+          cp -R docs/install/. _site/
           touch _site/.nojekyll
           find _site -type f
 

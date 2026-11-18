@@ -1,8 +1,8 @@
 # Pool Controller
 
-How the device works: what's wired to what, the control logic, and how to
-set it up in Home Assistant. For repo/tooling info, see
-[README.md](README.md).
+How the device works: what's wired to what, installing and setting it up,
+updates, the control logic, and how to set it up in Home Assistant. For
+repo/tooling info (building it yourself), see [README.md](README.md).
 
 ## What it does
 
@@ -18,18 +18,17 @@ dependency for correct operation.
 - **Board**: ESP32-WROOM (`esp32dev`, Arduino framework).
 - **GPIO4** — OneWire bus for three DS18B20 temperature sensors, wired as a
   genuine daisy-chain (each sensor's leads spliced in-line between the
-  previous and next, not a star/hub of separate stubs):
-  - `Pool Return Temperature` (address `0x52000000518FE928`)
-  - `Equipment Pad Temperature` (address `0xFF00000026007028`)
-  - `Outdoor Temperature` (address `0xFC00000051AD2428`)
+  previous and next, not a star/hub of separate stubs), read as
+  `Pool Return Temperature`, `Equipment Pad Temperature` and
+  `Outdoor Temperature`. Which probe is which is a setting, not compiled in:
+  see [Controller settings](#controller-settings).
 
   ESPHome does **not** enable GPIO4's internal pull-up for this bus — you
   need an external ~3–4.7kΩ resistor between the data line and 3.3V, or the
-  sensors won't respond. If you rewire the bus with different DS18B20 units,
-  their addresses will differ from the ones above: boot the device with a
-  USB monitor attached (`idf.py monitor` or `screen /dev/cu.xxxx 115200`),
-  or `make logs` over Wi-Fi, and read the addresses it logs at startup, then
-  update the `address:` fields in `pool-controller.yaml`.
+  sensors won't respond. If you rewire the bus or swap a DS18B20, press
+  Rescan Probes and give the new probe its role (Pool/Pad/Outdoor Probe);
+  Detected Probes shows each address with its live reading, so warming one
+  probe in your hand tells which is which.
 
   **Counterfeit sensors break the whole bus, not just themselves.** Adding
   the third sensor initially caused total bus failure (`Found no devices!`)
@@ -85,6 +84,15 @@ dependency for correct operation.
   break-before-make sequencing below; exposing them individually in HA
   would let someone bypass that sequencing by accident.
 
+- **GPIO33** — optional: a pulse water meter on the pool's fill-in line (a
+  reed-switch dry contact, 1 pulse per litre), its signal wire to GPIO33
+  (internal pull-up), the other to GND. It gives the fill flow and counts
+  the water added; an update waits for a fill to end.
+
+These GPIOs are the published firmware's: the install page installs them
+as they are. Other pins mean building it yourself (README, Development
+builds).
+
 ### Relay sequencing
 
 Every speed change goes through a break-before-make sequence
@@ -109,24 +117,165 @@ the same evaluation the 30s interval runs), rather than waiting for the next
 polling tick — the 30s interval still exists for the freeze-protection and
 schedule checks, which have no "changed" event of their own to react to.
 
+## First setup
+
+The install page, <https://pool-controller.kitesize.fr/>, puts the published
+firmware on a board from **Chrome or Edge on a computer** (Web Serial, over
+USB; not from a phone). The board alone is enough to install; the wiring
+can come after.
+
+1. **Install.** Plug the board in, « Installer », pick its port, then
+   **Install Pool Controller** and **Install**. Every install erases the
+   board first: the page is for a new board or one to start over, never
+   for a controller in service, which updates itself (see
+   [Updates](#updates)). About two minutes.
+2. **Wi-Fi.** Right after, the install window asks for the home network
+   (**Configure Wi-Fi**): it goes over the USB cable (Improv), and the
+   controller keeps it once it has connected. **Skip** it, or let it fail,
+   and the controller opens its hotspot `pool-controller` (open) instead:
+   join it from a phone and open http://192.168.4.1.
+3. **Its page.** Open http://pool-controller.local (or **Visit Device** in
+   the install window; or the address your router gives `pool-controller`).
+   With no page password yet it opens without a login, on the **setup
+   wizard**: Mot de passe → Wi-Fi → Position → Sondes → Home Assistant, one
+   step per item Setup State lists (see
+   [Controller settings](#controller-settings)). Set the page password
+   first: until then anyone on the network can open the page. A step left
+   for later reopens where it was.
+4. **Home Assistant**, at the wizard's last step: add the controller
+   (Settings › Devices & Services › ESPHome; it is usually discovered), and
+   Home Assistant sets its encryption key itself (see
+   [Home Assistant configuration](#home-assistant-configuration)). Without
+   Home Assistant: « Je n'utilise pas Home Assistant » closes the API with a
+   key nobody sees. **Add to Home Assistant** in the install window does
+   the same as adding it by hand; it can wait for this step.
+
+A controller built from this repo instead (other GPIOs, a change to the
+firmware) is flashed with `make flash` and set up the same way, from step 3
+(README, Development builds).
+
+## Updates
+
+An installed controller never goes back to the install page: it updates
+itself from the published releases (`firmware/manifest.json` on the same
+site), over HTTPS, and keeps every setting (they live in its own storage,
+which an update doesn't touch).
+
+- **Automatic, by default.** **Auto Update** is on; **Update Check
+  Interval** (« À la demande », 6 h, 24 h, 7 j; 24 h by default) says how
+  often it looks, the first time a minute after boot. What a scheduled
+  check finds, it installs.
+- **On request.** « Vérifier » (Check for Update) looks now, but never
+  installs by itself, Auto Update or not; « Installer » then installs: on
+  the controller's page (Contrôleur › Firmware), in Home Assistant
+  (Settings › Updates, the **Firmware** update entity) or in the pool card
+  (Avancé › Firmware). With « À la demande » nothing is checked on a
+  schedule.
+- **The gate.** Every install, Home Assistant's included, waits while a
+  Manual Override or a fill runs (a reboot would end the override, and lose
+  the meter's pulses), then starts by itself. **Cancel Update** (« Annuler
+  la demande ») drops a waiting install.
+- **Update Status** says where it is: `non vérifié`, `vérification`,
+  `à jour`, `disponible`, `en attente (mode manuel)`, `en attente
+  (remplissage)`, `installation`, `erreur (vérification)`, `erreur
+  (installation)`. A failed install keeps the running firmware and is tried
+  again at the next scheduled check.
+- The install downloads in one go and reboots: the page and Home Assistant
+  lose the controller for a minute or so, and the pump keeps its plan
+  through the reboot.
+
+Not gated: `make ota` from a checkout, a developer's own call (README,
+Development builds). A controller running such a build should have Auto
+Update off, or the next release replaces it.
+
+## Factory reset
+
+Contrôleur › Réinitialiser on the controller's page (or the **Factory
+Reset** button), after a confirmation. A selective erase, not ESPHome's:
+
+- **erased**: the page and OTA passwords, the saved Wi-Fi, the API key
+  (Home Assistant loses the link);
+- **kept**: the probe roles, the position and timezone (so the filtration
+  plan and freeze protection go on), the filtration, freeze and update
+  settings, the history kept on the controller, and the firmware.
+
+It reboots into setup mode on its open hotspot `pool-controller`: join it
+and open http://192.168.4.1, where the wizard asks only for what was
+erased (a page password, the Wi-Fi, then Home Assistant). To start from a
+blank board instead, install it again from the install page, which erases
+everything.
+
+## Coming from a secrets.yaml build
+
+A controller still running a firmware built with `secrets.yaml` (v1.3.x)
+moves over once, with `make migrate` from the checkout holding that file:
+one OTA carries every setting over (Wi-Fi, API key, passwords, position and
+timezone, probe roles), and it comes back set up and still paired with
+Home Assistant, with nothing to do on the page. Then it updates like any
+other. See the README.
+
 ## Location & clock
 
 The autonomous filtration schedule needs today's sunrise/sunset and true
-local midnight, so three more values live in `secrets.yaml` (not
-`pool-controller.yaml` itself — together they reveal the pool's approximate
-location, unlike the relay-pin substitutions which are just wiring choices):
+local midnight, so it needs the pool's position and timezone. Both are
+settings of the controller (see [Controller settings](#controller-settings)),
+never compiled in: together they reveal the pool's approximate location.
 
-- `pool_latitude` / `pool_longitude` — decimal degrees, used by ESPHome's
-  `sun:` component to compute today's sunrise/sunset.
-- `pool_timezone` — an IANA zone name (e.g. `"Europe/Paris"`), used by the
-  `time:` component.
+- **Latitude / Longitude** — decimal degrees, rounded to 0.01° (about 1 km),
+  given to ESPHome's `sun:` component for today's sunrise/sunset.
+- **Timezone** — a POSIX TZ string (`CET-1CEST,M3.5.0,M10.5.0/3`), applied
+  to the clock at boot and when it changes; the page and the pool card
+  convert the IANA zone (Europe/Paris) and also store it as **Timezone
+  Name**, for display. The YAML keeps a neutral `timezone: UTC0`.
 
-**This also fixes a pre-existing bug.** Before this, `time:` had no
-`timezone:` set at all, so the device's clock ran in plain UTC — no error,
-no warning, just silently wrong outside the UTC timezone. If the pool isn't
-in UTC, the old Program A/B/C schedule was actually running at your
-programmed hour *plus your UTC offset*, not local wall-clock time. Setting
-`pool_timezone` fixes this going forward.
+Until all three are set, the schedule computes no plan: Schedule Not
+Computed turns on at once and **Schedule Waiting For** says what's missing
+(`position`, `timezone`, then `clock`, `pool probe`, `pool temperature` or
+`sunrise/sunset` for the other reasons a plan can't be made). Freeze
+protection runs regardless, once the pool probe has its role.
+
+## Controller settings
+
+From [device-settings.yaml](device-settings.yaml), a package of the
+firmware: everything that used to come from `secrets.yaml` or the YAML, now
+set on the controller (its page, Home Assistant, or Improv serial for the
+network) and kept in its NVS, which a firmware update never touches.
+
+- **Setup State** — `configured`, or what's missing, in the setup order:
+  `page_password`, `wifi`, `position` (latitude, longitude and timezone),
+  `probes` (the pool probe), `api_key`.
+- **Page Password** — the page's login (user `admin`, digest). While none is
+  set, the page opens without a login: setup mode. A new one applies at
+  once, no reboot.
+- **OTA Password** — guards plaintext firmware uploads (`make ota`). A
+  random one is made at first boot, so OTA is never open; set your own to
+  upload from a checkout.
+- **API Key** — Home Assistant sets it itself when you add the device. The
+  page can paste an existing key (base64 of 32 bytes), or **Generate API
+  Key** for use without Home Assistant (a key nobody sees, closing the API);
+  **Forget API Key** clears it, to hand the controller to Home Assistant.
+  Until a key is set, the API is open on the LAN, as for any ESPHome device
+  being added.
+- **Latitude, Longitude, Timezone, Timezone Name** — see
+  [Location & clock](#location--clock).
+- **Pool Probe, Pad Probe, Outdoor Probe** — which DS18B20 is which:
+  `none` or one of the addresses on the bus (as ESPHome writes them,
+  `52000000518fe928`). A probe has one role at most: giving it to another
+  role clears the first. A role with no probe reads unknown. **Detected
+  Probes** lists every address with its reading (`--` for one that doesn't
+  answer), refreshed every minute; **Rescan Probes** searches the bus again.
+  Home Assistant sees options a rescan added once it reconnects.
+- **Factory Reset** — forgets the page and OTA passwords, the API key and the
+  saved Wi-Fi, keeps everything else (probe roles, position, timezone,
+  filtration and freeze settings, history), and reboots into setup mode on
+  the hotspot. The page asks for a confirmation first. See
+  [Factory reset](#factory-reset).
+- **Auto Update, Update Check Interval, Check for Update, Cancel Update,
+  Update Status, Firmware** — see [Updates](#updates).
+
+Page Password, OTA Password and API Key are write-only: the controller never
+sends them back, to a page or to Home Assistant (a text in password mode
+would still send its value); Setup State tells whether each is set.
 
 ## Control logic
 
@@ -282,14 +431,29 @@ Re-evaluated every 30 seconds, highest priority wins:
      midnight (one flash write a day); `--` before the first midnight. Like
      Daily History, they exist for the device's own page, which has no
      recorder: Home Assistant has the meter's own statistics.
+   - **Fill Water Import** (config, write-only, not on the device's page)
+     fills that record from elsewhere — Home Assistant's history of the
+     meter — since it only starts the day the firmware first closed one. It
+     takes one line in either sensor's own format, newest first, `-` for
+     unknown: `2026-11-17: 0 19 - 940 3` (days, at most 30) or
+     `2026-11: 23 9538 2913` (months, at most 12), the date's length telling
+     which. It writes only **closed** days and months, strictly before today
+     and before this month: today stays Fill Water Today's, and this month's
+     total becomes its closed days in the record (never a value from the
+     line), so nothing is counted twice; `-` never erases a known value, and
+     a day above 65534 L is capped there as the record does. Anything off (a
+     bad date, a value that isn't whole litres, too many values, a date in
+     the future, no clock) refuses the whole line; its state then says why,
+     else what was imported (`importé : 30 jours`), never the line itself.
+     A 30-day line is at most 191 characters, within a text entity's 255.
    - **Firmware Version** (diagnostic) is the commit of this repo the
      firmware was compiled from, as `git describe --tags --always --dirty`
      says it: `v1.3.0`, `v1.3.0-4-g1a2b3c4` (4 commits after that tag),
      with `-dirty` when the working tree had uncommitted changes. `make
      build` and `make ota` pass it in (`-s firmware_version`); compiled any
      other way it is `dev`. **ESPHome Version** is ESPHome's version and the
-     build time. The pool card's « Vérifier » compares the first with main
-     on GitHub.
+     build time. Whether a newer firmware exists is the Firmware update
+     entity's to say (see [Updates](#updates)).
 4. **Hot-night keep-alive** — only reached when the autonomous schedule
    above says `Off` (i.e. outside both blocks) and only overnight, before
    today's sunrise or after today's sunset: if `Pool Return Temperature` is
@@ -366,10 +530,10 @@ reason.
 1. **Settings → Devices & Services → Add Integration → ESPHome.** It should
    auto-discover `pool-controller.local` via mDNS. If it doesn't show up,
    add it manually — get the current IP with `make ip` from this repo.
-2. When prompted for the **encryption key**, use the exact value of
-   `pool_controller_api_key` from `secrets.yaml` — that's the key compiled
-   into the firmware, and it has to match for HA's encrypted API connection
-   to succeed.
+2. No **encryption key** to type: the controller has none until Home
+   Assistant pairs, then HA generates one and sets it on the controller
+   itself (Setup State drops `api_key`). A controller given a key another
+   way (API Key, Generate API Key) asks HA for it like any ESPHome device.
 3. Once paired, these entities show up:
    - **Sensors**: Pool Return Temperature, Pool Water Min/Max Today,
      Equipment Pad Temperature, Outdoor Temperature, Planned Filtration Hours
@@ -413,12 +577,23 @@ reason.
      Config. Schedule Not Computed — on if the daily plan still hasn't been
      computed a few minutes after boot, meaning the temperature reading or
      sunrise/sunset lookup keeps failing and the pump could otherwise sit
-     off indefinitely with no other warning. Manual Override Active — on
+     off indefinitely with no other warning; on at once while there's no
+     position or timezone. Schedule Waiting For (a text sensor) says why.
+     Manual Override Active — on
      when an open-ended Manual Override (timeout `0`) has been on something
      other than `Auto` for over 30 minutes (see below); a timed override
      never raises it, since the controller ends that one itself.
-4. Once paired, HA's ESPHome integration can also push OTA updates directly
-   — an alternative to running `make ota` from this repo.
+   - **Controller settings** (see [Controller settings](#controller-settings)):
+     Setup State, Detected Probes, Schedule Waiting For; Page Password, OTA
+     Password, API Key (write-only), Latitude, Longitude, Timezone, Timezone
+     Name; Pool/Pad/Outdoor Probe; Generate API Key, Forget API Key, Rescan
+     Probes, Factory Reset.
+4. Once paired, **Firmware** is Home Assistant's update entity for the
+   controller (Settings › Updates): it shows the installed and latest
+   release, and installs one through the controller's gate (see
+   [Updates](#updates)). HA's ESPHome integration can also push a build of
+   your own (it holds the API key, which authenticates OTA too) — an
+   alternative to running `make ota` from this repo.
 
 ### Suggested dashboard cards
 
@@ -570,19 +745,21 @@ re-add it through the visual entity picker instead.
 The controller serves its own page at `http://pool-controller.local/` (or
 the device's IP), via ESPHome's
 [`web_server`](https://esphome.io/components/web_server.html) component —
-no Home Assistant involved. Log in as `admin` with
-`pool_controller_web_password` from `secrets.yaml` (digest auth).
+no Home Assistant involved. Log in as `admin` with the controller's Page
+Password (digest auth); until one is set, the page opens without a login
+(setup mode, see [Controller settings](#controller-settings)).
 
 The page is our own, not ESPHome's stock one: it has the look of the Home
 Assistant dashboard and runs HA's pool card unchanged (see the README, "The
-device's page"). Four tabs:
+device's page"). While Setup State isn't `configured`, the setup wizard
+takes its place (see [First setup](#first-setup)). Four tabs:
 
 | Tab | What's in it |
 |---|---|
 | **Contrôle** | The pool card's panel (pump state, today's plan timeline, the pool's temperature over the last 7 days, Auto/Manuel, forced speed and duration), the temperatures with today's pool min/max |
 | **Remplissage** | The fill water from the device's own record (Fill Water Today, Days, Months): today, this month, the flow, litres by day over 30 days or by month over 12 (the pool card's water variant) |
-| **Avancé** | Filtration settings with their Apply gate, boost pulses and freeze-protection threshold (the pool card's settings variant, as in Home Assistant), today's plan in detail, the last 7 days (Daily History), the device's sensors, its live log |
-| **Contrôleur** | Wi-Fi: the connection and its statistics, joining another network (see "Wi-Fi and the fallback hotspot" below). Firmware: the commit it was built from, ESPHome's version, and « Vérifier » (is there a newer one on main?) |
+| **Avancé** | Today's plan in detail, the device's sensors, the filtration settings with their Apply gate, boost pulses and freeze-protection threshold (the pool card's settings variant, as in Home Assistant), the last 7 days (Daily History), its live log |
+| **Contrôleur** | Wi-Fi: the connection and its statistics, joining another network (see "Wi-Fi and the fallback hotspot" below). Firmware: the version it runs, ESPHome's, and its updates (« Vérifier », « Installer », Auto Update, the check interval, Update Status, « Annuler la demande »; see [Updates](#updates)). Accès (page and OTA passwords), Position, Sondes, Home Assistant, Réinitialiser (see [Controller settings](#controller-settings)). |
 
 The `sorting_groups:` under `web_server:` (Pump, Today's Plan, Filtration
 Settings, Sensors, Wi-Fi) and each entity's `web_server: {sorting_group_id,
@@ -606,8 +783,9 @@ What to know:
   fallback hotspot too.
 - **LAN only.** Digest auth keeps the password off the wire, but the page is
   plain HTTP — fine on a trusted home network, not something to expose to
-  the internet. There's no firmware upload from the page; OTA stays on
-  `make ota` / HA's ESPHome integration.
+  the internet. There's no firmware file upload from the page: it installs
+  the published releases (see [Updates](#updates)); a build of your own
+  goes through `make ota` / HA's ESPHome integration.
 - It also exposes ESPHome's REST API and `/events` stream on the same port,
   behind the same login, if you ever want to script against the device
   without HA.
@@ -616,17 +794,22 @@ What to know:
 
 From [wifi-setup.yaml](wifi-setup.yaml), a package of the firmware:
 
-- **Fallback hotspot.** After 1 minute without a Wi-Fi connection (new
-  install, router down, changed password), the device opens an **open**
-  network named `pool-controller` and keeps trying its own network
-  meanwhile. Its page answers at http://192.168.4.1, behind the same login.
-  Anyone in range can join the hotspot itself; the page, the API and OTA
-  each still need their own password. A WPA2 password for the hotspot is
-  one commented line in the package.
+- **Hotspot.** With no network saved (a new install, after a Factory
+  Reset) at once, and otherwise after 1 minute without a Wi-Fi connection
+  (router down, changed password), the device opens an **open** network
+  named `pool-controller` and keeps trying its own network meanwhile. Its
+  page answers at http://192.168.4.1, behind the same login. Anyone in
+  range can join the hotspot itself; the page, the API and OTA each still
+  need their own password or key once set up (a controller still in setup
+  mode is open to them). A WPA2 password for the hotspot would be one line
+  in the package, at the cost of compiling it in.
+- **Improv serial.** The install page sends the network over USB right
+  after flashing; it is tried, then saved like one joined from the page.
 - **Joining a network from the page** (Wi-Fi tab): the device tries the new
   network for 30 s and saves it only if it connects, otherwise it stays on
-  the current one. A saved network takes precedence over the one in
-  `secrets.yaml`. The password is never sent back to a page or to HA.
+  the current one. The firmware compiles in no network: the one saved
+  this way, or by Improv serial over USB, is the controller's network. The
+  password is never sent back to a page or to HA.
 - **Clock without internet.** On the hotspot alone there's no SNTP, so no
   daily plan (freeze protection still runs). The page sets the device's
   clock to the browser's time when it has none, and says so; `Clock
