@@ -24,7 +24,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build firmware-test flash status kill-port ota ip logs webui mock-ui mock-webui mock-ui-check ha-dashboard-check clean
+.PHONY: validate build firmware-test flash status kill-port ota ip logs webui webui-test mock-ui mock-webui mock-ui-check ha-dashboard-check clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate: webui
@@ -144,6 +144,11 @@ webui/dist/device.js: $(WEBUI_SRC)
 
 webui/dist/device.css: webui/app.css
 	$(ESBUILD) webui/app.css --minify --log-level=warning --outfile=$@
+
+# Unit tests of the page's pure modules (webui/test/: the setup's logic, the
+# time zone table), with Node's own test runner, in the same node image.
+webui-test:
+	docker run --rm -v "$(CURDIR):/src" -w /src node:22-alpine node --test 'webui/test/*.test.mjs'
 
 clean:
 	rm -rf .esphome webui/dist
