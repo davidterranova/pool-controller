@@ -89,8 +89,10 @@ whole `entities:` map, as `dashboard.yaml` does.
 
 `make ha-dashboard-check` (also in CI) reads `pool-controller.yaml` and its packages and fails when
 the dashboard or the scripts name a controller entity that doesn't exist, or when the pool card in
-`dashboard.yaml` leaves out an entity the card uses. A firmware change that renames or adds an
-entity the dashboard relies on therefore can't land without the dashboard following.
+`dashboard.yaml` leaves out an entity the card uses (unless the card's default already is a fresh
+install's id; one the firmware doesn't have yet is only noted, since the card hides its rows). A
+firmware change that renames or adds an entity the dashboard relies on therefore can't land without
+the dashboard following.
 
 ## What the components show, and why that way
 
