@@ -21,10 +21,10 @@ To claim a WP:
 
 The feature branch's other rules:
 - **Version:**
-  - Its first commit bumps VERSION to the next unreleased minor (1.7.0).
+  - It bumps VERSION to the next unreleased minor: 1.8.0 now (it was 1.7.0, until PR #46 released that on 2026-11-18).
   - release.yml's check runs on every PR, whatever its base: it fails when the card or firmware changed and VERSION is already released. So the sub-PRs pass without each bumping it.
-  - If main releases 1.7.0 first (PR #46 may), the next sync of main bumps it again.
-- **Keeping up with main:** merge main into the feature branch whenever main moves, at least before the final PR. Expect conflicts with PR #46 (daily plan history): it edits the same `pool-controller.yaml`, card, `webui/` and mock files.
+  - Whenever main releases the version it holds, the next sync of main bumps it again.
+- **Keeping up with main:** merge main into the feature branch whenever main moves, at least before the final PR. Then each open WP branch merges the feature branch in.
 - **Going live:**
   1. When every WP is `done`, open one PR from `feat/optional-fill-meter` into main (release notes: see F5).
   2. When it merges, release.yml releases the version.
@@ -129,7 +129,7 @@ Whether the meter is proven (`detected`) is kept in a restored global (`fill_met
 | F4 | HA side: blueprint, dashboard, `ha-dashboard-check` | F1 (ids for `ha-dashboard-check`) | | todo | |
 | F5 | Documentation pass: every file in « Documentation » below agrees with what merged | F1–F4 merged | | todo | |
 
-| — | Feature branch: plan + VERSION 1.7.0 | — | feat/optional-fill-meter | in progress | #47 (draft, into main) |
+| — | Feature branch: plan + VERSION 1.8.0 | — | feat/optional-fill-meter | in progress | #47 (draft, into main) |
 
 F2 can start right away. F3 can start right away on the mock, once F1's entity declarations are pushed; it doesn't need F1's logic. F4 comes last, or alongside F1. Each WP updates the docs for what it changes (its « Docs » items). F5 is a final read-through across all of them, plus the cross-references.
 
@@ -260,7 +260,7 @@ Done as a package, like `updates.yaml`: the logic is pure C++ in `fill_meter.h`,
   - its WP3 points here for the « Compteur d'eau » wizard block;
   - its WP6 points here for the gate waiting on Fill Running
 - [ ] this plan: every WP `done`, the open questions closed or moved to an issue
-- [ ] the description of the final PR into main, which becomes the release notes of 1.7.0, says how to turn the meter off and where the alarm's blueprint is
+- [ ] the description of the final PR into main, which becomes the release notes of 1.8.0, says how to turn the meter off and where the alarm's blueprint is
 
 ## Documentation
 
@@ -306,7 +306,7 @@ These come from the secret-free firmware, which is done.
 - **The release itself:** this is the first feature to ship through the update path.
   - Controllers with Auto Update install it on their next scheduled check, and the gate defers the install during a fill.
   - The default-on switch means this controller keeps counting through it.
-- **PR #46 (daily plan history, open):** edits the same files. Whichever merges into main first, the other resolves the conflicts. The entities don't overlap.
+- **PR #46 (daily plan history):** merged and released as 1.7.0 on 2026-11-18, then merged into the feature branch.
 
 ## Verification
 - [ ] each PR: `make validate`, `make mock-ui-check`, `make ha-dashboard-check`, CI green; its « Docs » items done

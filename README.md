@@ -327,7 +327,8 @@ How it fits together:
   sensors, so a curve would only show the time a page happened to be open.
   What the page shows over time, the device records itself: today's pool
   min/max (Pool Water Min/Max Today), each of the last 7 days' hours
-  filtered and pool min/max (Daily History), and the fill water of today,
+  filtered and pool min/max (Daily History) against its plan (Daily Plan
+  History), and the fill water of today,
   the last 30 days and the last 12 months (Fill Water Today, Days, Months).
   So the card's temperature graph runs with `recorder: false` here: 7 days,
   with no range to pick; its fill water is the `water` variant on that

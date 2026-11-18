@@ -422,6 +422,15 @@ Re-evaluated every 30 seconds, highest priority wins:
      off, or had no clock, is missing rather than shown as zero. It exists
      for the device's own web page, which has no other way to answer "did
      it filter enough this week?".
+   - **Daily Plan History** (diagnostic) is the other half of that answer:
+     each of the same days' Planned Filtration Hours as it stood at the
+     day's end (a recompute during the day replaces it), in the same format
+     without the range — e.g. `2026-11-13: 6.50 h, 2026-11-12: 6.70 h`. A
+     day closed before the firmware that added it, or with no plan computed,
+     is left out. Its own sensor rather than more of Daily History, whose
+     text is close to Home Assistant's 255-character limit. The pool card
+     and the device's page mark each day's plan on its bar, and turn a day
+     more than 15 minutes under its plan amber.
    - **Pool Water Min Today / Pool Water Max Today** are the lowest and
      highest Pool Return Temperature since midnight, counting only readings
      taken after 10 minutes of pumping: the sensor sits on the return pipe,
