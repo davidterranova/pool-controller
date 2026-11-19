@@ -77,6 +77,10 @@ void PageLogin::dump_config() {
 
 void PageLogin::set_password(const std::string &password) {
   LockGuard guard(this->mutex_);
+  // Leaving setup mode: the streams opened without a login would stay open,
+  // ungated. Closed, they reconnect and meet the gate.
+  if (this->password_.empty() && !password.empty())
+    this->close_streams_(NO_SESSION);
   this->password_ = password;
 }
 
@@ -116,16 +120,19 @@ bool PageLogin::claims_(AsyncWebServerRequest *request) {
       break;
   }
   LockGuard guard(this->mutex_);
-  if (this->password_.empty())
+  if (this->password_.empty()) {
+    // Setup mode: nothing gated, but its streams are noted, to be closed
+    // when a password is set.
+    if (route == Route::EVENTS)
+      this->record_stream_(request, NO_SESSION);
     return false;
+  }
   const uint64_t now = now_ms_();
   const int session = this->valid_session_(request, now);
   if (session < 0)
     return true;  // answered with a 401 by handle_()
   if (route == Route::EVENTS) {
-    httpd_req_t *req = *request;
-    server_handle.store(req->handle);
-    this->record_stream_(httpd_req_to_sockfd(req), session);
+    this->record_stream_(request, session);
   } else {
     this->sessions_.touch(session, now);
   }
@@ -225,6 +232,11 @@ void PageLogin::login_(AsyncWebServerRequest *request) {
       } else {
         outcome = LOGGED_IN;
         this->lockout_.succeed();
+        // One session per browser: a login that still holds a valid cookie
+        // replaces its session rather than taking another slot.
+        const int previous = this->valid_session_(request, now);
+        if (previous >= 0)
+          this->end_session_(previous);
         int evicted;
         const int session = this->sessions_.add(token, now, evicted);
         if (evicted >= 0)
@@ -335,7 +347,7 @@ void PageLogin::end_session_(int i) {
 void PageLogin::close_streams_(int session) {
   httpd_handle_t hd = server_handle.load();
   for (auto &s : this->streams_) {
-    if (s.session == session) {
+    if (s.fd >= 0 && s.session == session) {
       if (hd != nullptr)
         httpd_queue_work(hd, close_stream_work, reinterpret_cast<void *>(intptr_t(s.fd)));
       s = {};
@@ -343,7 +355,10 @@ void PageLogin::close_streams_(int session) {
   }
 }
 
-void PageLogin::record_stream_(int fd, int session) {
+void PageLogin::record_stream_(AsyncWebServerRequest *request, int session) {
+  httpd_req_t *req = *request;
+  server_handle.store(req->handle);
+  const int fd = httpd_req_to_sockfd(req);
   for (auto &s : this->streams_) {
     if (s.fd == fd) {
       s.session = static_cast<int8_t>(session);

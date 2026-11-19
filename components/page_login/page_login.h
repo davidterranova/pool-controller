@@ -60,7 +60,7 @@ class PageLogin : public Component {
   int valid_session_(web_server_idf::AsyncWebServerRequest *request, uint64_t now);
   void end_session_(int i);
   void close_streams_(int session);
-  void record_stream_(int fd, int session);
+  void record_stream_(web_server_idf::AsyncWebServerRequest *request, int session);
 
   void expire_idle_();
 
@@ -81,9 +81,12 @@ class PageLogin : public Component {
   // their session ends. A stream that ended by itself leaves a stale entry;
   // its socket may since carry another stream, which then gets closed too,
   // and simply reconnects.
+  // A stream opened in setup mode belongs to NO_SESSION: closed when a
+  // password is set. A free entry has fd -1.
+  static constexpr int NO_SESSION = -1;
   struct Stream {
     int fd{-1};
-    int8_t session{-1};
+    int8_t session{NO_SESSION};
   };
   static constexpr size_t MAX_STREAMS = 8;
   std::array<Stream, MAX_STREAMS> streams_{};
