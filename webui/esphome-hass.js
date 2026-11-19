@@ -71,6 +71,17 @@ export const E = {
   // Write-only, a one-off tool Home Assistant drives (its history into the record above): known, so the page lists
   // it nowhere (not under Capteurs internes › Autres entités).
   fillImport: "text/Fill Water Import",
+  // From fill-meter.yaml: the meter as an option, its pulse test and its long-fill alarm. A firmware without them
+  // counts the meter always: the page shows Remplissage and no « Compteur d'eau ».
+  fillEnabled: "switch/Fill Meter",
+  fillAlarmAfter: "number/Fill Alarm After",
+  fillDetect: "button/Detect Fill Meter",
+  fillStatus: "text_sensor/Fill Meter Status",
+  fillLastPulse: "text_sensor/Fill Meter Last Pulse",
+  fillRunning: "binary_sensor/Fill Running",
+  fillTooLong: "binary_sensor/Fill Running Too Long",
+  fillAck: "button/Acknowledge Fill Alarm",
+  fillAcked: "binary_sensor/Fill Alarm Acknowledged",
   fwVersion: "text_sensor/Firmware Version",
   esphomeVersion: "text_sensor/ESPHome Version",
   // From updates.yaml: the page falls back to comparing with GitHub on a firmware without them.

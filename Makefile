@@ -37,8 +37,9 @@ build: webui
 
 # Host tests of the firmware's pure C++ helpers (tools/tests/: updates.h's
 # schedule, install gate and Update Status; fill_import.h's Fill Water
-# Import), with the ESPHome image's g++.
-FIRMWARE_TESTS := updates_test fill_import_test
+# Import; fill_meter.h's fills, long-fill alarm and pulse test), with the
+# ESPHome image's g++.
+FIRMWARE_TESTS := updates_test fill_import_test fill_meter_test
 firmware-test:
 	docker run --rm -v "$(CURDIR):/config" -w /config --entrypoint sh $(ESPHOME_IMAGE) -c \
 		'set -e; for t in $(FIRMWARE_TESTS); do g++ -std=c++20 -Wall -Wextra -Werror -o /tmp/$$t tools/tests/$$t.cpp; /tmp/$$t; done'
@@ -168,8 +169,10 @@ mock-ui: webui
 # install: not set up (Setup State lists everything), no network saved, on its
 # hotspot with no clock; once a Page Password is set, it asks for it.
 # MOCK_NO_RELEASE=1: no firmware published yet, every update check fails.
+# MOCK_FILL=off starts with the fill meter turned off; MOCK_LONG_FILL=1 with a
+# fill already past Fill Alarm After, its alarm on (fill-meter.yaml).
 mock-webui:
-	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh) $(if $(MOCK_NO_RELEASE),--no-release)"
+	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh) $(if $(MOCK_NO_RELEASE),--no-release) $(if $(filter off,$(MOCK_FILL)),--fill-off) $(if $(MOCK_LONG_FILL),--long-fill)"
 
 # Prints the page layout (sections, order, which entities the simulation
 # drives) and fails if $(CONFIG) has an entity type the mock can't render.

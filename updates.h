@@ -65,12 +65,13 @@ inline bool check_due(uint32_t now_ms, uint32_t last_ms, uint32_t hours) {
 /// pulses of a fill, so an install waits for both to end.
 enum class Blocker : uint8_t { NONE = 0, OVERRIDE, FILL };
 
-/// `fill_flow` is the water meter's rate (L/min); NaN (no reading yet) is no
-/// fill. Override first: it is the one the user chose.
-inline Blocker gate_blocker(bool override_active, float fill_flow) {
+/// `fill_running` is Fill Running (fill-meter.yaml): the same fill its alarm
+/// sees, and never while the meter is turned off. Override first: it is the
+/// one the user chose.
+inline Blocker gate_blocker(bool override_active, bool fill_running) {
   if (override_active)
     return Blocker::OVERRIDE;
-  if (fill_flow > 0.0f)
+  if (fill_running)
     return Blocker::FILL;
   return Blocker::NONE;
 }

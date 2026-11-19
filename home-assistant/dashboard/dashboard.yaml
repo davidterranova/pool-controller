@@ -64,6 +64,12 @@ views:
               endsAt: sensor.pool_controller_manual_override_ends_at
               flow: sensor.pool_controller_piscine_debit_remplissage
               volume: sensor.pool_controller_piscine_volume_total_remplissage
+              fillEnabled: switch.pool_controller_fill_meter    # fill-meter.yaml: off hides the fill water
+              fillAlarmAfter: number.pool_controller_fill_alarm_after
+              fillRunning: binary_sensor.pool_controller_fill_running
+              fillTooLong: binary_sensor.pool_controller_fill_running_too_long   # the banner, the pulsing light
+              fillAck: button.pool_controller_acknowledge_fill_alarm
+              fillAcked: binary_sensor.pool_controller_fill_alarm_acknowledged
               min: number.pool_controller_min_filtration_hours
               max: number.pool_controller_max_filtration_hours
               offset: number.pool_controller_filtration_hour_offset
@@ -156,7 +162,13 @@ views:
       # The water meter on the fill line. Its total only grows, so its daily statistics (change) are exact.
       # piscine-card's « Contrôle » draws the same, by day, week or month with the period's total;
       # this is the same meter with Home Assistant's own cards, for a dashboard without the card.
+      # The meter is optional: the section hides itself while Fill Meter is off (« not off », so a
+      # firmware from before the switch, which has no such entity, still shows it).
       - type: grid
+        visibility:
+          - condition: state
+            entity: switch.pool_controller_fill_meter
+            state_not: "off"
         cards:
           - type: heading
             heading: Eau de remplissage
@@ -189,8 +201,47 @@ views:
     max_columns: 3
     sections:
       # ── Component: alerts ──────────────────────────────────────────────────────────────────────────
+      # Each shows only while its problem is on. The fill alarm is the controller's (Fill Running Too Long,
+      # after Fill Alarm After minutes); « Acquitter » stops the blueprint's reminders, and stays away once
+      # someone acknowledged it, from here, the pool card, the controller's page or a phone.
       - type: grid
         cards:
+          - type: markdown
+            visibility:
+              - condition: state
+                entity: binary_sensor.pool_controller_fill_running_too_long
+                state: "on"
+            grid_options: {columns: full}
+            content: >-
+              ## ⚠️ Remplissage anormalement long
+
+              {% set on = states.binary_sensor.pool_controller_fill_running_too_long.last_changed %}
+              Le remplissage tourne depuis plus de
+              **{{ states('number.pool_controller_fill_alarm_after') | int(0) }} min** (alerte à
+              {{ as_local(on).strftime('%H:%M') }}). Vérifier l'arrivée d'eau, le flotteur ou une fuite.
+              {% if is_state('binary_sensor.pool_controller_fill_alarm_acknowledged', 'on') %}
+              Alerte **acquittée** : plus de rappel jusqu'à la fin de ce remplissage.
+              {% else %}
+              Les rappels continuent tant que personne ne l'acquitte.
+              {% endif %}
+          - type: button
+            visibility:
+              - condition: state
+                entity: binary_sensor.pool_controller_fill_running_too_long
+                state: "on"
+              - condition: state
+                entity: binary_sensor.pool_controller_fill_alarm_acknowledged
+                state_not: "on"
+            entity: button.pool_controller_acknowledge_fill_alarm
+            name: Acquitter
+            icon: mdi:bell-check
+            show_state: false
+            grid_options: {columns: 6, rows: 1}
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.pool_controller_acknowledge_fill_alarm
           - type: markdown
             visibility:
               - condition: state

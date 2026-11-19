@@ -3,8 +3,9 @@
 ESPHome firmware for an ESP32-WROOM that runs a swimming pool's variable-speed
 pump: an autonomous on-device filtration schedule (computed from water
 temperature and sunrise/sunset, plus manual override), a freeze-protection
-safety rule that always wins, and three temperature sensors — all exposed to
-Home Assistant, but not dependent on it. The device keeps running its
+safety rule that always wins, three temperature sensors, and an optional
+fill-line water meter with a long-fill alarm — all exposed to Home
+Assistant, but not dependent on it. The device keeps running its
 schedule whether or not HA is reachable.
 
 **Install it from the browser: <https://pool-controller.kitesize.fr/>**
@@ -21,8 +22,9 @@ tooling, and building the firmware yourself.
 | `pool-controller.yaml` | The ESPHome device config — this *is* the firmware source. |
 | `wifi-setup.yaml` | Package included by `pool-controller.yaml`: fallback hotspot, joining a network from the page, Wi-Fi statistics, clock from the browser (see below). |
 | `device-settings.yaml`, `device_settings.h` | Package included by `pool-controller.yaml`: the controller's settings, set at run time and kept on the device (page and OTA passwords, API key, position, timezone, probe roles, Setup State, Factory Reset). Nothing personal is compiled in. |
+| `fill-meter.yaml`, `fill_meter.h` | Package included by `pool-controller.yaml`: the fill-line water meter as an option (Fill Meter on/off, its pulse test, the long-fill alarm and its acknowledgement). `fill_meter.h` is pure logic, tested on the host (`make firmware-test`). |
 | `Makefile` | Validate / build / flash / OTA / status tooling. |
-| `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS). `dashboard/`: dashboard components for these entities and the scripts the card calls, with a guide ([home-assistant/dashboard/README.md](home-assistant/dashboard/README.md)). |
+| `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS). `dashboard/`: dashboard components for these entities and the scripts the card calls, with a guide ([home-assistant/dashboard/README.md](home-assistant/dashboard/README.md)). `blueprints/`: phone reminders while a fill runs too long ([Fill alarm notifications](home-assistant/dashboard/README.md#fill-alarm-notifications)). |
 | `hacs.json` | Tells the Marketplace (HACS) which file this repo publishes: the card above, from each GitHub release. |
 | `tools/webui-mock/` | Local mock of the device's web UI, for working on the page without flashing (see below). |
 | `tools/card-preview/` | The pool card against a stand-in for Home Assistant, in named situations, with screenshots and a check (see [Previewing the card](#previewing-the-card)). |
@@ -31,7 +33,7 @@ tooling, and building the firmware yourself.
 | `tools/migrate/` | `make migrate`: moves a controller built with `secrets.yaml` to this firmware in one OTA (see [Coming from a secrets.yaml build](#coming-from-a-secretsyaml-build)). |
 | `docs/install/` | The install page, served at the root of <https://pool-controller.kitesize.fr/> (see [The install page](#the-install-page-docsinstall)). |
 | `webui/` | The device's own web page, built around the same `piscine-card` (see below). `make webui` bundles it into `webui/dist/` (gitignored), which the firmware embeds. |
-| `docs/plans/` | Plans for work spanning several PRs, with their progress: [secret-free firmware and OTA updates](docs/plans/secret-free-firmware.md). |
+| `docs/plans/` | Plans for work spanning several PRs, with their progress: [secret-free firmware and OTA updates](docs/plans/secret-free-firmware.md), [optional fill meter](docs/plans/optional-fill-meter.md). |
 | `.gitignore` | Excludes `.ota-password` (see `make ota`), `secrets.yaml` (older builds, `make migrate`), `.migrate/`, `.esphome/` (build cache), `.vscode/`. |
 | `LICENSE` | MIT. |
 
@@ -53,8 +55,8 @@ Nothing to build: each release's firmware is published, and
 <https://pool-controller.kitesize.fr/> installs it from Chrome or Edge on a
 computer, over USB (ESP Web Tools; every install erases the board), then
 sends the Wi-Fi over the same cable (Improv). The controller's own page then
-runs its setup wizard (page password, Wi-Fi, position, probes, Home
-Assistant). The whole walk-through, with what to do without Wi-Fi:
+runs its setup wizard (page password, Wi-Fi, position, probes and whether
+a fill meter is there, Home Assistant). The whole walk-through, with what to do without Wi-Fi:
 [POOL-CONTROLLER.md, First setup](POOL-CONTROLLER.md#first-setup).
 
 From then on it updates itself from the releases (Auto Update, on by
@@ -164,6 +166,12 @@ you set `local: true` back).
   reloads the page like the YAML does.
 - **No login.** Unlike the device, the mock has no auth, to keep iteration
   quick.
+- **The fill meter** (fill-meter.yaml) is simulated too: the valve runs 3 min
+  every quarter hour, « Tester » opens it for 20 s so the pulse test passes,
+  and turning Fill Meter off empties Remplissage. `MOCK_FILL=off make
+  mock-webui` starts with it off; `MOCK_LONG_FILL=1 make mock-webui` with a
+  fill already past Fill Alarm After, so the banner and « Acquitter » can be
+  tried (the fill stops 3 min after it, and the alarm clears 5 min later).
 - An entity the simulation doesn't know (e.g. one you just added) still
   shows up, with a static value. `make mock-ui-check` marks it
   `[static: not simulated]`. Add it to the `N` map in `mock_server.py` to make
@@ -192,6 +200,17 @@ last heard: green while it talks, amber when it goes quiet or has just gone
 offline, red after 15 min; each new message sends a ring out of it. In the
 panel, it opens Home Assistant's device page for the controller (its link,
 Wi-Fi signal and disconnections).
+The fill meter is optional ([POOL-CONTROLLER.md, Fill meter](POOL-CONTROLLER.md#fill-meter)):
+with Fill Meter off, the fill water is gone from « Contrôle » and `water`
+hides. A fill running longer than Fill Alarm After puts a banner in
+« Contrôle » with « Acquitter » (Acknowledge Fill Alarm), and until someone
+acknowledges it the light turns amber and keeps pulsing, the tile and the
+header read « Remplissage depuis 1 h 12 », and the header's light leads to
+the banner. Its order: red (controller lost) > pulsing amber (fill alarm) >
+amber > green. The meter's settings are not the card's: the device's page in
+Home Assistant (Configuration), or the controller's own page. Reminders on a
+phone, every 15 min until acknowledged, come from a blueprint in
+[home-assistant/blueprints/](home-assistant/dashboard/README.md#fill-alarm-notifications).
 It's a plain custom element, no framework and no build step, in French.
 
 It lives here because it's written against this firmware's entities, and
@@ -218,6 +237,11 @@ What it needs from Home Assistant, besides the entities:
 - the long-term statistics of the fill meter (Piscine - Volume total
   remplissage, `total_increasing`), for the fill water in « Contrôle ».
   Without the meter or the recorder, it isn't there;
+- Fill Meter, Fill Running, Fill Running Too Long, Fill Alarm Acknowledged,
+  Acknowledge Fill Alarm and Fill Alarm After
+  ([fill-meter.yaml](fill-meter.yaml), 1.9.0), for hiding the fill water
+  and for the alarm. A firmware without them counts the meter always and has
+  no alarm;
 - the Device Clock ([wifi-setup.yaml](wifi-setup.yaml)), which changes every
   minute: the light's heartbeat. Without it, the light only follows the link;
 - the firmware's update entity (Firmware, with Check for Update, Cancel
@@ -296,7 +320,7 @@ was first written (`bridges/homeassistant/config/www/piscine/`).
 stand-in for Home Assistant: no Home Assistant, no controller. `make
 card-preview` serves it at http://localhost:8124/tools/card-preview/: pick a
 situation (normal day, override, freeze protection, controller offline, a
-firmware update waiting…), the pop-up's width (phone or screen) and the
+fill running too long, the fill meter off, a firmware update waiting…), the pop-up's width (phone or screen) and the
 theme. The tile, the panel on any tab and the `water` and `settings` variants
 are drawn side by side, and what the card calls (scripts, services, the
 pages it opens) is listed. Its commands are applied as the controller would
@@ -333,7 +357,10 @@ look of the Home Assistant dashboard. It has three tabs, the card's own:
   Auto/Manuel, forced speed and its duration) and, on its right (below it on
   a phone), Remplissage: the card's `water` variant on the controller's own
   record (Fill Water Today, Days and Months): today, this month, the flow,
-  and the litres by day over 30 days or by month over 12.
+  and the litres by day over 30 days or by month over 12. With Fill Meter
+  off there is no Remplissage. A fill running longer than Fill Alarm After
+  puts the card's banner here, with « Acquitter », fed by the controller, so
+  it works with Home Assistant down.
 - **Réglages** (`#reglages`): today's plan in detail, the device's sensors,
   « Filtration et hors gel » (the filtration settings with their Apply gate,
   the boost pulses and the freeze-protection threshold: the card's settings
@@ -341,7 +368,9 @@ look of the Home Assistant dashboard. It has three tabs, the card's own:
   7 days (hours filtered, pool min/max).
 - **Réglages contrôleur** (`#reglages-controleur`): a Wi-Fi section (see
   below: the connection and its statistics, and a way to join a network;
-  only when the device has those entities), Position and Sondes, a Firmware
+  only when the device has those entities), Position, Sondes, Compteur d'eau
+  (the fill meter on or off, its pulse test, its last pulse and « Alarme
+  après »; the setup wizard asks the same in its Sondes step), a Firmware
   one (the version it runs, ESPHome's, and its updates: « Vérifier »,
   « Installer », as in the card's « Réglages contrôleur »), Accès, Home
   Assistant, Réinitialiser, and its live log (Journal).
@@ -479,6 +508,12 @@ An installed controller updates itself from the releases: see
 build, `make ota` (no cable; see [Development builds](#development-builds));
 `make flash` (USB) only for a first flash, or a controller that can't reach
 Wi-Fi at all.
+
+The fill meter (Fill Meter, 1.9.0) is on after the update, as it was
+before: a controller without a meter on its fill line turns it off once
+(Réglages contrôleur › Compteur d'eau on its page, or the device's
+Configuration in Home Assistant). See
+[POOL-CONTROLLER.md, Fill meter](POOL-CONTROLLER.md#fill-meter).
 
 ## Releases
 

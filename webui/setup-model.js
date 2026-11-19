@@ -112,3 +112,50 @@ export function sunTimes(lat, lon, date = new Date()) {
   const at = (minutes) => new Date(midnight + minutes * 60000);
   return { rise: at(720 - 4 * (lon + ha) - eqTime), set: at(720 - 4 * (lon - ha) - eqTime) };
 }
+
+/* ---------------------------------------------------------------- the fill meter (fill-meter.yaml) */
+
+/** fill_meter.h's pulse test: this many litres within this many minutes. */
+export const FILL_DETECT = { litres: 3, minutes: 5 };
+/** Fill Alarm After's range and step (minutes; 0 = no alarm). */
+export const FILL_ALARM = { min: 0, max: 1440, step: 5 };
+
+/**
+ * Fill Meter Status (off, untested, listening, detected, not_detected) -> how the page says it: {cls (the tag's
+ * colour: ok, warn, bad, idle), tag, sub (what to do)}; null for a word it doesn't know (a newer firmware's).
+ */
+export function fillStatus(status) {
+  const { litres, minutes } = FILL_DETECT;
+  switch (String(status ?? "").trim()) {
+    case "off": return { cls: "idle", tag: "Désactivé", sub: "Rien n'est compté." };
+    case "untested": return { cls: "idle", tag: "Pas testé", sub: `« Tester », puis ouvrez le robinet de remplissage : il lui faut ${litres} L en ${minutes} min.` };
+    case "listening": return { cls: "warn", tag: "À l'écoute", sub: `Ouvrez le robinet de remplissage : ${litres} L en ${minutes} min suffisent.` };
+    case "detected": return { cls: "ok", tag: "Détecté", sub: "Il compte : un remplissage a été vu." };
+    case "not_detected": return { cls: "bad", tag: "Pas détecté", sub: `Moins de ${litres} L en ${minutes} min : vérifiez le câblage, puis relancez le test.` };
+    default: return null;
+  }
+}
+
+/**
+ * « Alarme après » as typed ("60", " 1 440 ", "90 min") -> whole minutes within FILL_ALARM, rounded to its step; null
+ * when it isn't a number or is out of range.
+ */
+export function parseAlarmMinutes(text) {
+  const t = String(text ?? "").replace(/\s|min$/gi, "");
+  if (!/^\d+$/.test(t)) return null;
+  const v = Number(t);
+  if (v < FILL_ALARM.min || v > FILL_ALARM.max) return null;
+  return Math.round(v / FILL_ALARM.step) * FILL_ALARM.step;
+}
+
+/** Fill Meter Last Pulse ("YYYY-MM-DD HH:MM", "--") -> « aujourd'hui à 14:02 », « le 12/07 à 09:15 », « jamais ». */
+export function lastPulseText(text, now = new Date()) {
+  const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/.exec(String(text ?? "").trim());
+  if (!m) return "jamais";
+  const day = new Date(+m[1], +m[2] - 1, +m[3]), y = new Date(now);
+  y.setDate(y.getDate() - 1);
+  const at = `${m[4]}:${m[5]}`;
+  if (day.toDateString() === now.toDateString()) return `aujourd'hui à ${at}`;
+  if (day.toDateString() === y.toDateString()) return `hier à ${at}`;
+  return `le ${m[3]}/${m[2]}${+m[1] !== now.getFullYear() ? `/${m[1]}` : ""} à ${at}`;
+}

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   SETUP_ITEMS, parseSetupState, nextStep, andList, parseDetectedProbes, probeTrend, passwordProblem,
-  validApiKey, parseDegrees, degreesInput, sunTimes,
+  validApiKey, parseDegrees, degreesInput, sunTimes, fillStatus, parseAlarmMinutes, lastPulseText,
 } from "../setup-model.js";
 import { TIMEZONES, posixOf, validPosix, validZoneName, posixStandardOffset, clockIn } from "../timezones.js";
 
@@ -94,4 +94,34 @@ test("time zones: the table's rules parse, names are what the firmware takes", (
   assert.equal(posixStandardOffset("<-03>3"), -180);
   assert.equal(clockIn(new Date(Date.UTC(2026, 0, 1, 12, 0)), "", "IST-5:30"), "17:30");
   assert.equal(clockIn(new Date(Date.UTC(2026, 6, 1, 12, 0)), "Europe/Paris", ""), "14:00");
+});
+
+test("fill meter: Fill Meter Status in the page's words, unknown words left out", () => {
+  for (const s of ["off", "untested", "listening", "detected", "not_detected"]) {
+    const f = fillStatus(s);
+    assert.ok(f && f.tag && f.sub && ["ok", "warn", "bad", "idle"].includes(f.cls), s);
+  }
+  assert.equal(fillStatus("detected").cls, "ok");
+  assert.equal(fillStatus("not_detected").cls, "bad");
+  assert.match(fillStatus("listening").sub, /3 L en 5 min/);
+  for (const s of [undefined, "", "unknown", "calibrating"]) assert.equal(fillStatus(s), null);
+});
+
+test("fill meter: « Alarme après » in minutes, within 0–1440, on a 5-min step", () => {
+  assert.equal(parseAlarmMinutes("60"), 60);
+  assert.equal(parseAlarmMinutes(" 1 440 "), 1440);
+  assert.equal(parseAlarmMinutes("90 min"), 90);
+  assert.equal(parseAlarmMinutes("0"), 0); // never
+  assert.equal(parseAlarmMinutes("62"), 60);
+  assert.equal(parseAlarmMinutes("63"), 65);
+  for (const t of ["", "-5", "1445", "1,5", "une heure", undefined]) assert.equal(parseAlarmMinutes(t), null, String(t));
+});
+
+test("fill meter: its last pulse, from today back", () => {
+  const now = new Date(2026, 6, 14, 16, 20);
+  assert.equal(lastPulseText("2026-07-14 14:02", now), "aujourd'hui à 14:02");
+  assert.equal(lastPulseText("2026-07-13 09:15", now), "hier à 09:15");
+  assert.equal(lastPulseText("2026-07-01 09:15", now), "le 01/07 à 09:15");
+  assert.equal(lastPulseText("2025-12-30 08:00", now), "le 30/12/2025 à 08:00");
+  for (const t of ["--", "", undefined, "unknown"]) assert.equal(lastPulseText(t, now), "jamais");
 });

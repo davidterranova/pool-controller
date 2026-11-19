@@ -84,6 +84,8 @@ main { max-width: 1240px; margin: 0 auto; padding: 16px 16px 40px; }
 @media (min-width: 1000px) {
   /* Contrôle: Filtration, then Remplissage on its right */
   .cols.control { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+  /* the fill meter off: Filtration alone */
+  .cols.control:has(> #waterStack[hidden]) { grid-template-columns: minmax(0, 1fr); }
   .cols.settings, .cols.controller { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .span-2 { grid-column: 1 / -1; }
   /* Réglages contrôleur: the right column's second stack starts under Firmware, whatever the left one's height */
@@ -233,6 +235,14 @@ main { max-width: 1240px; margin: 0 auto; padding: 16px 16px 40px; }
 .stag { display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 500; padding: 1px 8px; border-radius: 10px;
   background: var(--ok-soft); color: var(--ok); vertical-align: 1px; white-space: nowrap; }
 .stag.bad { background: var(--danger-soft); color: var(--danger); }
+.stag.warn { background: var(--amber-soft); color: var(--amber); }
+.stag.idle { background: var(--idle-soft); color: var(--idle); }
+/* a small number box in a row (Compteur d'eau › Alarme après) */
+.erow .ctl.num-in { flex: 0 0 auto; min-width: 0; gap: 6px; color: var(--secondary-text-color); }
+.erow .ctl.num-in input { width: 72px; height: 34px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; text-align: right;
+  background: var(--card-background-color); color: var(--primary-text-color); font: inherit; }
+.wz-sub { margin: 18px 0 4px; font-size: 15px; font-weight: 500; }
+.wz-sub small { font-size: 12px; font-weight: 400; color: var(--secondary-text-color); margin-left: 6px; }
 .erow .name .stag { display: inline-block; }
 .erow + .hint { margin-top: 8px; }
 .erow .val.warn { color: var(--amber); font-weight: 500; }

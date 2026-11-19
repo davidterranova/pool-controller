@@ -87,7 +87,7 @@
 
     <!-- ============================================================ Réglages contrôleur -->
     <section id="tab-reglages-controleur" class="cols controller" role="tabpanel" hidden>
-      <!-- Left column: Wi-Fi, then the pool's own settings (setup.js: Position, Sondes). On a wide screen
+      <!-- Left column: Wi-Fi, then the pool's own settings (setup.js: Position, Sondes, Compteur d'eau). On a wide screen
            it spans both rows of the right one (Firmware, then Accès, Home Assistant, Réinitialiser, Journal). -->
       <div class="stack col span-rows">
       <!-- Wi-Fi: from wifi-setup.yaml; app.js hides it on a firmware without those entities. -->
@@ -131,6 +131,14 @@
         <div class="card">
           <h2 data-icon="thermometer">Rôle de chaque sonde</h2>
           <div class="body" id="probeBody"></div>
+        </div>
+      </div>
+      <!-- Compteur d'eau (setup.js, fill-meter.yaml): the meter on the fill line, its test and its alarm -->
+      <div class="stack" id="fillStack" hidden>
+        <h2 class="heading" data-icon="water">Compteur d'eau</h2>
+        <div class="card">
+          <h2 data-icon="water-check">Remplissage</h2>
+          <div class="body"><div id="fillBody"></div><div id="fillAlarm"></div></div>
         </div>
       </div>
       </div>

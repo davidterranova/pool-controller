@@ -39,11 +39,10 @@ static void test_check_due() {
 }
 
 static void test_gate() {
-  EXPECT(gate_blocker(false, 0.0f) == Blocker::NONE);
-  EXPECT(gate_blocker(false, NAN) == Blocker::NONE);  // no meter reading yet
-  EXPECT(gate_blocker(false, 14.0f) == Blocker::FILL);
-  EXPECT(gate_blocker(true, 0.0f) == Blocker::OVERRIDE);
-  EXPECT(gate_blocker(true, 14.0f) == Blocker::OVERRIDE);
+  EXPECT(gate_blocker(false, false) == Blocker::NONE);  // no fill, or the meter is off
+  EXPECT(gate_blocker(false, true) == Blocker::FILL);
+  EXPECT(gate_blocker(true, false) == Blocker::OVERRIDE);
+  EXPECT(gate_blocker(true, true) == Blocker::OVERRIDE);
 }
 
 static void test_auto_update() {
