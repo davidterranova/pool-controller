@@ -865,13 +865,15 @@ What to know:
 - **LAN only.** The login keeps the password off the wire, but the page is
   plain HTTP, so the session cookie travels in clear like any HTTP session.
   The password does cross the wire once, when it's set. Fine on a trusted
-  home network; not something to expose to the internet. There's no firmware file upload from the page: it installs
-  the published releases (see [Updates](#updates)); a build of your own
-  goes through `make ota` / HA's ESPHome integration.
+  home network; not something to expose to the internet. There's no
+  firmware file upload from the page: it installs the published releases
+  (see [Updates](#updates)); a build of your own goes through `make ota` /
+  HA's ESPHome integration.
 - It also exposes ESPHome's REST API and `/events` stream on the same port,
   behind the same login, if you ever want to script against the device
   without HA. `curl --digest` no longer works: log in the way the page
-  does, then pass the cookie.
+  does, then pass the cookie. Every POST needs a body, even an empty one
+  (`-d ''`): the controller refuses a POST without `Content-Length` (411).
 
   ```sh
   host=pool-controller.local; read -rs pw
@@ -879,7 +881,8 @@ What to know:
   proof=$(printf %s "$nonce" | openssl dgst -sha256 -hmac "$pw" | sed 's/.*= //')
   curl -s -c jar -d "nonce=$nonce&proof=$proof" http://$host/login   # 204: logged in
   curl -s -b jar http://$host/sensor/Pool%20Return%20Temperature
-  curl -s -b jar -X POST http://$host/logout
+  curl -s -b jar -d '' http://$host/button/Check%20for%20Update/press
+  curl -s -b jar -d '' http://$host/logout
   ```
 
 ### Wi-Fi and the fallback hotspot
