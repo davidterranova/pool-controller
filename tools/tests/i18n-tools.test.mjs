@@ -149,22 +149,25 @@ test("round-trip: export then import of the same file changes nothing", () => {
   assert.deepEqual(JSON.parse(readFileSync(path.join(root, "i18n", "es.json"), "utf8")), JSON.parse(before));
 });
 
-test("export: English, each text's id, plural form, where it is used and the French, in comments", () => {
+test("export: plain Markdown, each English text under a comment holding only its id", () => {
   const root = repo({ en: EN, fr: FR, es: ES, sources: USES });
-  const { markdown } = exportMarkdown(root, { surfaces: [SURFACE], glossary: { terms: [{ en: "Low", fr: "Basse", es: "Baja" }] } });
-  assert.match(markdown, /<!-- i18n: ui:g\.hi \| where: src\/a\.js \| fr: Salut \{name\} -->\nHi \{name\}\n/);
-  assert.match(markdown, /<!-- i18n: ui:g\.n#one \| plural form « one »[^>]*-->\n\{count\} day\n/);
-  assert.match(markdown, /Low \/ Basse \/ Baja/);
-  assert.match(markdown, /^## UI$/m);
+  const { markdown } = exportMarkdown(root, { surfaces: [SURFACE] });
+  assert.equal(markdown, [
+    "<!-- Translate each paragraph. Keep the comments, the words in braces such as {count}, and tags such as <b>, unchanged. -->",
+    "",
+    "<!-- ui:g.hi -->", "Hi {name}", "",
+    "<!-- ui:g.n#one -->", "{count} day", "",
+    "<!-- ui:g.n#other -->", "{count} days", "",
+    "<!-- ui:g.b -->", "Now <b>{speed}</b>", "",
+  ].join("\n"));
 });
 
 test("import: a translation as a tool returns it, into a new language file, in English's order", () => {
   const root = repo({ en: EN, fr: FR, sources: USES });
   const { markdown } = exportMarkdown(root, { surfaces: [SURFACE] });
-  // What a tool hands back: headings and the glossary translated, paragraphs translated, comments kept.
-  const translated = markdown
-    .replace("# Pool Controller: interface texts", "# Pool Controller: textos de la interfaz")
-    .replace("## UI", "## IU")
+  // What a tool hands back: a heading added, the note and paragraphs translated, lines wrapped, comments kept.
+  const translated = `# Textos\n\n${markdown}`
+    .replace("Translate each paragraph.", "Traduzca cada párrafo.")
     .replace("\nHi {name}\n", "\nHola {name}\n")
     .replace("\n{count} day\n", "\n{count} día\n")
     .replace("\n{count} days\n", "\n{count}\n   días\n")

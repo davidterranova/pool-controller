@@ -1,4 +1,4 @@
-// make i18n-import: a file make i18n-export wrote, once translated (Lokalise), back into every surface's
+// make i18n-import: a file make i18n-export wrote, once translated (by any tool), back into every surface's
 // <lang>.json. Refuses a text whose placeholders or markup changed (the draft stays), and lists what changed
 // against the draft, for a look in the PR. Exit 1 when a text was refused or one is missing.
 //

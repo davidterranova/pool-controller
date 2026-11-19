@@ -554,11 +554,16 @@ dashboard, scripts and blueprints. The plan, and how far it has got:
 - **Terms** every language uses are in
   [tools/i18n/glossary.json](tools/i18n/glossary.json).
 
-**Machine translation (Lokalise or any tool that translates Markdown):**
+**Translating with a tool (any that translates Markdown):**
 
 1. `make i18n-export` writes every text in English to
-   `.i18n/translations.en.md`, one paragraph each. The HTML comment above each
-   one holds its id, where it is used and the French.
+   `.i18n/translations.en.md`: plain Markdown, one paragraph per text, with
+   its id alone in an HTML comment above it:
+
+   ```markdown
+   <!-- card:card.temp.span_days#one -->
+   {count} day
+   ```
 2. Translate that file, keeping the comments, the `{placeholders}` and the
    tags such as `<b>`.
 3. `make i18n-import TO=es FILE=<the translated file>` writes the texts back

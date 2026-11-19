@@ -1,4 +1,4 @@
-// The dictionaries' checks, and the Markdown round-trip through Lokalise (docs/plans/i18n.md, I2): what
+// The dictionaries' checks, and the Markdown round-trip through a translation tool (docs/plans/i18n.md, I2): what
 // tools/i18n/check.mjs, export.mjs and import.mjs run, and tools/tests/i18n-tools.test.mjs tests. Every function
 // takes the repo's root, so the tests run them on made-up folders.
 import { readFileSync, writeFileSync, readdirSync, lstatSync, existsSync } from "node:fs";
@@ -184,9 +184,17 @@ export function check(root, { surfaces = SURFACES, langs = LANGS, sameAsEnglish 
   return { errors, warnings, summary };
 }
 
-// ------------------------------------------------------------------ Markdown round-trip (Lokalise)
+// ------------------------------------------------------------------ Markdown round-trip (any translation tool)
+//
+// The file is plain Markdown that any tool translating Markdown handles: one paragraph per text, its id alone in
+// an HTML comment above it (comments aren't translated), nothing else to get in the way.
+//
+//   <!-- card:card.temp.span_days#one -->
+//   {count} day
 
-const MARK = "i18n:";
+/** An id as exported: « surface:key », with « #form » for a plural's form. */
+const ID = /<!--\s*([\w-]+:[\w.:-]+(?:#[a-z]+)?)\s*-->/g;
+
 /** A text as a Markdown paragraph: Markdown's own characters escaped, line breaks as <br>. */
 export function encodeText(s) {
   return String(s)
@@ -207,44 +215,18 @@ export function decodeText(s) {
       : ENTITIES[e.toLowerCase()] ?? m))
     .replace(/\\([\\`*_{}[\]()#+\-.!>|~])/g, "$1");
 }
-const commentSafe = (s) => String(s).replace(/--/g, "‐‐").replace(/\n/g, " ");
-
-/**
- * Every dictionary of every surface, in `from` (English), as one Markdown file for a translation tool:
- * one paragraph per text, its id and context in the HTML comment above it.
- */
-export function exportMarkdown(root, { surfaces = SURFACES, from = FALLBACK, glossary = null } = {}) {
-  const out = [];
-  out.push("# Pool Controller: interface texts", "");
-  out.push("<!--");
-  out.push(`  Source language: ${from}. Translate the paragraphs only. Keep as they are: the HTML comments,`);
-  out.push("  the words in braces such as {count} or {speed}, and the tags such as <b> and </b>.");
-  if (glossary?.terms?.length) {
-    out.push("", "  Glossary (en / fr / es):");
-    for (const g of glossary.terms) out.push(`  - ${commentSafe(`${g.en} / ${g.fr} / ${g.es}${g.note ? ` (${g.note})` : ""}`)}`);
-  }
-  out.push("-->", "");
+/** Every dictionary of every surface, in `from` (English), as one Markdown file for a translation tool. */
+export function exportMarkdown(root, { surfaces = SURFACES, from = FALLBACK } = {}) {
+  const out = [
+    "<!-- Translate each paragraph. Keep the comments, the words in braces such as {count}, and tags such as <b>, unchanged. -->",
+    "",
+  ];
   let count = 0;
   for (const s of surfaces) {
-    const L = loadSurface(root, s);
-    const src = L.flat[from];
-    if (!L.present || !src) continue;
-    if (!src.size) continue;
-    // Where each key shows: this surface's sources, and those of the surfaces that read its keys.
-    const where = new Map();
-    for (const o of [s, ...surfaces.filter((x) => x.reads.includes(s.id))])
-      for (const f of listSources(root, o.sources))
-        for (const k of scanUsage(readFileSync(path.join(root, f), "utf8"), o.usage).keys) where.set(k, [...(where.get(k) || []), f]);
-    out.push(`## ${s.title}`, "");
-    for (const [key, v] of src) {
-      const fr = L.flat.fr?.get(key);
+    const src = loadSurface(root, s).flat[from];
+    for (const [key, v] of src || []) {
       for (const [f, text] of forms(v)) {
-        const ctx = [`${MARK} ${s.id}:${key}${f ? `#${f}` : ""}`];
-        if (f) ctx.push(`plural form « ${f} » ({count} is the number)`);
-        ctx.push(`where: ${where.has(key) ? where.get(key).join(", ") : "not used yet"}`);
-        const frText = fr === undefined ? undefined : typeof fr === "string" ? fr : fr[f] ?? fr.other;
-        if (from !== "fr" && frText !== undefined) ctx.push(`fr: ${frText}`);
-        out.push(`<!-- ${commentSafe(ctx.join(" | "))} -->`, encodeText(text), "");
+        out.push(`<!-- ${s.id}:${key}${f ? `#${f}` : ""} -->`, encodeText(text), "");
         count++;
       }
     }
@@ -252,11 +234,10 @@ export function exportMarkdown(root, { surfaces = SURFACES, from = FALLBACK, glo
   return { markdown: out.join("\n"), count };
 }
 
-/** A translated file → Map(id → text), id as exported (« card:card.temp.span_days#one »). */
+/** A translated file → Map(id → text). What follows a comment, up to the next comment or heading, is its text. */
 export function parseMarkdown(md) {
   const entries = new Map();
-  const re = new RegExp(`<!--\\s*${MARK}\\s*(\\S+?)\\s*(?:\\|[\\s\\S]*?)?-->`, "g");
-  const marks = [...md.matchAll(re)];
+  const marks = [...md.matchAll(ID)];
   marks.forEach((m, i) => {
     let body = md.slice(m.index + m[0].length, i + 1 < marks.length ? marks[i + 1].index : md.length);
     const stop = body.search(/^\s*(#{1,6}\s|<!--)/m);

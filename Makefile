@@ -244,7 +244,7 @@ webui-test:
 
 # The interface's texts (docs/plans/i18n.md; the surfaces in tools/i18n/surfaces.mjs), in the same node image.
 #   i18n-check    every dictionary complete in every language and consistent with its sources; fails on an error
-#   i18n-export   every text in English as one Markdown file, .i18n/translations.en.md, to machine-translate (Lokalise)
+#   i18n-export   every text in English as one Markdown file, .i18n/translations.en.md, for any translation tool
 #   i18n-import   the translated file back into each surface's <TO>.json: make i18n-import TO=es FILE=~/Downloads/x.md
 #                 (DRY_RUN=1: only report). TO, not LANG: LANG is the shell's locale.
 I18N_NODE := docker run --rm -v "$(CURDIR):/src" -w /src node:22-alpine node
