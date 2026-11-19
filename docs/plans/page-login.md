@@ -115,7 +115,7 @@ The feature branch's other rules:
 | L0 | Spike: gate ordering, cookies, SSE on 2026.11 | done (from the source; see L0) | [#56](https://github.com/davidterranova/pool-controller/pull/56) |
 | L1 | Firmware: `page_login` component + device-settings wiring | done | [#56](https://github.com/davidterranova/pool-controller/pull/56) |
 | L2 | Page: login screen, HMAC, 401 handling, wizard, logout; the mock | done | [#57](https://github.com/davidterranova/pool-controller/pull/57) |
-| L3 | Docs | todo | |
+| L3 | Docs | done | [#58](https://github.com/davidterranova/pool-controller/pull/58) |
 
 L1 and L2 can run in parallel once L0 has settled the contract above. L3 goes last.
 
