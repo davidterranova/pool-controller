@@ -132,7 +132,7 @@ the [plan](docs/plans/secret-free-firmware.md).
 | `make mock-ui-check` | Print the web UI layout (sections and order) and fail on any entity type the mock can't render. Runs in CI. |
 | `make firmware-test` | Host tests of the firmware's pure C++ helpers (`tools/tests/`). Runs in CI. |
 | `make webui-test` | Unit tests of the device's page and the install page's pure modules, with Node's test runner. Runs in CI. |
-| `make card-preview` | Serve the pool card's preview at http://localhost:8124/tools/card-preview/ (see [Previewing the card](#previewing-the-card)). `make card-shots` screenshots every situation into `tools/card-preview/shots/` (`SCENARIO=a,b` for some); `make card-preview-check` loads them all and fails on an error or a « NaN ». |
+| `make card-preview` | Serve the pool card's preview at http://localhost:8124/tools/card-preview/ (see [Previewing the card](#previewing-the-card)). `make card-shots` screenshots every situation into `tools/card-preview/shots/` (`SCENARIO=a,b` for some); `make card-preview-check` loads them all and fails on an error or a « NaN »; it runs in CI. |
 | `make ha-dashboard-check` | Fail when the Home Assistant dashboard components in `home-assistant/dashboard/` name an entity the firmware doesn't have, or leave one out of the pool card. Runs in CI. |
 | `make clean` | Remove the local build cache (`.esphome/`). |
 
@@ -336,7 +336,8 @@ statistics are generated, so every chart draws.
   takes only those.
 - **`make card-preview-check`** loads every situation on each of the panel's
   tabs at both widths, and fails on a page or console error, or on
-  « undefined », « NaN » or « [object Object] » in what the card shows.
+  « undefined », « NaN » or « [object Object] » in what the card shows. It
+  runs in CI (validate.yml, its own job).
 
 Both run Chromium in Playwright's image (about 3.5 GB, pulled once);
 `playwright-core` is installed once into `.card-preview/`. The stand-in is

@@ -50,3 +50,15 @@ jobs:
       # values: never a secrets.yaml or a controller here.
       - name: make migrate-test
         run: make migrate-test
+
+  # The pool card in every situation of tools/card-preview/ (scenarios.js), on each of its tabs, at a phone's
+  # and a screen's width: fails on a page or console error, or on « undefined » / « NaN » in what it shows.
+  # Its own job, in parallel: Chromium comes in Playwright's image (make card-preview-check).
+  card-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: make card-preview-check
+        run: make card-preview-check
