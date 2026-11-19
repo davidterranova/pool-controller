@@ -145,13 +145,9 @@ web_server:
   js_url: ""
   css_include: webui/dist/device.css
   js_include: webui/dist/device.js
-  auth:
-    type: digest
-    # Placeholders, required by the schema: device-settings.yaml replaces
-    # them at boot, before the server starts (user admin, the stored Page
-    # Password, or no login at all while none is set).
-    username: admin
-    password: replaced-at-boot
+  # No `auth:`: the page has its own login screen (page_login, in
+  # device-settings.yaml), which ESPHome's auth would only hide behind the
+  # browser's dialog.
   sorting_groups:
     - id: grp_pump
       name: "Pump"
