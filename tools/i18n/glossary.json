@@ -1,12 +1,12 @@
 {
-  "about": "The interface's terms in each language (docs/plans/i18n.md, I2). Every dictionary follows it; make i18n-export puts it at the top of the file sent to Lokalise.",
+  "about": "The interface's terms in each language (docs/plans/i18n.md, I2). Every dictionary follows it; a new term goes here first.",
   "terms": [
     { "en": "Auto", "fr": "Auto", "es": "Auto", "note": "the pump follows the controller's plan" },
     { "en": "Off", "fr": "Arrêt", "es": "Apagada", "note": "the pump's speed: stopped" },
     { "en": "Low", "fr": "Basse", "es": "Baja", "note": "the pump's speed" },
     { "en": "Medium", "fr": "Moyenne", "es": "Media", "note": "the pump's speed" },
     { "en": "High", "fr": "Haute", "es": "Alta", "note": "the pump's speed" },
-    { "en": "Override", "fr": "Forçage", "es": "Forzado", "note": "a speed forced by hand, instead of the plan" },
+    { "en": "Override", "fr": "Forcer", "es": "Forzado", "note": "a speed forced by hand, instead of the plan" },
     { "en": "pump", "fr": "pompe", "es": "bomba" },
     { "en": "filtration", "fr": "filtration", "es": "filtración" },
     { "en": "freeze protection", "fr": "hors-gel", "es": "antiheladas" },

@@ -3,7 +3,7 @@
     "mode": {
       "auto": "Auto"
     },
-    "override": "Forçage",
+    "override": "Forcer",
     "speed": {
       "Off": "Arrêt",
       "Low": "Basse",
@@ -17,7 +17,7 @@
       "description": "Tuile et panneau pour la pompe de la piscine (Pool Controller)"
     },
     "override": {
-      "stuck": "Forçage {speed} depuis {duration} : la pompe ne suit plus son plan de filtration."
+      "stuck": "Vitesse {speed} forcée depuis {duration} : la pompe ne suit plus son plan de filtration."
     },
     "hint": {
       "following": "Le contrôleur suit son plan : <b>{speed}</b> maintenant, {next}."
