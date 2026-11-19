@@ -6,8 +6,10 @@
  *     Wi-Fi → position and time zone → probes → Home Assistant, one step per missing item, opened at
  *     the first one. A step is done when Setup State no longer lists its item, so a page reopened
  *     after joining the home network, or after a factory reset, resumes where it should.
- *   - The Réglages contrôleur tab gains Position and Sondes (the same forms), Compteur d'eau, and Accès,
- *     Home Assistant and Réinitialiser.
+ *   - The Réglages contrôleur tab gains Position and Sondes (the same forms), Compteur d'eau, and Accès (the passwords,
+ *     logging out this browser or every one), Home Assistant and Réinitialiser.
+ *   - A new Page Password ends every login session (docs/plans/page-login.md), this page's too: the page logs in
+ *     again with it at once (login.js), in the wizard as in Accès.
  *   - The fill meter (fill-meter.yaml) is optional, so not a Setup State item: the wizard's step 4 asks about it
  *     (« J'ai un compteur » runs its pulse test, « Pas de compteur » turns it off) without ever blocking a step, and
  *     Réglages contrôleur › Compteur d'eau has the switch, the test, the last pulse and « Alarme après ».
@@ -48,7 +50,7 @@ const CONFIRM_MS = 3000;
 const READINGS_KEPT = 12;
 const TREND = { up: "↗ se réchauffe", down: "↘ refroidit", "": "" };
 
-export function mountSetup({ hass, E, ui }) {
+export function mountSetup({ hass, E, login, ui }) {
   const { icon, esc, toast, fmt1, bars } = ui;
   const $ = (id) => document.getElementById(id);
   const st = (id) => hass.states[id];
@@ -104,11 +106,10 @@ export function mountSetup({ hass, E, ui }) {
   /* ------------------------------------------------------------ passwords (page, OTA) */
 
   const pwForm = (kind, inWizard) => `<form class="form" data-form="pw" data-kind="${kind}" autocomplete="off">
-    ${kind === "page" ? '<input type="text" name="username" value="admin" autocomplete="username" hidden>' : ""}
     <label>${inWizard ? "Mot de passe" : "Nouveau mot de passe"}<span class="pw"><input name="pw" type="password" maxlength="64" autocomplete="new-password">
       <button type="button" class="btn" data-act="eye" title="Afficher" aria-label="Afficher le mot de passe">${icon("eye")}</button></span></label>
     <label>Confirmer<input name="pw2" type="password" maxlength="64" autocomplete="new-password"></label>
-    ${inWizard ? "" : `<p class="hint">8 caractères au moins.${kind === "page" ? " Le navigateur le redemandera aussitôt." : ""}</p>
+    ${inWizard ? "" : `<p class="hint">8 caractères au moins.${kind === "page" ? " Les autres appareils devront se reconnecter avec ; celui-ci le fait de lui-même." : ""}</p>
       <div class="rowbtns"><button class="btn fill">Enregistrer</button><button type="button" class="btn" data-act="acc-cancel">Annuler</button></div>`}
   </form>`;
 
@@ -123,7 +124,10 @@ export function mountSetup({ hass, E, ui }) {
     const kind = form.dataset.kind;
     form.reset(); // sent once, never kept nor shown again
     try {
-      await hass.setText(kind === "page" ? E.pagePassword : E.otaPassword, pw);
+      // A new Page Password ends every session, this page's too: it logs in again with it, so nothing asks for it.
+      // Should that fail, the login screen says why.
+      if (kind === "page" && !(await login.changePassword(() => hass.setText(E.pagePassword, pw), pw))) return false;
+      if (kind === "ota") await hass.setText(E.otaPassword, pw);
     } catch (e) {
       refused(e);
       return false;
@@ -429,10 +433,36 @@ export function mountSetup({ hass, E, ui }) {
         <button type="button" class="btn line" data-act="acc-${kind}"${view.acc === kind ? " disabled" : ""}>Changer</button></div>`
       + (view.acc === kind ? `<div class="inl">${pwForm(kind, false)}</div>` : "");
     return line("page", "lock", "Mot de passe de la page", pageSet ? "défini" : "non défini", pageSet ? "" : "bad",
-      "Identifiant <b>admin</b>, fixe. Le navigateur le demande pour ouvrir cette page ; il protège aussi le point d'accès, qui reste ouvert.")
+      "Cette page le demande pour s'ouvrir, puis chaque navigateur reste connecté jusqu'à 6 h sans s'en servir. Il protège aussi le point d'accès, qui reste ouvert.")
       + line("ota", "upload-lock", "Mot de passe OTA", "défini", "",
         "Pour envoyer un firmware depuis un ordinateur (make ota). Tiré au hasard au premier démarrage tant que vous n'en choisissez pas ; les mises à jour de cette page et de Home Assistant n'en ont pas besoin.")
-      + '<p class="hint">Écrits seulement : le contrôleur ne les montre jamais, il dit seulement s\'ils sont définis.</p>';
+      + '<p class="hint">Écrits seulement : le contrôleur ne les montre jamais, il dit seulement s\'ils sont définis.</p>'
+      + (pageSet ? sessionsBody() : "");
+  }
+  /** Logging out: this browser, or every one (the Logout All Devices button, on a firmware that has it). */
+  function sessionsBody() {
+    const all = !!st(E.logoutAll);
+    return `<div class="sect">Connexions</div><p class="hint">« Se déconnecter » : cette page redemandera le mot de passe ici.${all
+      ? " « Déconnecter tous les appareils » : chacun devra le redonner, celui-ci compris. Pour un téléphone perdu, ou prêté." : ""}</p>
+      <div class="rowbtns">${lineBtn("logout", "logout", "Se déconnecter")}${all ? lineBtn("logout-all", "devices", "Déconnecter tous les appareils") : ""}</div>`;
+  }
+  /** « Se déconnecter »: this browser's session ends, the login screen opens. */
+  async function logOut() {
+    try {
+      await login.logOut();
+    } catch (e) {
+      refused(e);
+    }
+  }
+  /** « Déconnecter tous les appareils »: every session ends, this one too, so the login screen opens at once. */
+  async function logOutAll() {
+    try {
+      await hass.press(E.logoutAll);
+    } catch (e) {
+      refused(e);
+      return;
+    }
+    hass.checkSession();
   }
   function haBody() {
     if (isMissing("api_key")) {
@@ -520,7 +550,7 @@ export function mountSetup({ hass, E, ui }) {
         : "<p class=\"wz-intro\">Ce contrôleur sort d'usine : rien n'y est encore réglé. Cinq étapes, quelques minutes, et tout reste sur le contrôleur.</p>")
         + `<p class="hint">Son point d'accès « ${AP_SSID} » est ouvert, sans mot de passe Wi-Fi : c'est le mot de passe de cette page qui protège le contrôleur. Choisissez-le d'abord ; tant qu'il n'y en a pas, quiconque se connecte au point d'accès peut ouvrir cette page.</p>
         ${pwForm("page", true)}
-        <p class="hint">8 caractères au moins. Identifiant : <b>admin</b>, toujours le même ; seul le mot de passe se choisit. Le navigateur le demandera, le contrôleur ne le réaffichera jamais : gardez-le dans votre gestionnaire de mots de passe.</p>
+        <p class="hint">8 caractères au moins. Cette page le demandera pour s'ouvrir, et le contrôleur ne le réaffichera jamais : gardez-le dans votre gestionnaire de mots de passe.</p>
         ${m.includes("page_password") ? "" : '<p class="hint okl">Mot de passe défini. Laissez vide pour le garder.</p>'}`;
     }
     if (step === 2) {
@@ -531,7 +561,7 @@ export function mountSetup({ hass, E, ui }) {
           ? hero("ok", "check", `Connecté à « ${ssid} »`, "Le contrôleur a coupé son point d'accès : cette page ne le joint plus ici.")
           : hero("idle", "wifi-sync", `Connexion à « ${esc(text(E.joinSsid))} »…`, "Une fois connecté, le contrôleur coupe son point d'accès : cette page ne le joint plus ici."))
           + `<ol class="do"><li>Reconnectez ce téléphone au Wi-Fi « ${ssid || esc(text(E.joinSsid))} ».</li><li>Ouvrez <b>${HOME_URL}</b>${text(E.ip) ? ` (ou http://${esc(text(E.ip))})` : ""}.</li>
-            <li>Le navigateur demande le mot de passe de l'étape 1 (identifiant admin). La page lit Setup State et reprend à la première étape qui manque : ${next <= 5 ? `<b>${next} · ${STEPS[next - 1]}</b>` : "aucune"}.</li></ol>`;
+            <li>La page demande le mot de passe de l'étape 1. Puis elle lit Setup State et reprend à la première étape qui manque : ${next <= 5 ? `<b>${next} · ${STEPS[next - 1]}</b>` : "aucune"}.</li></ol>`;
       }
       if (mode === "Connected") {
         return hero("ok", bars(n(E.wifiSignal)), `Connecté à « ${ssid} »`, `Signal ${n(E.wifiSignal)} dBm · ${esc(text(E.ip))}`)
@@ -575,7 +605,7 @@ export function mountSetup({ hass, E, ui }) {
     const role = (r) => (roleAddress(r.key) ? `${r.label} ${shortAddress(roleAddress(r.key))}` : `${r.label} aucune`);
     const zone = text(E.timezoneName) || "chaîne POSIX saisie";
     return hero("ok", "check", "Setup State : configured", plan) + "<div>"
-      + row("lock", "Mot de passe de la page", "défini", "Identifiant admin")
+      + row("lock", "Mot de passe de la page", "défini", "Cette page le demande pour s'ouvrir")
       + row(bars(n(E.wifiSignal)), "Wi-Fi", esc(text(E.wifiSsid) || "—"), `${HOME_URL}${text(E.ip) ? ` · ${esc(text(E.ip))}` : ""}`)
       + row("map-marker-outline", "Position", `${deg(n(E.latitude))} · ${deg(n(E.longitude))}`, `${esc(zone)} · <span class="mono">${esc(text(E.timezone))}</span>`)
       + row("thermometer", "Sondes", role(ROLES[0]), ROLES.slice(1).map(role).join(" · "))
@@ -700,6 +730,8 @@ export function mountSetup({ hass, E, ui }) {
         if (fillOn() || await setFill(true)) await fillTest();
         break;
       case "fill-no": await setFill(false); break;
+      case "logout": await logOut(); break;
+      case "logout-all": await logOutAll(); break;
       case "reset-ask": view.reset = true; break;
       case "reset-no": view.reset = false; break;
       case "reset-yes": await factoryReset(); break;
@@ -719,7 +751,7 @@ export function mountSetup({ hass, E, ui }) {
     }
     if (kind === "pw") {
       const page = form.dataset.kind === "page";
-      if (await savePassword(form)) toast(page ? "Mot de passe de la page changé : le navigateur va le redemander." : "Mot de passe OTA changé.");
+      if (await savePassword(form)) toast(page ? "Mot de passe de la page changé : les autres appareils devront se reconnecter." : "Mot de passe OTA changé.");
     } else if (kind === "pos") {
       const result = await savePosition(form);
       if (result) toast(result === "same" ? "Rien n'a changé" : "Position enregistrée : plan du jour recalculé");
