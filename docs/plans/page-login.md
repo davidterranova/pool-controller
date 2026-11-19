@@ -1,6 +1,6 @@
 # Page login: a password-only login screen instead of the browser's digest prompt
 
-Tracking document. One session per work package (WP). Planned against main at v1.9.0 (ESPHome 2026.11.0b6).
+Tracking document. One session per work package (WP). Planned against main at v1.9.0 (ESPHome 2026.11.0b6). **Every WP is done and verified on the controller (2026-11-19): `feat/page-login` is ready to merge into main as 1.10.0.**
 
 ## Why
 
@@ -237,14 +237,17 @@ The questions were answered by reading `web_server_base`, `web_server_idf` and `
     - Home Assistant back 4 s after the reboot; the OTA password still accepted.
     
     Found: a POST with no body gets 411 from ESP-IDF's server (`Content-Length` required). Browsers always send one; the docs' `curl` recipe now uses `-d ''`.
-  - **Still to do, in a browser:**
-  - no browser dialog anywhere;
-  - a reboot or OTA keeps the session, and an OTA to a new version reloads the open page;
-  - Factory Reset goes back to setup mode with no login;
-  - the hotspot at 192.168.4.1 shows the login screen;
-  - `curl` without the cookie gets 401 on `/events` and on `POST /switch/...`;
-  - Home Assistant (native API) and `make ota` (OTA password) are unaffected.
-- A packet capture of a login (Wireshark on the hotspot) shows no password.
+  - **Done 2026-11-19 in a browser**, on `v1.9.0-19-g2a98ad8`, with Update Check Interval on « À la demande »:
+    - the login screen, with no browser dialog;
+    - a wrong password gives « Mot de passe incorrect. »; the right one opens the page;
+    - a reload keeps the session;
+    - a private window gets the login screen; « Se déconnecter » there logs out only that window;
+    - an OTA of the same build: the tab reconnects, stays logged in, and stays on « Réglages contrôleur » with no reload;
+    - an OTA of the same code under another version (`…-reloadtest`): the tab reloads by itself and stays logged in.
+  - **Not done on hardware**, so the controller stayed paired and on the home Wi-Fi; both were covered in the mock with the same firmware logic:
+    - Factory Reset: it also erases the Wi-Fi, the API key and the OTA password, so Home Assistant would have to pair again;
+    - the hotspot: the controller would have to leave the home Wi-Fi.
+- Not done: a packet capture of a login. The proof is an HMAC over a single-use nonce, checked by the host tests against RFC 4231. The page sends only `nonce` and `proof` (#57's tests).
 
 ## Settled (2026-11-19)
 
