@@ -1515,7 +1515,7 @@ class MockServer:
         if not self.index_path:
             return []
         root = os.path.dirname(os.path.abspath(self.index_path))
-        return [os.path.join(d, f) for d, _dirs, files in os.walk(root) for f in files
+        return [os.path.join(d, f) for d, _dirs, files in os.walk(root, followlinks=True) for f in files
                 if os.path.splitext(f)[1] in STATIC_TYPES]
 
     def asset(self, url_path: str) -> str | None:

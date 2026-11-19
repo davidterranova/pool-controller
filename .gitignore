@@ -3,6 +3,8 @@ secrets.yaml
 .esphome/
 .vscode/
 webui/dist/
+home-assistant/dist/
+.i18n/
 __pycache__/
 .migrate/
 .card-preview/
