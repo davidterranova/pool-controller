@@ -5,8 +5,9 @@
 # docs/plans/secret-free-firmware.md for the design and its entity contract.
 #
 # What a controller is set up with, and where each value lives:
-#   Page Password    page_password            the page's login (user admin);
-#                                             none = setup mode, no login
+#   Page Password    page_password            the page's login screen
+#                                             (components/page_login); none =
+#                                             setup mode, no login
 #   OTA Password     ota_password             random at first boot, so OTA is
 #                                             never open
 #   API Key          ESPHome's own Noise PSK  Home Assistant sets it when it
@@ -31,11 +32,25 @@
 # Password, OTA Password and API Key only write a global (or the API's key)
 # and publish nothing. Whether each is set shows in Setup State.
 #
-# Factory Reset forgets access (page and OTA passwords, the API key) and the
-# saved Wi-Fi, keeps everything else (the probes' roles, the position, both
+# Factory Reset forgets access (page and OTA passwords, the page's sessions,
+# the API key) and the saved Wi-Fi, keeps everything else (the probes' roles, the position, both
 # timezone entities, the filtration and freeze settings, the history), then
 # reboots into setup mode. Not ESPHome's factory_reset platform: it erases all
 # of NVS, filtration history and settings included.
+
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [page_login]
+
+# The page's login screen and sessions (docs/plans/page-login.md). It has its
+# password from page_password (on_boot, Page Password) and keeps its sessions
+# in NVS itself. pool-controller.yaml's web_server has no `auth:`: this gate
+# replaces it.
+page_login:
+  id: page_login_gate
+  idle_timeout: 6h
 
 esphome:
   includes:
@@ -48,7 +63,7 @@ esphome:
       then:
         - lambda: |-
             // Page login: none stored = setup mode.
-            pool_settings::set_page_login(id(page_password));
+            id(page_login_gate).set_password(id(page_password));
             // OTA: never open. A random password until one is set.
             if (id(ota_password).empty()) {
               id(ota_password) = pool_settings::random_password();
@@ -260,7 +275,8 @@ text_sensor:
 
 text:
   # Write-only: the password goes to page_password, the entity never holds
-  # it. It applies at once, no reboot (the next request asks for it).
+  # it. It applies at once, no reboot, and ends every session: the page that
+  # set it logs in again with it.
   - platform: template
     name: "Page Password"
     web_server: {sorting_group_id: grp_device, sorting_weight: 20}
@@ -272,8 +288,9 @@ text:
     set_action:
       - lambda: |-
           id(page_password) = x;
-          pool_settings::set_page_login(id(page_password));
-          ESP_LOGI("settings", "Page password set; the page now asks for it (user %s)", pool_settings::PAGE_USERNAME);
+          id(page_login_gate).set_password(id(page_password));
+          id(page_login_gate).logout_all();
+          ESP_LOGI("settings", "Page password set; every session ended, the page now asks for it");
       - script.execute: settings_save
   # Write-only, like Page Password. It guards plaintext uploads (`make ota`);
   # with an API key set, Home Assistant's OTA uses the key instead.
@@ -481,6 +498,16 @@ button:
           ESP_LOGI("settings", "API key %s", ok ? "forgotten" : "NOT forgotten");
       - delay: 200ms  # applied 100 ms after clearing, as for API Key
       - component.update: setup_state
+  # Ends every session of the page, on every browser: each then shows the
+  # login screen. The page that pressed it too.
+  - platform: template
+    name: "Logout All Devices"
+    id: logout_all_devices
+    web_server: {sorting_group_id: grp_device, sorting_weight: 25}
+    icon: mdi:logout
+    entity_category: config
+    on_press:
+      - lambda: 'id(page_login_gate).logout_all();'
   # Scans the bus again (a probe added or swapped), then refreshes the
   # selects' options and Detected Probes.
   - platform: template
@@ -503,14 +530,16 @@ button:
     entity_category: config
     on_press:
       - lambda: |-
-          ESP_LOGW("settings", "Factory reset: forgetting the page and OTA passwords, the API key and the saved Wi-Fi");
+          ESP_LOGW("settings", "Factory reset: forgetting the page and OTA passwords, the page's sessions, the API key and the saved Wi-Fi");
           id(page_password).clear();
-          pool_settings::set_page_login(id(page_password));
+          id(page_login_gate).set_password(id(page_password));
+          id(page_login_gate).logout_all();
           id(ota_password) = pool_settings::random_password();
           id(ota_esphome).set_auth_password(id(ota_password));
           api::global_api_server->clear_noise_psk(true);
           pool_settings::forget_wifi();
-      # Let the globals' 1 s poll write them, then commit and reboot.
+      # Let the globals' 1 s poll (and page_login's loop) write them, then
+      # commit and reboot.
       - delay: 2s
       - lambda: |-
           global_preferences->sync();
