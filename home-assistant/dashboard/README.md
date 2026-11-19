@@ -6,9 +6,10 @@ Building blocks for a dashboard around this firmware, not anyone's dashboard in 
 |---|---|
 | [dashboard.yaml](dashboard.yaml) | A two-view dashboard whose sections are the components: the pump (piscine-card, which has the controls and settings itself), temperatures, plan against reality, fill water; then alerts, settings (piscine-card's settings variant), today's plan and the controller. |
 | [scripts.yaml](scripts.yaml) | The two scripts piscine-card calls to force a speed and to go back to Auto. |
+| [../blueprints/pool_fill_too_long.yaml](../blueprints/pool_fill_too_long.yaml) | An automation blueprint: phone reminders while a fill runs too long, with « Acquitter » (see « Fill alarm notifications »). |
 
 They use Home Assistant's own cards only, plus [piscine-card](../piscine-card.js) from this repo (its
-panel and its settings variant). No helper, no other custom card.
+panel and its settings variant). No helper, no other custom card, and the blueprint is optional.
 
 ## Building the dashboard
 
@@ -81,6 +82,47 @@ reads « Remplissage depuis 1 h 12 », and leads to the banner in « Contrôle �
 What this dashboard adds to the card: the three probes' curves and their 90-day daily means, the
 pump's plan against reality over the last days, and the fill water with Home Assistant's own cards.
 
+## Fill alarm notifications
+
+The fill meter is optional (Fill Meter, on by default). While it is on, the controller raises **Fill Running
+Too Long** once a fill has run **Fill Alarm After** minutes (60 by default, `0` = never): the card's light
+pulses amber, and the card, the controller's own page and the alerts component above show it with
+« Acquitter ». Both settings are on the controller's device page in Home Assistant (Paramètres › Appareils
+et services › ESPHome › Pool Controller › Configuration) and in its own page (« Réglages contrôleur » ›
+« Compteur d'eau »), not in the card.
+
+To get it on a phone, import the blueprint:
+
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fdavidterranova%2Fpool-controller%2Fblob%2Fmain%2Fhome-assistant%2Fblueprints%2Fpool_fill_too_long.yaml)
+
+or Settings → Automations & scenes → Blueprints → Import blueprint, with the URL
+`https://github.com/davidterranova/pool-controller/blob/main/home-assistant/blueprints/pool_fill_too_long.yaml`.
+Then « Create automation » from it:
+
+| Input | What it is |
+|---|---|
+| Fill Running Too Long, Fill Alarm Acknowledged, Acknowledge Fill Alarm | The controller's alarm, its acknowledgement and the button that sets it. Pre-filled with a fresh install's ids. |
+| Phones | Phones with the Home Assistant app (none or several). Each gets the reminders, with an « Acquitter » action. |
+| Repeat every | Minutes between reminders, 15 by default. |
+| Title, Message | The reminder's text, in French by default. The message may use `{{ since }}`, the time the alarm went on. |
+| All-clear message | Sent when the fill ends, in place of the last reminder. Empty for none. |
+| On each reminder, When the alarm ends | Actions of your own (a speaker, a light, another notifier), under « More actions ». |
+
+What it does:
+
+- the alarm turns on: a notification at once, then one every « Repeat every » minutes, each replacing the last
+  (one `tag`), until someone acknowledges it or the fill ends;
+- « Acquitter », on a phone, presses Acknowledge Fill Alarm on the controller. An acknowledgement from anywhere
+  (the card, the controller's page, the device page, a phone) stops the reminders and clears the notification;
+  the alarm itself stays on until the fill ends, but no longer pulses the light;
+- the fill ends: the notification is cleared, then the all-clear message and actions; the next fill that runs
+  too long alarms again;
+- Home Assistant restarting, or the controller reconnecting, during an alarm nobody acknowledged resumes the
+  reminders.
+
+The alarm and its acknowledgement live on the controller, so it alarms without Home Assistant too (on its own
+page); the blueprint only notifies. It needs Home Assistant 2024.10 or later.
+
 ## Entity ids
 
 Everything here uses the ids a fresh install gets: Home Assistant names an ESPHome entity after the
@@ -94,16 +136,20 @@ replace the `pool_controller_` prefix in the files.
 
 piscine-card has default entity ids of its own, but most are one particular install's: give it the
 whole `entities:` map, as `dashboard.yaml` does. The firmware-update ones (`firmware`, `checkUpdate`,
-`cancelUpdate`, `autoUpdate`, `updateInterval`, `updateStatus`) already are a fresh install's ids.
+`cancelUpdate`, `autoUpdate`, `updateInterval`, `updateStatus`) and the fill meter's (`fillEnabled`,
+`fillAlarmAfter`, `fillRunning`, `fillTooLong`, `fillAck`, `fillAcked`) already are a fresh install's ids;
+`dashboard.yaml` maps the fill meter's anyway, so a renamed device changes them with the rest.
 
 ## Keeping it in step with the firmware
 
 `make ha-dashboard-check` (also in CI) reads `pool-controller.yaml` and its packages and fails when
 the dashboard or the scripts name a controller entity that doesn't exist, or when the pool card in
 `dashboard.yaml` leaves out an entity the card uses (unless the card's default already is a fresh
-install's id; one the firmware doesn't have yet is only noted, since the card hides its rows). A
-firmware change that renames or adds an entity the dashboard relies on therefore can't land without
-the dashboard following.
+install's id; one the firmware doesn't have yet is only noted, since the card hides its rows). It reads
+the blueprints of `home-assistant/blueprints/` too: each `!input` must be declared and each input used,
+`source_url` must be its own path in the repo (Home Assistant re-imports from it), and the ids its
+inputs default to must exist. A firmware change that renames or adds an entity the dashboard relies on
+therefore can't land without the dashboard following.
 
 ## What the components show, and why that way
 
@@ -119,7 +165,12 @@ the dashboard following.
   span. The card's « Contrôle » shows them by day (30 days), by week (13 weeks) or by month
   (12 months), with the period's total, its average and its largest bar; the running day, week or
   month adds what the meter counted since the last hour Home Assistant compiled. The component in
-  the Piscine view draws the same with Home Assistant's own cards.
+  the Piscine view draws the same with Home Assistant's own cards. The meter is optional: the
+  component hides itself while Fill Meter is off (its condition is « not off », so a firmware from
+  before the switch, without that entity, still shows it), as the card's fill section does.
+- **Alerts.** One card per problem the controller raises, shown only while it is on: an open-ended
+  manual override, a plan it couldn't compute, a fill running too long. The fill alarm's card says
+  since when and whether it was acknowledged, and has « Acquitter » until someone does.
 - **Settings.** Everything the controller lets you tune, grouped by when it applies: the four
   filtration-length settings wait for « Appliquer » because they reshape today's plan; freeze
   protection and the boost pulses apply at once. The override's duration isn't one of them: it is

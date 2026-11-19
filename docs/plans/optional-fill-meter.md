@@ -125,8 +125,8 @@ Whether the meter is proven (`detected`) is kept in a restored global (`fill_met
 |---|---|---|---|---|---|
 | F1 | Firmware: switch, alarm + acknowledgement, detection, gating of the counters | — | feat/optional-fill-meter-f1-firmware | done | #49 |
 | F2 | Card: hide « Remplissage », alarm banner, pulsing light | contract above | feat/optional-fill-meter-f2-card | done | #50 |
-| F3 | Controller's page + mock: « Remplissage », Capteurs rows, « Compteur d'eau », wizard | contract; F1's YAML for the mock | feat/optional-fill-meter-f3-page | review | #53 |
-| F4 | HA side: blueprint, dashboard, `ha-dashboard-check` | F1 (ids for `ha-dashboard-check`) | | todo | |
+| F3 | Controller's page + mock: « Remplissage », Capteurs rows, « Compteur d'eau », wizard | contract; F1's YAML for the mock | feat/optional-fill-meter-f3-page | done | #53 |
+| F4 | HA side: blueprint, dashboard, `ha-dashboard-check` | F1 (ids for `ha-dashboard-check`) | feat/optional-fill-meter-f4-ha | review | #54 |
 | F5 | Documentation pass: every file in « Documentation » below agrees with what merged | F1–F4 merged | | todo | |
 
 | — | Feature branch: plan + VERSION 1.9.0 | — | feat/optional-fill-meter | in progress | #47 (draft, into main) |
@@ -230,29 +230,42 @@ Done as a package, like `updates.yaml`: the logic is pure C++ in `fill_meter.h`,
 - [x] **Docs:** the `app.js` header comment (the conditional « Remplissage », « Compteur d'eau »); the README.md « The device's page » and POOL-CONTROLLER.md « Local web UI » items in « Documentation »; the mock's flags in README.md « Working on the web UI without flashing » and the Makefile comment for `mock-ui`
 
 ### F4: Home Assistant side
-- [ ] `home-assistant/blueprints/pool_fill_too_long.yaml` (automation blueprint). Inputs:
+- [x] `home-assistant/blueprints/pool_fill_too_long.yaml` (automation blueprint). Inputs:
+  - in three sections (Controller, Notifications, More actions, the last collapsed); the controller's three default to a fresh install's ids;
   - `alarm`: the problem sensor (entity selector: `integration: esphome`, `domain: binary_sensor`, `device_class: problem`);
   - `acknowledged`: the acknowledged sensor;
   - `ack_button`: the acknowledge button;
   - `repeat`: minutes between reminders (number, default **15**, min 5);
-  - `notify_device`: a phone (device selector, `integration: mobile_app`, optional), notified with an actionable « Acquitter »;
+  - `notify_devices`: phones (device selector, `integration: mobile_app`, multiple, none by default), each notified with an actionable « Acquitter »;
+  - `title`, `message` (may use `{{ since }}`), `all_clear_message`: the texts, French by default;
   - `extra_actions`: anything else on each reminder (action selector, optional);
   - `all_clear_actions`: optional, run when the alarm ends
-- [ ] blueprint logic:
-  - triggers: the alarm turning on; HA starting with the alarm already on (so a restart doesn't drop the reminders); the `mobile_app_notification_action` event for its action id;
-  - `mode: restart`;
-  - while the alarm is on and not acknowledged: notify (fixed `tag`), then `wait_for_trigger` on acknowledged or the alarm ending, with `repeat` as timeout;
-  - the action event presses `ack_button`;
-  - on acknowledge or end: `clear_notification` with that `tag`, then the all-clear actions when it ended
-- [ ] import link (`my.home-assistant.io/create-link/?redirect=blueprint_import`) in the dashboard README
-- [ ] `dashboard.yaml`:
-  - the fill component gets `visibility: state switch.pool_controller_fill_meter == on`;
+- [x] blueprint logic:
+  - triggers: the alarm turning on (also from `unavailable`: the controller reconnecting); HA starting (so a restart doesn't drop the reminders); the `mobile_app_notification_action` event; acknowledged turning on; the alarm going from on to off;
+  - `mode: restart`, so each trigger replaces the run; a condition drops another notification's action before it can restart (and stop) the reminders;
+  - while the alarm is on and not acknowledged: notify (a `tag` and an action id from the alarm's entity id, so two controllers stay apart), the extra actions, then a `delay` of `repeat`;
+  - the action event presses `ack_button`; the acknowledgement that follows is the next trigger;
+  - on acknowledged or the end: `clear_notification` with that `tag`; on the end, the all-clear message (same tag) and actions
+- [x] import link (`my.home-assistant.io/create-link/?redirect=blueprint_import`) in the dashboard README
+- [x] `dashboard.yaml`:
+  - the fill component gets `visibility: state switch.pool_controller_fill_meter` **not** `off` (a firmware without the switch still shows it);
+  - the `&pool` map names the six fill keys, though the card's defaults already are a fresh install's ids;
   - alerts gain a « ⚠️ Remplissage anormalement long » markdown card on `binary_sensor.pool_controller_fill_running_too_long`, saying whether it is acknowledged, with a button card for « Acquitter »
-- [ ] `tools/ha-dashboard-check.py`:
+- [x] `tools/ha-dashboard-check.py`:
   - passes with the new ids;
   - parses the blueprint (its `!input` tag);
-  - checks the blueprint's defaults, if any, name real entities
-- [ ] **Docs:** the `home-assistant/dashboard/README.md` items in « Documentation »; the comments heading the dashboard's fill and alerts components; a description and per-input help in the blueprint itself (HA shows them on import)
+  - checks the blueprint's defaults, if any, name real entities;
+  - also: every `!input` declared, every input used, `source_url` its own path on main
+- [x] **Docs:** the `home-assistant/dashboard/README.md` items in « Documentation »; the comments heading the dashboard's fill and alerts components; a description and per-input help in the blueprint itself (HA shows them on import)
+- Tested in Home Assistant 2026.11.2 (docker, throwaway config): template entities stand in for the controller, and a mobile_app phone registered over the REST API pushes to a local catcher. Checked:
+  - reminders repeat, each with the same tag and « Acquitter »;
+  - another notification's action changes nothing;
+  - the phone's action presses the button;
+  - acknowledging, from the phone or on the controller, stops the reminders and clears the notification;
+  - the end clears, then sends the all-clear and runs its actions;
+  - the next alarm notifies again;
+  - an HA restart mid-alarm resumes the reminders.
+  `check_config` alone doesn't validate a blueprint's inputs, hence the live run.
 
 ### F5: documentation pass
 - [ ] every row of « Documentation » below is ticked, and reads true against what merged (names, defaults, French labels as the widgets show them)

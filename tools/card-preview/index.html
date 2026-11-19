@@ -106,7 +106,7 @@ async function poolEntities() {
   const lines = text.slice(text.indexOf("entities: &pool")).split("\n").slice(1), out = {};
   const indent = /^\s*/.exec(lines[0])[0].length;
   for (const l of lines) {
-    const m = /^(\s*)(\w+): (\S+)\s*$/.exec(l);
+    const m = /^(\s*)(\w+): (\S+)\s*(#.*)?$/.exec(l); // a trailing comment is allowed
     if (!m || m[1].length !== indent) break;
     out[m[2]] = m[3];
   }
