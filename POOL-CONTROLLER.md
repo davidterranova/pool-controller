@@ -141,11 +141,12 @@ can come after.
    join it from a phone and open http://192.168.4.1.
 3. **Its page.** Open http://pool-controller.local (or **Visit Device** in
    the install window; or the address your router gives `pool-controller`).
-   With no page password yet it opens without a login, on the **setup
-   wizard**: Mot de passe → Wi-Fi → Position → Sondes → Home Assistant, one
+   With no page password yet it opens without a login screen, on the
+   **setup wizard**: Mot de passe → Wi-Fi → Position → Sondes → Home Assistant, one
    step per item Setup State lists (see
    [Controller settings](#controller-settings)). Set the page password
-   first: until then anyone on the network can open the page. A step left
+   first: until then anyone on the network can open the page. Setting it
+   logs this browser in with it; any other then gets the login screen. A step left
    for later reopens where it was. Sondes also asks about the fill meter,
    optional and never blocking: « J'ai un compteur » runs its pulse test
    (open the fill tap), « Pas de compteur » turns Fill Meter off (see
@@ -254,9 +255,14 @@ network) and kept in its NVS, which a firmware update never touches.
 - **Setup State** — `configured`, or what's missing, in the setup order:
   `page_password`, `wifi`, `position` (latitude, longitude and timezone),
   `probes` (the pool probe), `api_key`.
-- **Page Password** — the page's login (user `admin`, digest). While none is
-  set, the page opens without a login: setup mode. A new one applies at
-  once, no reboot.
+- **Page Password** — what the page's login screen asks for (a password
+  only, no user name; see [Local web UI](#local-web-ui)). While none is set,
+  the page opens without a login: setup mode. A new one applies at once, no
+  reboot, and logs out every browser; the page that set it logs back in
+  with it.
+- **Logout All Devices** — ends every login session: each browser,
+  this one included, gets the login screen. On the page: Réglages
+  contrôleur › Accès › « Déconnecter tous les appareils ».
 - **OTA Password** — guards plaintext firmware uploads (`make ota`). A
   random one is made at first boot, so OTA is never open; set your own to
   upload from a checkout.
@@ -275,8 +281,8 @@ network) and kept in its NVS, which a firmware update never touches.
   Probes** lists every address with its reading (`--` for one that doesn't
   answer), refreshed every minute; **Rescan Probes** searches the bus again.
   Home Assistant sees options a rescan added once it reconnects.
-- **Factory Reset** — forgets the page and OTA passwords, the API key and the
-  saved Wi-Fi, keeps everything else (probe roles, position, timezone,
+- **Factory Reset** — forgets the page and OTA passwords, the page's login
+  sessions, the API key and the saved Wi-Fi, keeps everything else (probe roles, position, timezone,
   filtration and freeze settings, history), and reboots into setup mode on
   the hotspot. The page asks for a confirmation first. See
   [Factory reset](#factory-reset).
@@ -791,9 +797,35 @@ re-add it through the visual entity picker instead.
 The controller serves its own page at `http://pool-controller.local/` (or
 the device's IP), via ESPHome's
 [`web_server`](https://esphome.io/components/web_server.html) component —
-no Home Assistant involved. Log in as `admin` with the controller's Page
-Password (digest auth); until one is set, the page opens without a login
-(setup mode, see [Controller settings](#controller-settings)).
+no Home Assistant involved. Once a Page Password is set, the page opens on
+its own **login screen**, which asks for that password only (no user name).
+Until one is set, the page opens without a login (setup mode, see
+[Controller settings](#controller-settings)).
+
+How the login works ([components/page_login](components/page_login),
+[docs/plans/page-login.md](docs/plans/page-login.md)):
+
+- **The password never crosses the network.** The controller hands out a
+  single-use nonce. The page answers with HMAC-SHA256 of that nonce, keyed
+  with the password, and the controller checks it. Then it sets a session
+  cookie (`pool_session`, HttpOnly).
+- **Sessions:**
+  - one per browser, four at most (a fifth login replaces the one idle
+    longest);
+  - each ends after **6 h without use**. The live stream alone doesn't
+    count, so a tab left open gets the login screen after 6 h, while a tab
+    in use stays logged in;
+  - they survive a reboot or a firmware update, so nobody is logged out by
+    Auto Update.
+- **Logging out:** « Se déconnecter » (Réglages contrôleur › Accès) ends
+  this browser's session. Logout All Devices, a new Page Password or
+  Factory Reset end them all.
+- **Brute force:** after 5 wrong passwords in a row, the controller refuses
+  logins for 30 s, then twice as long after each further failure, up to
+  15 min. The login screen shows the countdown. The lock is for the whole
+  device, not per client.
+- **After a firmware update** the open page reloads itself, so it runs the
+  new firmware's page.
 
 The page is our own, not ESPHome's stock one: it has the look of the Home
 Assistant dashboard and runs HA's pool card unchanged (see the README, "The
@@ -830,14 +862,25 @@ What to know:
 - **Works offline.** The page is built into the firmware (`make webui`,
   about 35 KB) and fetches nothing from the internet, so it works on the
   fallback hotspot too.
-- **LAN only.** Digest auth keeps the password off the wire, but the page is
-  plain HTTP — fine on a trusted home network, not something to expose to
-  the internet. There's no firmware file upload from the page: it installs
+- **LAN only.** The login keeps the password off the wire, but the page is
+  plain HTTP, so the session cookie travels in clear like any HTTP session.
+  The password does cross the wire once, when it's set. Fine on a trusted
+  home network; not something to expose to the internet. There's no firmware file upload from the page: it installs
   the published releases (see [Updates](#updates)); a build of your own
   goes through `make ota` / HA's ESPHome integration.
 - It also exposes ESPHome's REST API and `/events` stream on the same port,
   behind the same login, if you ever want to script against the device
-  without HA.
+  without HA. `curl --digest` no longer works: log in the way the page
+  does, then pass the cookie.
+
+  ```sh
+  host=pool-controller.local; read -rs pw
+  nonce=$(curl -s http://$host/login/challenge | sed -E 's/.*"nonce": *"([0-9a-f]+)".*/\1/')
+  proof=$(printf %s "$nonce" | openssl dgst -sha256 -hmac "$pw" | sed 's/.*= //')
+  curl -s -c jar -d "nonce=$nonce&proof=$proof" http://$host/login   # 204: logged in
+  curl -s -b jar http://$host/sensor/Pool%20Return%20Temperature
+  curl -s -b jar -X POST http://$host/logout
+  ```
 
 ### Wi-Fi and the fallback hotspot
 
@@ -847,7 +890,7 @@ From [wifi-setup.yaml](wifi-setup.yaml), a package of the firmware:
   Reset) at once, and otherwise after 1 minute without a Wi-Fi connection
   (router down, changed password), the device opens an **open** network
   named `pool-controller` and keeps trying its own network meanwhile. Its
-  page answers at http://192.168.4.1, behind the same login. Anyone in
+  page answers at http://192.168.4.1, behind the same login screen. Anyone in
   range can join the hotspot itself; the page, the API and OTA each still
   need their own password or key once set up (a controller still in setup
   mode is open to them). A WPA2 password for the hotspot would be one line

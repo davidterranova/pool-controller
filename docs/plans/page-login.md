@@ -114,7 +114,7 @@ The feature branch's other rules:
 | L0 | Spike: gate ordering, cookies, SSE on 2026.11 | todo | |
 | L1 | Firmware: `page_login` component + device-settings wiring | todo | |
 | L2 | Page: login screen, HMAC, 401 handling, wizard, logout; the mock | todo | |
-| L3 | Docs | todo | |
+| L3 | Docs | in progress | `feat/page-login-l3-docs` |
 
 L1 and L2 can run in parallel once L0 has settled the contract above. L3 goes last.
 
