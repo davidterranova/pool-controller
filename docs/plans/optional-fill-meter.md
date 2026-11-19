@@ -127,9 +127,9 @@ Whether the meter is proven (`detected`) is kept in a restored global (`fill_met
 | F2 | Card: hide « Remplissage », alarm banner, pulsing light | contract above | feat/optional-fill-meter-f2-card | done | #50 |
 | F3 | Controller's page + mock: « Remplissage », Capteurs rows, « Compteur d'eau », wizard | contract; F1's YAML for the mock | feat/optional-fill-meter-f3-page | done | #53 |
 | F4 | HA side: blueprint, dashboard, `ha-dashboard-check` | F1 (ids for `ha-dashboard-check`) | feat/optional-fill-meter-f4-ha | done | #54 |
-| F5 | Documentation pass: every file in « Documentation » below agrees with what merged | F1–F4 merged | feat/optional-fill-meter-f5-docs | review | #55 |
+| F5 | Documentation pass: every file in « Documentation » below agrees with what merged | F1–F4 merged | feat/optional-fill-meter-f5-docs | done | #55 |
 
-| — | Feature branch: plan + VERSION 1.9.0 | — | feat/optional-fill-meter | in progress | #47 (draft, into main) |
+| — | Feature branch: plan + VERSION 1.9.0 | — | feat/optional-fill-meter | ready to merge | #47 (into main) |
 
 F2 can start right away. F3 can start right away on the mock, once F1's entity declarations are pushed; it doesn't need F1's logic. F4 comes last, or alongside F1. Each WP updates the docs for what it changes (its « Docs » items). F5 is a final read-through across all of them, plus the cross-references.
 
@@ -272,7 +272,7 @@ Done as a package, like `updates.yaml`: the logic is pure C++ in `fill_meter.h`,
 - [x] cross-references: [secret-free-firmware.md](secret-free-firmware.md) (done, so a pointer only):
   - its WP3 points here for the « Compteur d'eau » wizard block;
   - its WP6 points here for the gate waiting on Fill Running
-- [x] this plan: every WP `done` (F5 once merged), the open questions closed
+- [x] this plan: every WP `done`, the open questions closed
 - [x] the description of the final PR into main, which becomes the release notes of 1.9.0, says how to turn the meter off and where the alarm's blueprint is
 - Found on the way, fixed here:
   - the blueprint's default all-clear said « remplissage terminé », but the alarm also ends when Fill Alarm After is raised past a running fill: it now reads « fin de l'alerte de remplissage », and the dashboard README says when it ends;
