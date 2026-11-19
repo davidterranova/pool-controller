@@ -105,7 +105,7 @@ blueprint:
         all_clear_message:
           name: All-clear message
           description: Sent to the phones when the alarm ends, in place of the last reminder. Empty for none.
-          default: "Piscine : remplissage terminé."
+          default: "Piscine : fin de l'alerte de remplissage."
           selector:
             text:
     more:
@@ -121,7 +121,9 @@ blueprint:
             action:
         all_clear_actions:
           name: When the alarm ends
-          description: Run once the fill has ended (not on an acknowledgement).
+          description: >-
+            Run once the alarm has ended: the fill ended, or Fill Alarm After was raised past it (not on an
+            acknowledgement).
           default: []
           selector:
             action:
