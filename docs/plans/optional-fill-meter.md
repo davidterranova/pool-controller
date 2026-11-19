@@ -127,7 +127,7 @@ Whether the meter is proven (`detected`) is kept in a restored global (`fill_met
 | F2 | Card: hide « Remplissage », alarm banner, pulsing light | contract above | feat/optional-fill-meter-f2-card | done | #50 |
 | F3 | Controller's page + mock: « Remplissage », Capteurs rows, « Compteur d'eau », wizard | contract; F1's YAML for the mock | feat/optional-fill-meter-f3-page | done | #53 |
 | F4 | HA side: blueprint, dashboard, `ha-dashboard-check` | F1 (ids for `ha-dashboard-check`) | feat/optional-fill-meter-f4-ha | done | #54 |
-| F5 | Documentation pass: every file in « Documentation » below agrees with what merged | F1–F4 merged | feat/optional-fill-meter-f5-docs | review | |
+| F5 | Documentation pass: every file in « Documentation » below agrees with what merged | F1–F4 merged | feat/optional-fill-meter-f5-docs | review | #55 |
 
 | — | Feature branch: plan + VERSION 1.9.0 | — | feat/optional-fill-meter | in progress | #47 (draft, into main) |
 
