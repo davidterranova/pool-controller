@@ -66,6 +66,9 @@ export function base(now = new Date()) {
     updateStatus: "à jour",
     timezone: "CET-1CEST,M3.5.0,M10.5.0/3", timezoneName: "Europe/Paris",
     sForce: "off", sAuto: "off",
+    // the fill meter (fill-meter.yaml): on, nothing running
+    fillEnabled: "on", fillAlarmAfter: { s: 60, a: { min: 0, max: 1440, step: 5, unit_of_measurement: "min" } },
+    fillRunning: { s: "off", ago: 300 }, fillTooLong: "off", fillAck: "unknown", fillAcked: "off",
   };
 }
 
@@ -89,7 +92,14 @@ export const SCENARIOS = [
   { id: "offline", name: "Hors ligne 20 min", note: "Au-delà de 15 min : rouge", offline: 20,
     states: { online: { s: "off", ago: 20 } } },
   { id: "filling", name: "Remplissage", note: "Le compteur tourne à 14,8 L/min",
-    states: { flow: { s: "14.8", a: { unit_of_measurement: "L/min" }, ago: 12 } } },
+    states: { flow: { s: "14.8", a: { unit_of_measurement: "L/min" }, ago: 12 }, fillRunning: { s: "on", ago: 12 } } },
+  { id: "fill-off", name: "Compteur d'eau désactivé", note: "Fill Meter off : pas de remplissage dans « Contrôle »",
+    states: { fillEnabled: "off", flow: "unknown", volume: "unknown" } },
+  { id: "fill-alarm", name: "Remplissage trop long", note: "1 h 12 de remplissage, alarme non acquittée : bannière, lumière ambre qui pulse",
+    states: { flow: { s: "14.8", a: { unit_of_measurement: "L/min" }, ago: 72 }, fillRunning: { s: "on", ago: 72 }, fillTooLong: { s: "on", ago: 12 } },
+    press: { fillAck: { fillAcked: "on" } } },
+  { id: "fill-acked", name: "Remplissage trop long, acquitté", note: "La bannière dit « acquittée », la lumière reprend sa couleur",
+    states: { flow: { s: "14.8", a: { unit_of_measurement: "L/min" }, ago: 80 }, fillRunning: { s: "on", ago: 80 }, fillTooLong: { s: "on", ago: 20 }, fillAcked: { s: "on", ago: 5 } } },
   { id: "update", name: "Firmware disponible", note: "1.9.0 publiée", tab: "controller",
     states: { firmware: { s: "on", a: { installed_version: "1.8.0", latest_version: "1.9.0", in_progress: false, title: "Pool Controller",
       release_url: "https://github.com/davidterranova/pool-controller/releases/tag/v1.9.0" } }, updateStatus: "disponible" } },
@@ -100,10 +110,11 @@ export const SCENARIOS = [
     states: { updateStatus: "installation", firmware: { s: "on", a: { installed_version: "1.8.0", latest_version: "1.9.0", in_progress: true, update_percentage: 42, title: "Pool Controller" } } } },
   { id: "old-firmware", name: "Firmware ancien", note: "Sans mises à jour, position ni horloge (avant v1.4) : ni « Réglages contrôleur », ni battement",
     states: { firmware: null, checkUpdate: null, cancelUpdate: null, autoUpdate: null, updateInterval: null, updateStatus: null,
-      latitude: null, longitude: null, timezone: null, timezoneName: null, clock: null, planHistory: null } },
+      latitude: null, longitude: null, timezone: null, timezoneName: null, clock: null, planHistory: null,
+      fillEnabled: null, fillAlarmAfter: null, fillRunning: null, fillTooLong: null, fillAck: null, fillAcked: null } },
   { id: "no-stats", name: "Pas encore de statistiques", note: "Le recorder n'a rien compilé : graphiques vides", recorder: "empty" },
   { id: "no-meter", name: "Sans compteur d'eau", note: "Pas d'entité de volume : pas de section remplissage",
-    states: { flow: null, volume: null } },
+    states: { flow: null, volume: null, fillEnabled: null, fillAlarmAfter: null, fillRunning: null, fillTooLong: null, fillAck: null, fillAcked: null } },
 ];
 
 /** A scenario's states at `now`: base, then its own (a function is called, for times relative to now). */

@@ -55,8 +55,8 @@ Nothing to build: each release's firmware is published, and
 <https://pool-controller.kitesize.fr/> installs it from Chrome or Edge on a
 computer, over USB (ESP Web Tools; every install erases the board), then
 sends the Wi-Fi over the same cable (Improv). The controller's own page then
-runs its setup wizard (page password, Wi-Fi, position, probes, Home
-Assistant). The whole walk-through, with what to do without Wi-Fi:
+runs its setup wizard (page password, Wi-Fi, position, probes and whether
+a fill meter is there, Home Assistant). The whole walk-through, with what to do without Wi-Fi:
 [POOL-CONTROLLER.md, First setup](POOL-CONTROLLER.md#first-setup).
 
 From then on it updates itself from the releases (Auto Update, on by
@@ -166,6 +166,12 @@ you set `local: true` back).
   reloads the page like the YAML does.
 - **No login.** Unlike the device, the mock has no auth, to keep iteration
   quick.
+- **The fill meter** (fill-meter.yaml) is simulated too: the valve runs 3 min
+  every quarter hour, « Tester » opens it for 20 s so the pulse test passes,
+  and turning Fill Meter off empties Remplissage. `MOCK_FILL=off make
+  mock-webui` starts with it off; `MOCK_LONG_FILL=1 make mock-webui` with a
+  fill already past Fill Alarm After, so the banner and « Acquitter » can be
+  tried (the fill stops 3 min after it, and the alarm clears 5 min later).
 - An entity the simulation doesn't know (e.g. one you just added) still
   shows up, with a static value. `make mock-ui-check` marks it
   `[static: not simulated]`. Add it to the `N` map in `mock_server.py` to make
@@ -312,7 +318,7 @@ was first written (`bridges/homeassistant/config/www/piscine/`).
 stand-in for Home Assistant: no Home Assistant, no controller. `make
 card-preview` serves it at http://localhost:8124/tools/card-preview/: pick a
 situation (normal day, override, freeze protection, controller offline, a
-firmware update waiting…), the pop-up's width (phone or screen) and the
+fill running too long, the fill meter off, a firmware update waiting…), the pop-up's width (phone or screen) and the
 theme. The tile, the panel on any tab and the `water` and `settings` variants
 are drawn side by side, and what the card calls (scripts, services, the
 pages it opens) is listed. Its commands are applied as the controller would
@@ -348,7 +354,10 @@ look of the Home Assistant dashboard. It has three tabs, the card's own:
   Auto/Manuel, forced speed and its duration) and, on its right (below it on
   a phone), Remplissage: the card's `water` variant on the controller's own
   record (Fill Water Today, Days and Months): today, this month, the flow,
-  and the litres by day over 30 days or by month over 12.
+  and the litres by day over 30 days or by month over 12. With Fill Meter
+  off there is no Remplissage. A fill running longer than Fill Alarm After
+  puts the card's banner here, with « Acquitter », fed by the controller, so
+  it works with Home Assistant down.
 - **Réglages** (`#reglages`): today's plan in detail, the device's sensors,
   « Filtration et hors gel » (the filtration settings with their Apply gate,
   the boost pulses and the freeze-protection threshold: the card's settings
@@ -356,7 +365,9 @@ look of the Home Assistant dashboard. It has three tabs, the card's own:
   7 days (hours filtered, pool min/max).
 - **Réglages contrôleur** (`#reglages-controleur`): a Wi-Fi section (see
   below: the connection and its statistics, and a way to join a network;
-  only when the device has those entities), Position and Sondes, a Firmware
+  only when the device has those entities), Position, Sondes, Compteur d'eau
+  (the fill meter on or off, its pulse test, its last pulse and « Alarme
+  après »; the setup wizard asks the same in its Sondes step), a Firmware
   one (the version it runs, ESPHome's, and its updates: « Vérifier »,
   « Installer », as in the card's « Réglages contrôleur »), Accès, Home
   Assistant, Réinitialiser, and its live log (Journal).

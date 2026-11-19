@@ -6,8 +6,11 @@
  *     Wi-Fi → position and time zone → probes → Home Assistant, one step per missing item, opened at
  *     the first one. A step is done when Setup State no longer lists its item, so a page reopened
  *     after joining the home network, or after a factory reset, resumes where it should.
- *   - The Réglages contrôleur tab gains Position and Sondes (the same forms) and Accès, Home Assistant
- *     and Réinitialiser.
+ *   - The Réglages contrôleur tab gains Position and Sondes (the same forms), Compteur d'eau, and Accès,
+ *     Home Assistant and Réinitialiser.
+ *   - The fill meter (fill-meter.yaml) is optional, so not a Setup State item: the wizard's step 4 asks about it
+ *     (« J'ai un compteur » runs its pulse test, « Pas de compteur » turns it off) without ever blocking a step, and
+ *     Réglages contrôleur › Compteur d'eau has the switch, the test, the last pulse and « Alarme après ».
  *
  * Secrets are write-only (CVE-2026-71260 leaks password-mode text values): a password or a key is
  * sent once, its form cleared, and the page never reads one back; whether each is set comes from
@@ -16,6 +19,7 @@
 import {
   SETUP_ITEMS, parseSetupState, nextStep, andList, parseDetectedProbes, shortAddress, probeTrend,
   passwordProblem, validApiKey, parseDegrees, degreesInput, WAITING_FOR, sunTimes,
+  FILL_DETECT, FILL_ALARM, fillStatus, parseAlarmMinutes, lastPulseText,
 } from "./setup-model.js";
 import { TIMEZONES, posixOf, validPosix, validZoneName, browserZone, clockIn } from "./timezones.js";
 
@@ -284,6 +288,83 @@ export function mountSetup({ hass, E, ui }) {
     }, 2600);
   }
 
+  /* ------------------------------------------------------------ the fill meter (fill-meter.yaml) */
+
+  const hasFill = () => !!st(E.fillEnabled);
+  const fillOn = () => s(E.fillEnabled) === "on";
+  async function setFill(on) {
+    try {
+      await hass.callService("switch", on ? "turn_on" : "turn_off", { entity_id: E.fillEnabled });
+    } catch (e) {
+      refused(e);
+      return false;
+    }
+    toast(on ? "Compteur d'eau activé" : "Compteur d'eau désactivé : rien n'est compté");
+    return true;
+  }
+  async function fillTest() {
+    try {
+      await hass.press(E.fillDetect);
+    } catch (e) {
+      refused(e);
+      return;
+    }
+    toast(`À l'écoute : ouvrez le robinet de remplissage (${FILL_DETECT.litres} L en ${FILL_DETECT.minutes} min)`);
+  }
+  /** The pulse test: Fill Meter Status as a tag, what to do, « Tester ». */
+  function fillTestRow() {
+    const f = fillStatus(s(E.fillStatus)) || { cls: "idle", tag: "?", sub: "" }, listening = s(E.fillStatus) === "listening";
+    return `<div class="erow"><span class="ic">${icon("water-sync")}</span><span class="name"><span>Détecter le compteur${tag(f.tag, f.cls)}</span>
+      <small>${esc(f.sub)}</small></span><button type="button" class="btn line" data-act="fill-test"${listening || !hass.connected ? " disabled" : ""}>${listening ? "À l'écoute…" : "Tester"}</button></div>`;
+  }
+  /** Réglages contrôleur › Compteur d'eau: on or off, then (on) the test and the last pulse. */
+  function fillBody() {
+    const on = fillOn();
+    const seg = `<span class="ctl"><span class="seg" role="radiogroup" aria-label="Compteur d'eau sur le remplissage">
+      <button type="button" role="radio" aria-checked="${!on}" data-act="fill-off">Non</button><button type="button" role="radio" aria-checked="${on}" data-act="fill-on">Oui</button></span></span>`;
+    return `<div class="erow"><span class="ic">${icon(on ? "water-check" : "water-off")}</span><span class="name"><span>Compteur sur le remplissage</span>
+      <small>${on ? "Il compte l'eau ajoutée (Contrôle › Remplissage) et alarme si un remplissage dure trop."
+        : "Rien n'est compté : ni Remplissage, ni alarme. Pour une piscine sans compteur sur sa conduite de remplissage."}</small></span>${seg}</div>`
+      + (on ? fillTestRow() + row("clock-outline", "Dernière impulsion", esc(lastPulseText(s(E.fillLastPulse))), "Le dernier litre compté") : "");
+  }
+  /** « Alarme après », apart: a status or a pulse repaints fillBody, never what is being typed here. */
+  function fillAlarm() {
+    if (!fillOn() || !st(E.fillAlarmAfter)) return "";
+    const v = Math.round(n(E.fillAlarmAfter));
+    return `<form data-form="fill-alarm" autocomplete="off"><div class="erow"><span class="ic">${icon("timer-alert-outline")}</span>
+      <span class="name"><span>Alarme après</span><small>Un remplissage plus long déclenche l'alarme : ici, et Home Assistant prévient toutes les 15 min jusqu'à « Acquitter ». 0 = jamais.</small></span>
+      <span class="ctl num-in"><input name="min" inputmode="numeric" value="${Number.isFinite(v) ? v : ""}" aria-label="Alarme après, en minutes"><span>min</span>
+      <button class="btn">OK</button></span></div></form>`;
+  }
+  async function saveFillAlarm(form) {
+    const v = parseAlarmMinutes(form.elements.min.value);
+    if (v === null) {
+      toast(`Alarme après : un nombre de minutes, de ${FILL_ALARM.min} à ${FILL_ALARM.max}`, true);
+      return;
+    }
+    try {
+      await hass.setNumber(E.fillAlarmAfter, v);
+    } catch (e) {
+      refused(e);
+      return;
+    }
+    toast(v ? `Alarme après ${v} min de remplissage` : "Plus d'alarme de remplissage");
+  }
+  /** The wizard's step 4, after the probes: optional, it never blocks « Continuer ». */
+  function fillWizard() {
+    const on = fillOn(), status = s(E.fillStatus), f = fillStatus(status);
+    const state = !on ? hero("idle", "water-off", "Pas de compteur d'eau", "Rien n'est compté. Pour en ajouter un : Réglages contrôleur › Compteur d'eau.")
+      : status === "detected" ? hero("ok", "check", "Compteur détecté", "Il compte : Remplissage et son alarme sont en place.")
+      : status === "listening" ? hero("idle", "water-sync", "À l'écoute…", esc(f.sub))
+      : status === "not_detected" ? hero("idle", "water-alert", "Compteur pas détecté", esc(f.sub))
+      : "";
+    return `<h3 class="wz-sub">Compteur d'eau <small>facultatif</small></h3>
+      <p class="hint">Un compteur à impulsions sur la conduite de remplissage (1 L par impulsion) : le contrôleur compte l'eau ajoutée, et alarme si un remplissage dure trop.</p>
+      ${state}
+      <div class="rowbtns">${lineBtn("fill-yes", "water-check", on && status === "detected" ? "Retester" : "J'ai un compteur", status === "listening" ? " disabled" : "")}
+        ${on ? lineBtn("fill-no", "water-off", "Pas de compteur") : ""}</div>`;
+  }
+
   /* ------------------------------------------------------------ the API key: Home Assistant sets it */
 
   const haSteps = () => `<ol class="do"><li>Dans Home Assistant : <b>Paramètres › Appareils et services</b>. Le contrôleur y apparaît tout seul, « Découvert » : ESPHome, Pool Controller (sinon : « Ajouter une intégration » › ESPHome › pool-controller.local).</li>
@@ -383,7 +464,7 @@ export function mountSetup({ hass, E, ui }) {
       ${view.reset ? "" : '<button type="button" class="btn line danger" data-act="reset-ask">Réinitialiser…</button>'}</div>`
       + (view.reset ? `<div class="dangerbox" role="alertdialog" aria-label="Confirmer la réinitialisation"><b>Effacer les accès et redémarrer ?</b>
         <p>Seront effacés :</p><ul><li>les mots de passe de la page et OTA ;</li><li>le réseau Wi-Fi enregistré ;</li><li>la clé de chiffrement : Home Assistant perd la liaison.</li></ul>
-        <p>Restent :</p><ul><li>le rôle des sondes, la position et le fuseau : le plan de filtration et le hors gel continuent ;</li><li>les réglages (filtration, hors gel, mises à jour) et l'historique gardé ici (7 derniers jours, remplissage) ;</li><li>le firmware${fw ? ` (${esc(fw)})` : ""}.</li></ul>
+        <p>Restent :</p><ul><li>le rôle des sondes, la position et le fuseau : le plan de filtration et le hors gel continuent ;</li><li>les réglages (filtration, hors gel, compteur d'eau, mises à jour) et l'historique gardé ici (7 derniers jours, remplissage) ;</li><li>le firmware${fw ? ` (${esc(fw)})` : ""}.</li></ul>
         <p>Le contrôleur redémarre sur son point d'accès « ${AP_SSID} », ouvert : connectez-y un téléphone et ouvrez http://192.168.4.1. L'installation ne redemande que ce qui est effacé : un mot de passe, le Wi-Fi, puis Home Assistant.</p>
         <div class="rowbtns"><button type="button" class="btn" data-act="reset-no">Annuler</button><button type="button" class="btn fill danger" data-act="reset-yes">Effacer et redémarrer</button></div></div>` : "");
   }
@@ -400,10 +481,11 @@ export function mountSetup({ hass, E, ui }) {
     toast("Réinitialisation : le contrôleur efface ses accès et redémarre…");
   }
   function renderSections() {
-    const sections = [["posStack", E.latitude], ["probeStack", E.detectedProbes], ["accStack", E.pagePassword], ["haStack", E.apiKey], ["resetStack", E.factoryReset]];
+    const sections = [["posStack", E.latitude], ["probeStack", E.detectedProbes], ["fillStack", E.fillEnabled], ["accStack", E.pagePassword], ["haStack", E.apiKey], ["resetStack", E.factoryReset]];
     for (const [id, entity] of sections) $(id).hidden = !st(entity);
     if (st(E.latitude)) paint($("posBody"), `${posForm(true)}<p class="posnote">Ou depuis Home Assistant : carte Piscine › Réglages contrôleur › Position.</p>`);
     if (st(E.detectedProbes)) paint($("probeBody"), probesHTML());
+    if (hasFill()) { paint($("fillBody"), fillBody()); paint($("fillAlarm"), fillAlarm()); }
     if (st(E.pagePassword)) paint($("accBody"), accBody());
     if (st(E.apiKey)) paint($("haBody"), haBody());
     if (st(E.factoryReset)) paint($("resetBody"), resetBody());
@@ -466,7 +548,8 @@ export function mountSetup({ hass, E, ui }) {
     }
     if (step === 4) {
       const k = probes().length;
-      return (k ? `<p class="wz-intro">${k} sonde${k > 1 ? "s" : ""} trouvée${k > 1 ? "s" : ""} sur le bus. Donnez un rôle à chacune :</p>` : "") + probesHTML();
+      return (k ? `<p class="wz-intro">${k} sonde${k > 1 ? "s" : ""} trouvée${k > 1 ? "s" : ""} sur le bus. Donnez un rôle à chacune :</p>` : "") + probesHTML()
+        + (hasFill() ? fillWizard() : "");
     }
     if (step === 5) {
       const intro = "<p class=\"wz-intro\">Home Assistant parle au contrôleur en chiffré. La clé, c'est lui qui la crée : ajoutez-y le contrôleur, il la génère et la lui envoie.</p>";
@@ -610,6 +693,13 @@ export function mountSetup({ hass, E, ui }) {
       case "ha-forget-no": view.forget = false; break;
       case "ha-forget-yes": await forgetKey(); break;
       case "rescan": return rescan();
+      case "fill-on": if (!fillOn()) await setFill(true); break;
+      case "fill-off": if (s(E.fillEnabled) !== "off") await setFill(false); break;
+      case "fill-test": await fillTest(); break;
+      case "fill-yes": // the wizard: « J'ai un compteur » turns it on if needed, then tests it
+        if (fillOn() || await setFill(true)) await fillTest();
+        break;
+      case "fill-no": await setFill(false); break;
       case "reset-ask": view.reset = true; break;
       case "reset-no": view.reset = false; break;
       case "reset-yes": await factoryReset(); break;
@@ -623,6 +713,10 @@ export function mountSetup({ hass, E, ui }) {
     ev.preventDefault();
     const kind = form.dataset.form;
     if (form.closest("#wizard") && kind !== "key") return wzNext();
+    if (kind === "fill-alarm") {
+      await saveFillAlarm(form);
+      return render();
+    }
     if (kind === "pw") {
       const page = form.dataset.kind === "page";
       if (await savePassword(form)) toast(page ? "Mot de passe de la page changé : le navigateur va le redemander." : "Mot de passe OTA changé.");

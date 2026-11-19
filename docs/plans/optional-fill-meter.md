@@ -124,8 +124,8 @@ Whether the meter is proven (`detected`) is kept in a restored global (`fill_met
 | WP | What | Depends on | Branch | Status | PR |
 |---|---|---|---|---|---|
 | F1 | Firmware: switch, alarm + acknowledgement, detection, gating of the counters | — | feat/optional-fill-meter-f1-firmware | done | #49 |
-| F2 | Card: hide « Remplissage », alarm banner, pulsing light | contract above | feat/optional-fill-meter-f2-card | review | #50 |
-| F3 | Controller's page + mock: « Remplissage », Capteurs rows, « Compteur d'eau », wizard | contract; F1's YAML for the mock | | todo | |
+| F2 | Card: hide « Remplissage », alarm banner, pulsing light | contract above | feat/optional-fill-meter-f2-card | done | #50 |
+| F3 | Controller's page + mock: « Remplissage », Capteurs rows, « Compteur d'eau », wizard | contract; F1's YAML for the mock | feat/optional-fill-meter-f3-page | review | #53 |
 | F4 | HA side: blueprint, dashboard, `ha-dashboard-check` | F1 (ids for `ha-dashboard-check`) | | todo | |
 | F5 | Documentation pass: every file in « Documentation » below agrees with what merged | F1–F4 merged | | todo | |
 
@@ -201,31 +201,33 @@ Done as a package, like `updates.yaml`: the logic is pure C++ in `fill_meter.h`,
 - [x] **Docs:** the card's header comment (the hidden fill section, the banner, the light's new state and its order, the fill entities); the README.md « Home Assistant card » and dashboard README « The card as a tile with a pop-up » items in « Documentation »
 
 ### F3: controller's page (`webui/`) and the mock
-- [ ] `esphome-hass.js` `E`: the nine contract entities, so they aren't listed under « Autres entités »; the card's fill keys mapped in the panel's and the water variant's `entities`
-- [ ] `esphome-hass.js`: `switch` turn_on/off, `button.press` and `number.set_value` through `callService` (check each domain is mapped)
-- [ ] `app.js`:
+- [x] `esphome-hass.js` `E`: the nine contract entities, so they aren't listed under « Autres entités »; the card's fill keys mapped in the panel's and the water variant's `entities`
+- [x] `esphome-hass.js`: `switch` turn_on/off, `button.press` and `number.set_value` through `callService` (check each domain is mapped)
+- [x] `app.js`:
   - « Contrôle »: « Remplissage » (`waterStack`) hidden while Fill Meter is off; `#remplissage` then lands on « Contrôle »'s top;
   - Capteurs internes: Débit and Volume rows hidden while off (`valueRow`'s `visible`);
-  - « Réglages contrôleur »: a « Compteur d'eau » stack after « Sondes »:
+  - « Réglages contrôleur »: a « Compteur d'eau » stack after « Sondes », drawn by `setup.js` beside Position and Sondes (it shares its HTML pieces with the wizard's block; app.js only maps the entities):
     - « Compteur d'eau sur le remplissage », Oui | Non (the segmented control Auto Update uses);
     - shown only while on: « Détecter le compteur » (button row; its status as the sub-line: « Détecté », « À l'écoute : ouvrez le robinet de remplissage… », « Aucune impulsion en 5 min : vérifiez le câblage », « Pas encore testé »), « Dernière impulsion », and « Alarme après » (minutes, « 0 = jamais »)
-- [ ] setup wizard (`webui/setup.js`, `setup-model.js`):
+- [x] setup wizard (`webui/setup.js`, `setup-model.js`):
   - step 4 « Sondes » gains a « Compteur d'eau » block: « J'ai un compteur » runs the pulse test, « Pas de compteur » turns Fill Meter off;
   - not a Setup State item, so it never blocks « configured » and `SETUP_ITEMS` is unchanged;
-  - `webui/test/setup-model.test.mjs` covers any new model logic
-- [ ] « Réglages contrôleur » › Réinitialiser:
+  - `webui/test/setup-model.test.mjs` covers any new model logic: `fillStatus`, `parseAlarmMinutes`, `lastPulseText`
+- [x] « Réglages contrôleur » › Réinitialiser:
   - the factory reset is selective, so the fill meter settings are **kept** with the others;
   - its « Restent » list names them: « les réglages (filtration, hors gel, compteur d'eau, mises à jour) »;
   - check that `device_settings.h`'s erase doesn't touch the new globals
-- [ ] the page's card keeps `controller_light: false` (its header chip is the page's own link): the banner is the page's signal
-- [ ] `tools/webui-mock/mock_server.py`:
+- [x] the page's card keeps `controller_light: false` (its header chip is the page's own link): the banner is the page's signal
+- [x] `webui/icons.js`: F1's icons (water-check, water-sync, timer-alert-outline, bell-check…, water-off), from @mdi/js 7.4.47
+- [x] card preview (`tools/card-preview/`, from main): the fill situations (meter off, a fill running, the alarm, acknowledged)
+- [x] `tools/webui-mock/mock_server.py`:
   - simulate the switch and Fill Alarm After;
   - Detect: `listening`, then `detected` after a simulated fill of ~20 s;
   - the running, too-long and acknowledged sensors, and the Acknowledge button: a `--long-fill` flag runs a fill past Fill Alarm After;
   - `MOCK_FILL=off` starts with the meter off;
   - `make mock-ui-check` passes
-- [ ] screenshots of both states (on/off) and of the alarm, before and after « Acquitter », in the PR
-- [ ] **Docs:** the `app.js` header comment (the conditional « Remplissage », « Compteur d'eau »); the README.md « The device's page » and POOL-CONTROLLER.md « Local web UI » items in « Documentation »; the mock's flags in README.md « Working on the web UI without flashing » and the Makefile comment for `mock-ui`
+- [x] screenshots of both states (on/off) and of the alarm, before and after « Acquitter »: taken from the mock (Playwright) and `make card-shots`, described in the PR (GitHub's API can't attach images)
+- [x] **Docs:** the `app.js` header comment (the conditional « Remplissage », « Compteur d'eau »); the README.md « The device's page » and POOL-CONTROLLER.md « Local web UI » items in « Documentation »; the mock's flags in README.md « Working on the web UI without flashing » and the Makefile comment for `mock-ui`
 
 ### F4: Home Assistant side
 - [ ] `home-assistant/blueprints/pool_fill_too_long.yaml` (automation blueprint). Inputs:
