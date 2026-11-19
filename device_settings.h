@@ -2,7 +2,7 @@
 // C++ helpers for device-settings.yaml (its `esphome: includes:`), kept out of
 // the YAML so the lambdas there read as what they do. Everything here is about
 // the settings a controller gets at run time instead of at build time: the
-// page login, the API key, the timezone, the temperature probes' roles and
+// OTA password, the API key, the timezone, the temperature probes' roles and
 // Wi-Fi's saved network.
 
 #include <algorithm>
@@ -25,43 +25,16 @@
 #include "esphome/components/one_wire/one_wire_bus.h"
 #include "esphome/components/select/select.h"
 #include "esphome/components/time/posix_tz.h"
-#include "esphome/components/web_server_base/web_server_base.h"
 
-// Runtime web login (a null username = no login) and time::set_global_tz()
-// are 2026.11's; 2026.7 has neither (docs/plans/secret-free-firmware.md).
+// time::set_global_tz() is 2026.11's; 2026.7 doesn't have it
+// (docs/plans/secret-free-firmware.md).
 static_assert(ESPHOME_VERSION_CODE >= VERSION_CODE(2026, 11, 0), "device-settings.yaml needs ESPHome 2026.11 or later");
 
 namespace pool_settings {
 
 static const char *const TAG = "settings";
 
-// ------------------------------------------------------------------ page login
-
-/// The page's login name; only the password is a setting.
-static const char *const PAGE_USERNAME = "admin";
-
-/// Applies the page password: none = setup mode, the page opens without a
-/// login. web_server_base keeps the pointers and reads them on every request
-/// (from the HTTP server's own task), so the password lives in one of two
-/// static buffers: a change writes the other one, then swaps the pointer, and a
-/// request in flight never reads a string being rewritten.
-inline void set_page_login(const std::string &password) {
-  auto *web = esphome::web_server_base::global_web_server_base;
-  if (web == nullptr)
-    return;
-  static char buffers[2][65];
-  static uint8_t active = 0;
-  if (password.empty()) {
-    web->set_auth_username(nullptr);  // username first: null = no login
-    web->set_auth_password(nullptr);
-    return;
-  }
-  uint8_t next = active ^ 1;
-  snprintf(buffers[next], sizeof(buffers[next]), "%s", password.c_str());
-  web->set_auth_password(buffers[next]);
-  web->set_auth_username(PAGE_USERNAME);  // last: the password is in place before the login turns on
-  active = next;
-}
+// ---------------------------------------------------------------- OTA password
 
 /// 32 hex digits (128 bits) from the hardware RNG: the OTA password until one
 /// is set, so OTA is never open.

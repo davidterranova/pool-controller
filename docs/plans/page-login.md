@@ -26,26 +26,27 @@ So the plan is: drop `auth:` and register our own **gate** handler **before** `w
 1. **The device checks a session cookie, not digest.** `auth:` leaves `web_server`. A new local component, `page_login` (`components/page_login/`, like `gated_update`), does the check.
 2. **The gate.** While a Page Password is set, it claims every request that has no valid `pool_session` cookie, except:
    - `GET /`, `GET /0.js` and `GET /0.css`: the page shell and its bundle. They're the open-source UI and hold no state, and they're what draws the login screen.
+   - any `OPTIONS` (CORS preflights; they carry no data).
    - `GET /login/challenge`, `POST /login`, `GET /login/session` and `POST /logout`: served by `page_login` itself.
    
    A claimed request gets **`401` with no `WWW-Authenticate`**, so the browser never shows its own dialog. With no Page Password set (setup mode), the gate claims nothing, as today.
 3. **The login screen is part of the existing page** (`webui/`), not a second page served by the firmware. The page loads, its stream (`/events`) or any request gets a 401, and it shows the login screen. That's one bundle, one style (`app.css`), and the mock can do the same. It's a single password field (show/hide toggle, `autocomplete="current-password"`) and a « Se connecter » button. It shows « Mot de passe incorrect » and, while locked out, a countdown.
 4. **The password never crosses the network at login (challenge–response).** The README promises « digest auth keeps the password off the wire » and the hotspot is open, so we keep that:
    - `GET /login/challenge` returns a random 128-bit nonce. Each nonce is used once and expires after 60 s. The device keeps up to 4 in RAM.
-   - The page sends `POST /login` with `{nonce, proof}`, where `proof = hex(HMAC-SHA256(key = password, msg = nonce))`.
-   - The device computes the same HMAC from `page_password` (mbedtls) and compares in constant time.
+   - The page sends `POST /login`, form-encoded (`nonce=<hex>&proof=<hex>`). Here `proof` is the lowercase hex of HMAC-SHA256, with key = the password's UTF-8 bytes and message = the nonce's 32 hex characters as the page received them. So `printf %s "$nonce" | openssl dgst -sha256 -hmac "$password"` computes it too.
+   - The device computes the same HMAC and compares in constant time. Its SHA-256/HMAC is a small portable one in `page_login_core.h`, not mbedtls, so the host tests run the same code.
    - The page can't use `crypto.subtle` (`http://<ip>` isn't a secure context), so `webui/` bundles a small SHA-256/HMAC (~1.5 KB minified). It's tested against `node:crypto`.
    - The password still travels once, in clear, when it's **set** (the Page Password text entity), as it does today.
 5. **One session per browser, ended after 6 h idle.**
    - Each successful login draws a token (128 bits from `random_bytes`). The device keeps **up to 4 sessions**; a 5th login evicts the one idle longest.
-   - The tokens are kept in a new restored global, `session_tokens` (4 × 16 bytes; like every global id, stable forever). It's written only on login, logout and « log out everyone », never on ordinary requests, so flash wear stays low.
+   - `page_login` keeps the tokens in NVS itself, as its own preference (key `fnv1_hash("page_login_sessions")`, 4 × 16 bytes; like a global's id, that key is stable forever). It's written only when the sessions change (a login, a logout, a session ending), never on ordinary requests, so flash wear stays low.
    - The cookie is `pool_session=<token hex>; Path=/; HttpOnly; SameSite=Strict`. There's no `Max-Age`: the device enforces the lifetime. There's no `Secure` flag (plain HTTP).
    - **Idle limit: 6 h.**
-     - Each session's last activity is kept in RAM, as uptime (`millis_64()`, so it doesn't wrap). The device may have no wall clock: on the hotspot there's no SNTP.
+     - Each session's last activity is kept in RAM, as 64-bit uptime (`esp_timer_get_time()`, so it doesn't wrap). The device may have no wall clock: on the hotspot there's no SNTP.
      - Every authenticated request refreshes it, except the `/events` stream. An open tab streams forever, so counting the stream would mean a session never goes idle.
      - While someone uses the page without sending anything (switching tabs, scrolling), the page refreshes the session with `GET /login/session`. It does this at most every 5 min, and only after user input.
-     - A session idle for more than 6 h is deleted. The next request gets a 401, and the page shows the login screen.
-     - The device has no hook to close a `/events` stream that's already open (see L0). So the page also counts 6 h without user input, then calls `POST /logout` and shows the login screen.
+     - A session idle for more than 6 h is deleted: on its next request, or within a minute by a sweep. Deleting it also deletes it from NVS, so a reboot can't bring it back.
+     - **The device closes the `/events` streams of an ended session** (idle, logout, logout of everyone, eviction). The gate notes each stream's socket when it lets one through. When the session ends, the device closes those sockets with ESP-IDF's `httpd_sess_trigger_close` (see L0). The page's EventSource reconnects, gets a 401, and the page shows the login screen. So the page needs no 6 h timer of its own.
      - **At boot, every stored session's idle clock restarts.** So a reboot or update doesn't log anyone out, which matters with Auto Update. The cost: a session can last up to 6 h past a reboot.
    - **Everyone is logged out** (all sessions deleted) when:
      - the Page Password changes;
@@ -55,12 +56,12 @@ So the plan is: drop `auth:` and register our own **gate** handler **before** `w
      `POST /logout` deletes only this browser's session.
 6. **Brute force.** One counter for the whole device (decided: not per client):
    - After 5 failed logins in a row, `/login` refuses for 30 s, then 60 s, and so on up to 15 min. A success resets it.
-   - The 401 body carries `retry_after` for the countdown.
+   - A failed login gets `401 {"retry_after":N}`, where N is the lock this failure started (0 if none). A login while locked gets `429 {"retry_after":N}` and a `Retry-After: N` header. The page uses N for its countdown.
    - The counter is per device, not per client: someone on the open hotspot can keep the owner locked out while they keep trying. We accept that: Home Assistant and the controller's own schedule don't depend on the page.
 7. **CSRF.**
    - The cookie is `SameSite=Strict`.
    - `web_server`'s handlers already reject cross-origin browser requests (`check_origin_`).
-   - `page_login`'s own endpoints are added without the guard, so they do the same origin check themselves (`is_request_origin_allowed`).
+   - `page_login`'s own endpoints are added without the guard, so `POST /login` and `POST /logout` do the same origin check themselves (`web_server_base::is_origin_allowed`, 403 otherwise).
 8. **Scripts lose digest.** `curl --digest -u admin:…` stops working. POOL-CONTROLLER.md gets a short `curl` recipe instead: the challenge, the HMAC computed with `openssl dgst -hmac`, `-c`/`-b` for the cookie jar. Keeping digest as a second way in would need the `WWW-Authenticate` header, and that brings the browser's dialog back.
 9. **Nothing to migrate.** `page_password` keeps its id and its NVS key. After the update, a browser that was logged in with digest sees the login screen once.
 10. **The page reloads itself after a firmware update.**
@@ -73,13 +74,13 @@ So the plan is: drop `auth:` and register our own **gate** handler **before** `w
 
 | What | Kind | Notes |
 |---|---|---|
-| `session_tokens` | global `std::array<uint8_t, 64>` (4 × 16 bytes), restored | new; **id stable forever**; all zero = no session |
-| Logout All Devices (« Déconnecter tous les appareils ») | button, `grp_device` | deletes every session |
+| `page_login:` (id `page_login_gate`, `idle_timeout: 6h`) | local component, in `device-settings.yaml` | its sessions in its own NVS preference, key `fnv1_hash("page_login_sessions")`: **stable forever** |
+| Logout All Devices (« Déconnecter tous les appareils »), id `logout_all_devices` | button, `grp_device`, weight 25 | deletes every session |
 | `GET /login/challenge` | `page_login` | `200 {"nonce":"<32 hex>"}`; `204` in setup mode |
-| `POST /login` | `page_login` | body `{"nonce","proof"}`; `204` + `Set-Cookie`, or `401 {"retry_after":s}` |
+| `POST /login` | `page_login` | form body `nonce=…&proof=…`; `204` + `Set-Cookie`; `401 {"retry_after":N}`; `429 {"retry_after":N}` + `Retry-After` while locked; `403` cross-origin; `204` in setup mode |
 | `GET /login/session` | `page_login` | `204` and refreshes the idle clock with a valid session; else `401`; `204` in setup mode |
 | `POST /logout` | `page_login` | deletes this session; `204` + an expired `Set-Cookie` |
-| every other path | `web_server` | unchanged; a `401` (no `WWW-Authenticate`) without a valid cookie |
+| every other path | `web_server` | unchanged; a `401` `text/plain` `Login required` (no `WWW-Authenticate`) without a valid cookie |
 
 Page Password, Setup State and Factory Reset keep their names. Only their lambdas change.
 
@@ -111,62 +112,81 @@ The feature branch's other rules:
 
 | WP | What | Status | Branch / PR |
 |---|---|---|---|
-| L0 | Spike: gate ordering, cookies, SSE on 2026.11 | todo | |
-| L1 | Firmware: `page_login` component + device-settings wiring | todo | |
-| L2 | Page: login screen, HMAC, 401 handling, wizard, logout; the mock | in progress | `feat/page-login-l2-page` |
+| L0 | Spike: gate ordering, cookies, SSE on 2026.11 | done (from the source; see L0) | [#56](https://github.com/davidterranova/pool-controller/pull/56) |
+| L1 | Firmware: `page_login` component + device-settings wiring | done | [#56](https://github.com/davidterranova/pool-controller/pull/56) |
+| L2 | Page: login screen, HMAC, 401 handling, wizard, logout; the mock | done | [#57](https://github.com/davidterranova/pool-controller/pull/57) |
 | L3 | Docs | todo | |
 
 L1 and L2 can run in parallel once L0 has settled the contract above. L3 goes last.
 
 ## Work packages
 
-### L0: spike (`tools/spike/`)
+### L0: spike — done 2026-11-19, from ESPHome 2026.11.0b6's source
 
-A throwaway YAML on a dev board, or the controller with `make ota`, that checks:
-- A handler added with `add_handler_without_auth()` from a component whose `setup_priority` is above `web_server`'s gets asked **before** `web_server`'s handler. Its `canHandle()` can read `Cookie` (`get_header_to`).
-- With `auth:` removed, nothing else sends a challenge.
-- `AsyncWebServerResponse::addHeader("Set-Cookie", …)` reaches the browser, and `EventSource("/events")` sends the cookie.
-- The cookie fits under `CONFIG_HTTPD_MAX_REQ_HDR_LEN`.
-- mbedtls HMAC-SHA256 links with no extra component.
-- Whether a component can close `web_server`'s open `/events` connections. If it can, the device itself ends the stream of a session that has gone idle, and the page's own 6 h timer (decision 5) becomes a fallback.
-- A `std::array<uint8_t, 64>` global restores from NVS.
+The questions were answered by reading `web_server_base`, `web_server_idf` and `web_server` as they're built here (`.esphome/build/…/src/esphome/components/`), then compiling. No throwaway YAML was needed. To confirm on the controller: see Verification.
 
-Write the results here. If ordering by setup priority doesn't hold, the fallback is to register the gate from `on_boot` at a priority above 249 (`WIFI - 1`) through `global_web_server_base`.
+- **Ordering holds.**
+  - `AsyncWebServer::request_handler_` asks the handlers in the order they were added, and the first whose `canHandle()` says yes answers.
+  - `web_server`'s setup priority is `WIFI - 1` (249); there it calls `base_->init()`, then `add_handler()` for `/events` and the rest.
+  - `PageLogin` sets up at `WIFI` (250), so its `add_handler_without_auth()` comes first. Before `init()`, the handler waits in `WebServerBase::handlers_`, and `init()` adds them in order.
+- **No challenge without `auth:`.** `USE_WEBSERVER_AUTH` is undefined, so `GuardMiddlewareHandler::check_auth_()` always passes. Its origin check stays.
+- **Headers.**
+  - `get_header_to("Cookie", buf)` reads the cookie. `CONFIG_HTTPD_MAX_REQ_HDR_LEN` is 1024 here, and the cookie is about 45 bytes.
+  - `addHeader()` only stores the pointer (`httpd_resp_set_hdr`), so the `Set-Cookie` value must live until `send()`. It's built on the handler's stack.
+  - EventSource sends same-origin cookies by default.
+- **Status codes.** `init_response_()` knows 200, 204, 400, 401, 403, 404, 409 and 422; any other code goes out as a 500. So the 429 sets its status with `httpd_resp_set_status()` after `beginResponse()`.
+- **Body.** A form-encoded POST body is read before dispatch and is available through `arg()`. Hence the form body for `/login`, not JSON.
+- **Closing a stream.** `web_server` keeps its `AsyncEventSource` and its sessions private. But each SSE stream is an httpd session with a context (`httpd_sess_get_ctx(hd, fd)` is non-null; a plain keep-alive socket has none). So the gate notes `httpd_req_to_sockfd()` when it lets an `/events` request through. To close one, it queues `httpd_sess_trigger_close` on the HTTP task (`httpd_queue_work`), and only if the socket still has a context. ESPHome's SSE response already handles a closed socket (its session-context free callback).
+- **Crypto and storage.**
+  - mbedtls isn't used: a portable SHA-256/HMAC in `page_login_core.h` keeps the host tests on the same code.
+  - The sessions are a preference of `page_login`'s own (`make_preference<Sessions::Stored>`), not a global: the component reads and writes them on the HTTP task, which a global's own save loop (main loop) doesn't expect.
 
 ### L1: firmware (`components/page_login/`, `device-settings.yaml`, `device_settings.h`, `pool-controller.yaml`)
 
-- `page_login.h` / `__init__.py`:
-  - the gate handler (decision 2);
-  - the challenge, login, session and logout endpoints (4);
-  - the session table, with the 6 h idle limit and the idle clocks restarted at boot (5);
-  - the backoff (6);
-  - the origin check (7).
-  
-  Small pure helpers (allowlist match, cookie parse, HMAC verify, backoff) go in a header with no ESPHome dependency, so they can be tested.
-- `pool-controller.yaml`: remove `web_server: auth:` and its comment. Add `page_login:` with `password_id: page_password`, `sessions_id: session_tokens` and `idle_timeout: 6h`.
+- `components/page_login/`:
+  - `page_login_core.h`: the pure parts, with no ESPHome or IDF include:
+    - SHA-256, HMAC and the login proof;
+    - hex;
+    - the cookie parser;
+    - the route of a request;
+    - the session table, with its idle limit and boot restore;
+    - the nonces;
+    - the lockout.
+  - `page_login.h` / `page_login.cpp`: the gate handler and the four endpoints (decisions 2 and 4).
+    - The state sits under one mutex: the gate runs on the HTTP task, the setters on the main loop. Responses go out after the lock is released, so a slow client can't stall the main loop.
+    - The sessions are saved from `loop()` when they've changed.
+    - Idle sessions are swept every minute.
+    - Streams are closed through `httpd_queue_work`.
+  - `__init__.py`: the `page_login:` schema (`idle_timeout`, default 6 h, at least 1 min).
+- `pool-controller.yaml`: `web_server: auth:` removed.
 - `device-settings.yaml`:
-  - the `session_tokens` global;
-  - Page Password's `on_value` deletes every session instead of calling `set_page_login`;
-  - Factory Reset deletes them too;
-  - the Logout All Devices button;
-  - `on_boot` no longer touches the login.
-- `device_settings.h`: remove `set_page_login`, `PAGE_USERNAME` and the double buffer. The gate runs on the HTTP task, so `page_login` keeps its own copy of the password and of the session table under a lock, and is told about changes through setters.
-- `tools/tests/page_login_test.cpp`: the helpers, built like `fill_meter_test.cpp`. They cover:
-  - the HMAC, against the RFC 4231 test vectors;
-  - the idle expiry and eviction, on a fake clock;
-  - the idle clocks restarting at boot.
+  - `external_components` + `page_login:` (id `page_login_gate`);
+  - `on_boot` gives it the stored password;
+  - Page Password calls `set_password()` + `logout_all()`;
+  - Factory Reset does the same with an empty password;
+  - the Logout All Devices button.
+- `device_settings.h`: `set_page_login`, `PAGE_USERNAME` and the double buffer removed.
+- `tools/tests/page_login_test.cpp` (in `make firmware-test`):
+  - SHA-256 (FIPS vectors) and HMAC (RFC 4231 cases 1, 2, 6, 7);
+  - the proof;
+  - hex and the cookie;
+  - the routes;
+  - sessions: idle expiry, eviction, boot restore;
+  - nonces: single use, 60 s, 4 at a time;
+  - the lockout's steps and cap.
+- VERSION 1.10.0.
 
 ### L2: page (`webui/`) and the mock (`tools/webui-mock/`)
 
 - `webui/hmac.js` (SHA-256 + HMAC) and `webui/test/hmac.test.mjs` (against `node:crypto`).
 - `webui/login.js`: the screen (decision 3) and the challenge/login flow.
 - `esphome-hass.js`:
-  - on a closed stream, probe `GET /login/challenge`. A 200 means show the login screen; then reconnect after login. It must stop doing `fetch("/")` to make the browser prompt.
+  - on a closed stream, probe `GET /login/session`. A 401 means show the login screen; then reconnect after login. It must stop doing `fetch("/")` to make the browser prompt.
   - a POST that gets a 401 shows the login screen too.
   - the firmware version check and `location.reload()` (decision 10).
 - `webui/session.js`: the idle side of decision 5.
   - After user input, it sends `GET /login/session`, at most every 5 min.
-  - After 6 h with no input, it sends `POST /logout` and shows the login screen.
+  - There's no page-side 6 h timer: the device ends the session and closes the stream itself (L0).
   - The timing logic is pure, so it can be unit-tested with a fake clock.
 - `setup.js` / `setup-model.js`:
   - after step 1 sets the password, log in with it right away, so the wizard carries on with no prompt;
@@ -224,4 +244,4 @@ Write the results here. If ordering by setup priority doesn't hold, the fallback
 
 ## Open questions
 
-- If L0 finds that the device can't close an open `/events` stream, is the page's own 6 h timer enough? A tab already open on an old page code wouldn't run it.
+- None yet.
