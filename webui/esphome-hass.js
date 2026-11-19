@@ -5,6 +5,10 @@
  *   /events (SSE)   ping (config, then uptime), state (one entity), log (one line, ANSI-coloured)
  *   POST /{domain}/{name}/{action}?…   number set, select set, button press, fan/switch turn_on|off,
  *                                       update install
+ *   GET /login/session   whether this browser's login session is alive (and keeps it so)
+ *
+ * Once a Page Password is set, the controller answers 401 without a login session (docs/plans/page-login.md): a 401
+ * on the stream or on a POST dispatches "login-required", and the page shows its login screen (login.js).
  *
  * Entity ids are "domain/Name" ("select/Manual Override"): ESPHome 2026.11 sends them as `id`; older
  * versions sent them as `name_id` beside an `id` of "domain-object_id", hence entityId(). The card is configured with those
@@ -123,6 +127,7 @@ export const E = {
   outdoorProbe: "select/Outdoor Probe",
   rescanProbes: "button/Rescan Probes",
   factoryReset: "button/Factory Reset",
+  logoutAll: "button/Logout All Devices", // ends every login session (docs/plans/page-login.md)
   waitingFor: "text_sensor/Schedule Waiting For",
 };
 
@@ -145,6 +150,9 @@ export function entityId(msg) {
   return id.includes("/") ? id : null;
 }
 
+/** Whether the controller now runs another firmware than the one first seen: `seen` unset means nothing seen yet. */
+export const firmwareChanged = (seen, reported) => !!seen && !!reported && seen !== reported;
+
 export class EspHass extends EventTarget {
   constructor() {
     super();
@@ -160,6 +168,7 @@ export class EspHass extends EventTarget {
     this.themes = { darkMode: matchMedia("(prefers-color-scheme: dark)").matches };
     this.history = {}; // name_id -> [[t ms, value]]
     this._estimated = new Set(); // ids whose last_changed is a guess
+    this.firmware = null; // the controller's firmware when this page loaded (Firmware's current_version)
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
       this.themes = { darkMode: e.matches };
       this._changed();
@@ -168,16 +177,24 @@ export class EspHass extends EventTarget {
 
   /* ---------------------------------------------------------------- stream */
 
+  /** Opens the stream, or a new one in place of the last (after a login: this one carries its cookie). */
   connect() {
+    this._close();
+    this.groups = []; // sent again with the rest
     const es = new EventSource("/events");
+    this._es = es;
     es.addEventListener("open", () => this._setLink(true));
-    // EventSource retries on its own; until then the controller is unreachable from here. It gives up
-    // for good on an answer other than 200, such as the 401 of a page password set or changed since:
-    // a plain request lets the browser ask for the login, then a new stream starts.
+    // The stream drops on a reboot or a Wi-Fi hiccup, and when the controller ends this browser's session (idle,
+    // logout, a new Page Password): only the session says which, so it's asked at once, and a 401 brings the login
+    // screen. EventSource retries on its own; until then the controller is unreachable from here. It gives up for good
+    // on an answer other than 200 (the gate's 401 among them): then a new stream starts every 5 s.
     es.addEventListener("error", () => {
+      if (this._es !== es) return;
       if (this.connected) this._setLink(false);
-      if (es.readyState !== EventSource.CLOSED) return;
-      setTimeout(() => fetch("/", { cache: "no-store" }).catch(() => {}).finally(() => this.connect()), 5000);
+      this.checkSession().then(() => {
+        if (this._es !== es || es.readyState !== EventSource.CLOSED) return;
+        this._retry = setTimeout(() => this.connect(), 5000);
+      });
     });
     es.addEventListener("ping", (ev) => {
       this.lastEventAt = Date.now();
@@ -195,7 +212,40 @@ export class EspHass extends EventTarget {
       this._onState(JSON.parse(ev.data));
     });
     es.addEventListener("log", (ev) => this._onLog(ev.data));
-    this._es = es;
+  }
+
+  /** Closes the stream, with no retry: logged out, the login screen up. */
+  disconnect() {
+    this._close();
+    if (this.connected) this._setLink(false);
+  }
+
+  _close() {
+    this._es?.close();
+    this._es = null;
+    clearTimeout(this._retry);
+  }
+
+  /**
+   * GET /login/session, which also keeps the session alive (session.js): true with a session or none needed, false
+   * when the controller wants a login ("login-required" is then dispatched), null when it can't be reached. One at
+   * a time.
+   */
+  checkSession() {
+    this._checking ||= fetch("/login/session", { cache: "no-store" })
+      .then((res) => {
+        if (res.status === 401) this._loginRequired();
+        return res.status === 401 ? false : res.ok || null;
+      })
+      .catch(() => null)
+      .finally(() => (this._checking = null));
+    return this._checking;
+  }
+
+  /** The gate's 401: the stream stops until the login screen has done its work, which calls connect(). */
+  _loginRequired() {
+    this.disconnect();
+    this.dispatchEvent(new Event("login-required"));
   }
 
   _onState(msg) {
@@ -203,6 +253,12 @@ export class EspHass extends EventTarget {
     if (!id) return;
     const [domain, name] = splitId(id);
     if (msg.domain) this.entities[id] = { ...msg };
+    // The firmware this page came with: a stream that reconnects onto another (an update, then a reboot) reloads the
+    // page, so its code is the new firmware's too. Only the full config, on each connect, carries it.
+    if (id === E.fwUpdate && msg.current_version) {
+      if (firmwareChanged(this.firmware, msg.current_version)) location.reload();
+      this.firmware ??= msg.current_version;
+    }
     const conf = this.entities[id] || { domain, name };
     const state = toHaState(domain, msg);
     const prev = this.states[id];
@@ -372,6 +428,10 @@ export class EspHass extends EventTarget {
     const qs = new URLSearchParams(params).toString();
     const url = `/${domain}/${encodeURIComponent(name)}/${action}${qs ? "?" + qs : ""}`;
     const res = await fetch(url, { method: "POST" });
+    if (res.status === 401) {
+      this._loginRequired();
+      throw new Error("connexion requise");
+    }
     if (!res.ok) throw new Error(`${action} ${id}: HTTP ${res.status}`);
   }
 

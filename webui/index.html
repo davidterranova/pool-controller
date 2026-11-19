@@ -26,6 +26,24 @@
     <a role="tab" href="#reglages-controleur" data-tab="reglages-controleur" data-icon="chip">Réglages contrôleur</a>
   </nav>
 
+  <!-- Login screen (login.js): the page, the wizard included, while the controller asks for its Page Password -->
+  <div class="login" id="login" hidden>
+    <header class="wz-top"><div><h1>Piscine</h1><p>Contrôleur de la piscine</p></div></header>
+    <div class="card">
+      <h2 data-icon="lock">Connexion</h2>
+      <div class="body">
+        <form class="form" id="loginForm">
+          <label>Mot de passe de cette page
+            <span class="pw"><input id="loginPw" name="password" type="password" maxlength="64" autocomplete="current-password" required>
+              <button type="button" class="btn" id="loginEye" title="Afficher" aria-label="Afficher le mot de passe" data-icon="eye"></button></span></label>
+          <p class="hint badl" id="loginMsg" role="alert" hidden></p>
+          <div class="rowbtns"><button class="btn fill" id="loginBtn">Se connecter</button></div>
+          <p class="hint">Celui choisi à l'installation. Ce navigateur reste ensuite connecté ; après 6 h sans s'en servir, la page le redemande.</p>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- Setup wizard (setup.js): the page while Setup State isn't `configured`, one step per missing item -->
   <div class="wizard" id="wizard" hidden>
     <header class="wz-top">

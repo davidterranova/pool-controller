@@ -168,12 +168,15 @@ mock-ui: webui
 # reloads the page. MOCK_HOTSPOT=1 starts the device on its fallback
 # hotspot, with no clock (a router outage). MOCK_FRESH=1 starts it as a new
 # install: not set up (Setup State lists everything), no network saved, on its
-# hotspot with no clock; once a Page Password is set, it asks for it.
+# hotspot with no clock; once a Page Password is set, the page shows its login
+# screen. MOCK_IDLE=60 ends a login session after 60 s without a request
+# instead of 6 h. A curl -X POST to /__mock/reboot reboots the mock controller,
+# with ?version=v1.6.0 onto another firmware (the page reloads itself).
 # MOCK_NO_RELEASE=1: no firmware published yet, every update check fails.
 # MOCK_FILL=off starts with the fill meter turned off; MOCK_LONG_FILL=1 with a
 # fill already past Fill Alarm After, its alarm on (fill-meter.yaml).
 mock-webui:
-	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh) $(if $(MOCK_NO_RELEASE),--no-release) $(if $(filter off,$(MOCK_FILL)),--fill-off) $(if $(MOCK_LONG_FILL),--long-fill)"
+	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh) $(if $(MOCK_NO_RELEASE),--no-release) $(if $(filter off,$(MOCK_FILL)),--fill-off) $(if $(MOCK_LONG_FILL),--long-fill) $(if $(MOCK_IDLE),--idle $(MOCK_IDLE))"
 
 # Prints the page layout (sections, order, which entities the simulation
 # drives) and fails if $(CONFIG) has an entity type the mock can't render.
