@@ -24,7 +24,7 @@ tooling, and building the firmware yourself.
 | `device-settings.yaml`, `device_settings.h` | Package included by `pool-controller.yaml`: the controller's settings, set at run time and kept on the device (page and OTA passwords, API key, position, timezone, probe roles, Setup State, Factory Reset). Nothing personal is compiled in. |
 | `fill-meter.yaml`, `fill_meter.h` | Package included by `pool-controller.yaml`: the fill-line water meter as an option (Fill Meter on/off, its pulse test, the long-fill alarm and its acknowledgement). `fill_meter.h` is pure logic, tested on the host (`make firmware-test`). |
 | `Makefile` | Validate / build / flash / OTA / status tooling. |
-| `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS). `dashboard/`: dashboard components for these entities and the scripts the card calls, with a guide ([home-assistant/dashboard/README.md](home-assistant/dashboard/README.md)). |
+| `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS). `dashboard/`: dashboard components for these entities and the scripts the card calls, with a guide ([home-assistant/dashboard/README.md](home-assistant/dashboard/README.md)). `blueprints/`: phone reminders while a fill runs too long ([Fill alarm notifications](home-assistant/dashboard/README.md#fill-alarm-notifications)). |
 | `hacs.json` | Tells the Marketplace (HACS) which file this repo publishes: the card above, from each GitHub release. |
 | `tools/webui-mock/` | Local mock of the device's web UI, for working on the page without flashing (see below). |
 | `tools/card-preview/` | The pool card against a stand-in for Home Assistant, in named situations, with screenshots and a check (see [Previewing the card](#previewing-the-card)). |
@@ -208,7 +208,9 @@ acknowledges it the light turns amber and keeps pulsing, the tile and the
 header read « Remplissage depuis 1 h 12 », and the header's light leads to
 the banner. Its order: red (controller lost) > pulsing amber (fill alarm) >
 amber > green. The meter's settings are not the card's: the device's page in
-Home Assistant (Configuration), or the controller's own page.
+Home Assistant (Configuration), or the controller's own page. Reminders on a
+phone, every 15 min until acknowledged, come from a blueprint in
+[home-assistant/blueprints/](home-assistant/dashboard/README.md#fill-alarm-notifications).
 It's a plain custom element, no framework and no build step, in French.
 
 It lives here because it's written against this firmware's entities, and

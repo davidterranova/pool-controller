@@ -105,7 +105,7 @@ Then « Create automation » from it:
 | Phones | Phones with the Home Assistant app (none or several). Each gets the reminders, with an « Acquitter » action. |
 | Repeat every | Minutes between reminders, 15 by default. |
 | Title, Message | The reminder's text, in French by default. The message may use `{{ since }}`, the time the alarm went on. |
-| All-clear message | Sent when the fill ends, in place of the last reminder. Empty for none. |
+| All-clear message | Sent when the alarm ends, in place of the last reminder. Empty for none. |
 | On each reminder, When the alarm ends | Actions of your own (a speaker, a light, another notifier), under « More actions ». |
 
 What it does:
@@ -115,8 +115,8 @@ What it does:
 - « Acquitter », on a phone, presses Acknowledge Fill Alarm on the controller. An acknowledgement from anywhere
   (the card, the controller's page, the device page, a phone) stops the reminders and clears the notification;
   the alarm itself stays on until the fill ends, but no longer pulses the light;
-- the fill ends: the notification is cleared, then the all-clear message and actions; the next fill that runs
-  too long alarms again;
+- the alarm ends (the fill ended, or Fill Alarm After was raised past it): the notification is cleared, then
+  the all-clear message and actions; the next fill that runs too long alarms again;
 - Home Assistant restarting, or the controller reconnecting, during an alarm nobody acknowledged resumes the
   reminders.
 

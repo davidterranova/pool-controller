@@ -88,7 +88,8 @@ not a dependency for correct operation.
 
 - **GPIO33** — optional: a pulse water meter on the pool's fill-in line (a
   reed-switch dry contact, 1 pulse per litre), its signal wire to GPIO33
-  (internal pull-up), the other to GND. It gives the fill flow, counts the
+  (`water_meter_pin` in pool-controller.yaml; internal pull-up), the other
+  to GND. It gives the fill flow, counts the
   water added and alarms on a fill that runs too long; an update waits for
   a fill to end. Without one, turn **Fill Meter** off: see
   [Fill meter](#fill-meter).
@@ -620,6 +621,8 @@ reason.
      After and Detect Fill Meter under Configuration; Fill Meter Status and
      Fill Meter Last Pulse under Diagnostic; Fill Running, Fill Running Too
      Long (`problem`), Fill Alarm Acknowledged and Acknowledge Fill Alarm.
+     Phone reminders while it alarms: the blueprint in
+     [home-assistant/blueprints/](home-assistant/dashboard/README.md#fill-alarm-notifications).
    - **Controller settings** (see [Controller settings](#controller-settings)):
      Setup State, Detected Probes, Schedule Waiting For; Page Password, OTA
      Password, API Key (write-only), Latitude, Longitude, Timezone, Timezone
