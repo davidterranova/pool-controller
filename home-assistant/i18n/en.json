@@ -1,0 +1,38 @@
+{
+  "common": {
+    "mode": {
+      "auto": "Auto"
+    },
+    "override": "Override",
+    "speed": {
+      "Off": "Off",
+      "Low": "Low",
+      "Medium": "Medium",
+      "High": "High"
+    }
+  },
+  "card": {
+    "picker": {
+      "name": "Pool pump",
+      "description": "Tile and panel for the pool pump (Pool Controller)"
+    },
+    "override": {
+      "stuck": "Override {speed} for {duration}: the pump no longer follows its filtration plan."
+    },
+    "hint": {
+      "following": "The controller follows its plan: <b>{speed}</b> now, {next}."
+    },
+    "temp": {
+      "span_days": {
+        "one": "{count} day",
+        "other": "{count} days"
+      }
+    },
+    "fill": {
+      "alarm_since": "Fill running since {time} ({duration}): check the fill tap."
+    },
+    "settings": {
+      "filtration_section": "Filtration time · applies with “Apply”"
+    }
+  }
+}
