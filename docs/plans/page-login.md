@@ -106,7 +106,7 @@ The feature branch's other rules:
   - The first WP that changes the firmware (L1, or L2 if it lands first) bumps it to the next unreleased minor, 1.10.0. This plan commit doesn't: release.yml's check only fails when the card or the firmware changed.
   - Whenever main releases the version the branch holds, the next sync of main bumps it again.
 - **Keeping up with main:** merge main into the feature branch whenever main moves, and at least before the final PR. Then each open WP branch merges the feature branch in.
-- **Testing:** test with `make ota` from the branch, never through a release.
+- **Testing:** test with `make ota` from the branch, never through a release. **First set Update Check Interval to « À la demande »**, or turn Auto Update off. ESPHome's update entity calls any manifest version that differs from the installed one « available », not only a newer one. So the scheduled check, one minute after boot, finds `v1.9.0` ≠ `v1.9.0-17-g…`, and Auto Update reinstalls the release a minute later. That happened on 2026-11-19, about 2 min after the OTA.
 
 ## Status
 
@@ -227,7 +227,17 @@ The questions were answered by reading `web_server_base`, `web_server_idf` and `
   - changing the password logs out a second browser;
   - with a short idle limit, an untouched tab goes to the login screen, while a tab in use stays logged in;
   - a faked update to another version reloads the page by itself, and a reboot on the same version doesn't.
-- On the controller (`make ota` from the branch):
+- On the controller (`make ota` from the branch, Auto Update held off; see Branches):
+  - **Done 2026-11-19** with `curl` (`v1.9.0-17-g90f20a7`, before Auto Update reinstalled v1.9.0):
+    - `/`, `/0.js`: 200;
+    - `/events`, `GET /sensor/…`, `POST /button/…/press` without a cookie: `401 Login required`, no `WWW-Authenticate`;
+    - challenge: a nonce; a wrong proof: `401 {"retry_after":0}`; the same nonce again: 401;
+    - a cross-origin `/login` or `/logout`: 403;
+    - `/logout`: 204 with an expired cookie;
+    - Home Assistant back 4 s after the reboot; the OTA password still accepted.
+    
+    Found: a POST with no body gets 411 from ESP-IDF's server (`Content-Length` required). Browsers always send one; the docs' `curl` recipe now uses `-d ''`.
+  - **Still to do, in a browser:**
   - no browser dialog anywhere;
   - a reboot or OTA keeps the session, and an OTA to a new version reloads the open page;
   - Factory Reset goes back to setup mode with no login;
