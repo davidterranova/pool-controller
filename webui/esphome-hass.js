@@ -91,6 +91,7 @@ export const E = {
   // From updates.yaml: the page falls back to comparing with GitHub on a firmware without them.
   fwUpdate: "update/Firmware",
   updateStatus: "text_sensor/Update Status",
+  updateProgress: "sensor/Update Progress",
   autoUpdate: "switch/Auto Update",
   updateInterval: "select/Update Check Interval",
   checkUpdate: "button/Check for Update",

@@ -127,7 +127,24 @@
       "auto": "Installer automatiquement",
       "auto_sub": "Une version trouvée par la vérification périodique s'installe seule, après une vitesse forcée ou un remplissage en cours. Celle trouvée avec « Vérifier » attend « Installer ».",
       "interval": "Vérifier les mises à jour",
-      "interval_sub": "Le contrôleur demande la dernière version publiée sur GitHub."
+      "interval_sub": "Le contrôleur demande la dernière version publiée sur GitHub.",
+      "steps": {
+        "requested": "Demandée",
+        "download": "Téléchargement",
+        "reboot": "Redémarrage",
+        "installed": "Installée"
+      },
+      "inst": {
+        "done": "{version} installée : le contrôleur a redémarré dessus.",
+        "wait_fill": "Attend la fin du remplissage en cours.",
+        "wait_override": "Attend la fin de la vitesse forcée.",
+        "rebooting": "Redémarrage sur {version}…",
+        "verifying": "Vérification du firmware, puis redémarrage…",
+        "downloading": "Téléchargement de {version}",
+        "connecting": "Connexion au serveur des versions…",
+        "failed": "Échec : le contrôleur garde {version}.",
+        "its_version": "sa version"
+      }
     },
     "log": {
       "heading": "Journal",
