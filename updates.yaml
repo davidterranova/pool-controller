@@ -78,6 +78,13 @@ esphome:
               }
               id(update_checking_since_ms) = 0;
               id(update_status_publish).execute();
+              // Install progress for the page's bar: the download (written to
+              // flash as it arrives), once a second; unknown (NaN) otherwise.
+              float progress = fw->state == update::UPDATE_STATE_INSTALLING && fw->update_info.has_progress
+                                   ? fw->update_info.progress : NAN;
+              auto *p = id(update_progress);
+              if (std::isnan(progress) ? !std::isnan(p->state) : progress != p->state)
+                p->publish_state(progress);
             });
         - component.update: update_interval_select
         - script.execute: update_status_publish
@@ -265,6 +272,22 @@ script:
           id(update_install_pending) = false;
           id(update_waiting_for) = (uint8_t) pool_updates::Blocker::NONE;
       - script.execute: update_status_publish
+
+sensor:
+  # How far an install is: the firmware downloaded and written so far, in %,
+  # unknown outside an install and before the download starts. The page draws
+  # it under « Mise à jour »; Home Assistant has it on the Firmware entity
+  # already, so it starts disabled there.
+  - platform: template
+    name: "Update Progress"
+    id: update_progress
+    web_server: {sorting_group_id: grp_firmware, sorting_weight: 25}
+    icon: mdi:progress-download
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    disabled_by_default: true
+    update_interval: never
 
 text_sensor:
   - platform: template
