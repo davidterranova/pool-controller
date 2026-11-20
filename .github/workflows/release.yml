@@ -223,7 +223,12 @@ jobs:
             exit 1
           fi
           test -s docs/install/index.html
-          cp -R docs/install/. _site/
+          # -L: docs/install/i18n.js is a symlink to home-assistant/i18n.js (the
+          # helper the card and the controller's page use too); the site gets the file.
+          cp -RL docs/install/. _site/
+          if [ -n "$(find _site -type l)" ]; then
+            echo "::error file=docs/install::a symlink is left in the site"; exit 1
+          fi
           touch _site/.nojekyll
           find _site -type f
 
