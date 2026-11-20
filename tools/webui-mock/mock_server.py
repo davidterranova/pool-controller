@@ -327,6 +327,7 @@ S = {
     "outdoor_probe": "Outdoor Probe",
     "rescan": "Rescan Probes",
     "factory_reset": "Factory Reset",
+    "restart": "Restart",
     "logout_all": "Logout All Devices",
     "waiting_for": "Schedule Waiting For",
 }
@@ -1331,6 +1332,9 @@ class PoolSim:
             self.log(f"Probe scan: {len(self.settings.bus)} on the bus")
         elif name == S["logout_all"]:
             self.settings.login.end_all("Logout All Devices")
+        elif name == S["restart"]:
+            self.log("Restarting")
+            self.reboot()
         elif name == S["factory_reset"]:
             self.log("Factory reset: forgetting the page and OTA passwords, the API key and the saved Wi-Fi")
             self.settings.factory_reset()
