@@ -112,7 +112,7 @@
  * « Filtration » on the left, « Impulsions et hors gel » and 7 derniers jours on the right; « Réglages
  * contrôleur » is Position beside Firmware.
  */
-const VERSION = "1.10.0";
+const VERSION = "1.10.1";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",
