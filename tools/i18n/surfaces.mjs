@@ -5,7 +5,8 @@
 //   dir       the dictionaries, one <lang>.json per language of LANGS (home-assistant/i18n.js)
 //   sources   the files that use the keys (globs: one `*` in the file name), never a symlink: the page's
 //             webui/piscine-card.js is the card's file, counted once under `card`
-//   usage     "code": t("key") / this._t('key') / t(`prefix.${…}`) (a used prefix); "template": {{t:key}}
+//   usage     "code": t("key") / this._t('key') / t(`prefix.${…}`) (a used prefix), and in HTML data-i18n="key" /
+//             data-i18n-<attribute>="key"; "template": {{t:key}}
 //   reads     other surfaces whose keys these sources may also use (the page shows the card, so it reads its keys)
 //   strict    once the surface is fully translated (its WP done): a key no source uses, or a French-looking
 //             literal left in its sources, fails the check instead of being reported

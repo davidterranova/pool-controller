@@ -87,7 +87,10 @@ export function listSources(root, globs) {
   return [...files];
 }
 
-/** The keys a source uses: { keys: Set, prefixes: Set } (a prefix from t(`card.speed.${v}`)). */
+/**
+ * The keys a source uses: { keys: Set, prefixes: Set } (a prefix from t(`card.speed.${v}`)). In "code", also an
+ * HTML element's data-i18n="key" (its content) or data-i18n-<attribute>="key" (data-i18n-aria-label="key").
+ */
 export function scanUsage(text, usage) {
   const keys = new Set(), prefixes = new Set();
   if (usage === "template") {
@@ -96,6 +99,7 @@ export function scanUsage(text, usage) {
   }
   for (const m of text.matchAll(/(?:^|[^\w$])_?t\(\s*(["'`])([\w.:-]+)\1/g)) keys.add(m[2]);
   for (const m of text.matchAll(/(?:^|[^\w$])_?t\(\s*`([\w.:-]*)\$\{/g)) prefixes.add(m[1]);
+  for (const m of text.matchAll(/\sdata-i18n(?:-[\w-]+)?\s*=\s*(["'])([\w.:-]+)\1/g)) keys.add(m[2]);
   return { keys, prefixes };
 }
 

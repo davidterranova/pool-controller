@@ -112,6 +112,12 @@ test("scanUsage finds t() keys, prefixes and {{t:key}} templates", () => {
   assert.deepEqual([...scanUsage("name: {{t:dash.title}}\nx: {{ t:y }}", "template").keys], ["dash.title", "y"]);
 });
 
+test("scanUsage finds an HTML element's data-i18n and data-i18n-<attribute> keys", () => {
+  const html = '<h2 data-i18n="sec.title"></h2><ol data-i18n-aria-label=\'sec.steps\'></ol><p data-i18n = "x"></p><p data-i18nx="no">';
+  assert.deepEqual([...scanUsage(html, "code").keys].sort(), ["sec.steps", "sec.title", "x"]);
+  assert.deepEqual([...scanUsage('<p data-i18n="a">', "template").keys], []);
+});
+
 test("frenchLiterals: quoted or HTML text with French letters, not comments", () => {
   const found = frenchLiterals([
     "/* « Réglages » in a comment */",
