@@ -29,6 +29,7 @@ same way, for designing against entities the firmware doesn't have yet.
 --hotspot starts the simulated device on its fallback hotspot, with no clock.
 --no-release has no firmware published yet, so every update check fails (the
 manifest on GitHub Pages is a 404), as before a project's first release.
+--install-fail makes every install fail partway through its download, as a dropped connection does.
 --fill-off starts with the fill meter turned off (Fill Meter, fill-meter.yaml): no fill water, no alarm.
 --long-fill starts with a fill already running past Fill Alarm After, so its alarm is on; it stops 3 min after
 « Acquitter », and the alarm clears 5 min later, as on the device. « Détecter le compteur » opens the fill tap for
@@ -333,6 +334,7 @@ S = {
 U = {
     "firmware": "Firmware",
     "status": "Update Status",
+    "progress": "Update Progress",
     "auto": "Auto Update",
     "interval": "Update Check Interval",
     "check": "Check for Update",
@@ -715,8 +717,10 @@ class UpdateSim:
     """updates.yaml: the Firmware entity behind its install gate, the checks, Update Status.
 
     The device's timings, shortened: the first check a few seconds after start (a minute on the
-    device), a check answers in 2 s, an install takes 15 s, then the controller "reboots" on the new
-    version (the page's event stream drops, as on the device). A release is always waiting at start.
+    device), a check answers in 2 s, an install takes 15 s -- 2 s to reach the server, the download
+    (Update Progress, 0 to 100 %), 3 s at 100 % to verify it -- then the controller "reboots" on the
+    new version (the page's event stream drops, as on the device). With fail_install, the download
+    stops at 60 % and the install fails, as a dropped connection does. A release is always waiting at start.
     Auto Update acts on scheduled checks only (updates.h's auto_update_step), and Cancel Update drops
     an install waiting at the gate.
     """
@@ -725,11 +729,14 @@ class UpdateSim:
     RELEASE_URL = "https://github.com/davidterranova/pool-controller/releases/tag/v1.5.0"
     CHECK_S = 2
     INSTALL_S = 15
+    CONNECT_S = 2  # before the download starts: Update Progress unknown
+    VERIFY_S = 3  # after it: at 100 %, the image checked, then the reboot
 
-    def __init__(self, log, installed: str = "v1.4.0", released: bool = True):
+    def __init__(self, log, installed: str = "v1.4.0", released: bool = True, fail_install: bool = False):
         self.log = log
         self.installed = installed
         self.released = released  # False: no manifest on GitHub Pages yet, every check fails
+        self.fail_install = fail_install
         self.latest: str | None = None
         self.state = "UNKNOWN"  # as web_server sends it: UNKNOWN, NO UPDATE, UPDATE AVAILABLE, INSTALLING
         self.error = False
@@ -775,7 +782,7 @@ class UpdateSim:
             return
         self.log(f"Installing {self.latest} ({self.pending_origin}), then rebooting")
         self.pending_origin = self.waiting_for = None
-        self.state, self.last_op = "INSTALLING", "install"
+        self.state, self.last_op, self.error = "INSTALLING", "install", False
         self.installing_until = time.time() + self.INSTALL_S
 
     def tick(self, auto: bool, hours: float, blocker: str | None) -> bool:
@@ -787,7 +794,8 @@ class UpdateSim:
         if self.checking_until and now >= self.checking_until:
             self.checking_until = 0.0
             self.latest, self.error = self.LATEST, False
-            self.state = "NO UPDATE" if self.latest == self.installed else "UPDATE AVAILABLE"
+            if self.state != "INSTALLING":  # an install already under way keeps going
+                self.state = "NO UPDATE" if self.latest == self.installed else "UPDATE AVAILABLE"
             self.log(f"Firmware {self.latest} available (installed: {self.installed})" if self.state == "UPDATE AVAILABLE"
                      else f"Firmware up to date ({self.installed})")
         if hours and now >= self.next_check:
@@ -798,10 +806,23 @@ class UpdateSim:
             if auto and not self.pending_origin and self.state == "UPDATE AVAILABLE":
                 self.install_request("Auto Update", blocker)
         self.gate(blocker)
+        if self.state == "INSTALLING" and self.fail_install and (self.progress() or 0) >= 60:
+            self.state, self.error = "UPDATE AVAILABLE", True
+            self.log(f"Install of {self.latest} failed: connection lost at 60 %; keeping {self.installed}")
         if self.state == "INSTALLING" and now >= self.installing_until:
             self.installed, self.state = self.latest, "NO UPDATE"
             return True
         return False
+
+    def progress(self) -> float | None:
+        """Update Progress: how much of the firmware is downloaded and written; None outside the download."""
+        if self.state != "INSTALLING":
+            return None
+        elapsed = self.INSTALL_S - (self.installing_until - time.time())
+        download_s = self.INSTALL_S - self.CONNECT_S - self.VERIFY_S
+        if elapsed < self.CONNECT_S:
+            return None
+        return min(100.0, float(int((elapsed - self.CONNECT_S) / download_s * 100)))
 
     def boot_on(self, version: str):
         """Another firmware, put there some other way (make ota, /__mock/reboot): the Firmware entity follows."""
@@ -969,14 +990,15 @@ class PoolSim:
     """A pocket version of evaluate_speed and friends, driven by wall-clock time."""
 
     def __init__(self, log, hotspot: bool = False, fresh: bool = False, released: bool = True,
-                 fill_off: bool = False, long_fill: bool = False, idle_s: float = 6 * 3600):
+                 fill_off: bool = False, long_fill: bool = False, idle_s: float = 6 * 3600,
+                 install_fail: bool = False):
         self.log = log
         self.fill = FillSim(log, enabled=not fill_off, long_fill=long_fill, fresh=fresh)
         self.fill_carry = 0.0  # litres not yet a whole pulse
         # A fresh controller has no network saved: it starts on its hotspot.
         self.wifi = WifiSim(log, hotspot or fresh, saved=not fresh)
         self.settings = SettingsSim(log, fresh, idle_s)
-        self.updates = UpdateSim(log, released=released)
+        self.updates = UpdateSim(log, released=released, fail_install=install_fail)
         self.rebooted = False  # set by an install: the server drops the page's event stream
         self.started = time.time()
         self.numbers: dict[str, float] = {}
@@ -1400,6 +1422,7 @@ class PoolSim:
         values[S["waiting_for"]] = self.waiting_for() or "--"
         values[U["firmware"]] = self.updates.entity()
         values[U["status"]] = self.updates.status(self.update_blocker)
+        values[U["progress"]] = self.updates.progress()
         values[U["auto"]] = bool(self.static.get(U["auto"]))
         values.update(self.static)
         values.update(self.numbers)
@@ -1618,7 +1641,8 @@ class Client(queue.Queue):
 class MockServer:
     def __init__(self, config_path: str, index_path: str | None, extras: list[str] | None = None,
                  hotspot: bool = False, fresh: bool = False, released: bool = True,
-                 fill_off: bool = False, long_fill: bool = False, idle_s: float = 6 * 3600):
+                 fill_off: bool = False, long_fill: bool = False, idle_s: float = 6 * 3600,
+                 install_fail: bool = False):
         self.config_path = config_path
         self.index_path = index_path
         self.extras = extras or []
@@ -1626,7 +1650,7 @@ class MockServer:
         self.clients: list[Client] = []
         self.reload_clients: list[Client] = []
         self.event_id = 0
-        self.sim = PoolSim(self.log, hotspot, fresh, released, fill_off, long_fill, idle_s)
+        self.sim = PoolSim(self.log, hotspot, fresh, released, fill_off, long_fill, idle_s, install_fail)
         self.layout = load_layout(config_path, self.extras)
         self.sim.adopt(self.layout.entities)
         self.sim.tick()
@@ -2059,6 +2083,8 @@ def main() -> int:
                         help="start on the fallback hotspot, with no clock")
     parser.add_argument("--no-release", action="store_true",
                         help="no firmware published yet (no manifest on GitHub Pages): every update check fails")
+    parser.add_argument("--install-fail", action="store_true",
+                        help="every install fails partway through its download")
     parser.add_argument("--fill-off", action="store_true",
                         help="start with the fill meter turned off (Fill Meter)")
     parser.add_argument("--long-fill", action="store_true",
@@ -2076,7 +2102,7 @@ def main() -> int:
     # otherwise wait out its timeout and SIGKILL.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     mock = MockServer(args.config, args.index, args.extra, args.hotspot, args.fresh, not args.no_release,
-                      args.fill_off, args.long_fill, args.idle)
+                      args.fill_off, args.long_fill, args.idle, args.install_fail)
     threading.Thread(target=mock.ticker, daemon=True).start()
     threading.Thread(target=mock.watcher, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(mock))
