@@ -25,9 +25,6 @@ export function nextStep(missing, after = 0) {
   return steps.find((n) => n > after) ?? steps[0] ?? 6;
 }
 
-/** "a", "a et b", "a, b et c". */
-export const andList = (items) =>
-  items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} et ${items[items.length - 1]}`;
 
 /**
  * Detected Probes ("52000000518fe928: 13.6, ff00000026007028: --", or "--" for none) ->
@@ -55,11 +52,14 @@ export function probeTrend(readings) {
   return last > prev ? "up" : "down";
 }
 
-/** What's wrong with a new password and its confirmation (the firmware takes 8 to 64 characters), or null. */
+/**
+ * What's wrong with a new password and its confirmation (the firmware takes 8 to 64 characters), as a code (the page's
+ * setup.pw.<code>): short, long, differ; or null.
+ */
 export function passwordProblem(password, confirmation) {
-  if (password.length < 8) return "Mot de passe : 8 caractères au moins.";
-  if (password.length > 64) return "Mot de passe : 64 caractères au plus.";
-  if (password !== confirmation) return "Les deux saisies diffèrent.";
+  if (password.length < 8) return "short";
+  if (password.length > 64) return "long";
+  if (password !== confirmation) return "differ";
   return null;
 }
 
@@ -72,29 +72,29 @@ export function validApiKey(text) {
   return [...atob(text)].some((c) => c !== "\0");
 }
 
-/** Degrees typed with a comma or a point -> rounded to 0.01° (as the controller keeps them), or null. */
+/** Degrees typed with a comma or a point (in any language) -> rounded to 0.01° (as the controller keeps them), or null. */
 export function parseDegrees(text) {
   const t = String(text ?? "").trim().replace(",", ".");
   if (!/^[+-]?\d+(\.\d*)?$|^[+-]?\.\d+$/.test(t)) return null;
   return Math.round(Number(t) * 100) / 100;
 }
 
-/** 43.3 -> "43,30" (an input's value), NaN -> "". */
-export const degreesInput = (v) => (Number.isFinite(v) ? v.toFixed(2).replace(".", ",") : "");
+/** 43.3 -> "43,30" (`comma`: the language writes decimals with a comma) or "43.30" (an input's value), NaN -> "". */
+export const degreesInput = (v, comma = true) => (Number.isFinite(v) ? (comma ? v.toFixed(2).replace(".", ",") : v.toFixed(2)) : "");
 
-/** Schedule Waiting For -> what the plan waits for, in a sentence ("Le plan attend …"). */
+/** Schedule Waiting For -> the key of what the plan waits for, in a sentence (« Le plan attend … »). */
 export const WAITING_FOR = {
-  position: "la position",
-  timezone: "le fuseau horaire",
-  clock: "l'heure",
-  "pool probe": "la sonde du bassin",
-  "pool temperature": "une mesure de la sonde du bassin",
-  "sunrise/sunset": "le lever et le coucher du soleil",
+  position: "setup.waiting.position",
+  timezone: "setup.waiting.timezone",
+  clock: "setup.waiting.clock",
+  "pool probe": "setup.waiting.pool_probe",
+  "pool temperature": "setup.waiting.pool_temperature",
+  "sunrise/sunset": "setup.waiting.sun",
 };
 
 /**
  * Sunrise and sunset on `date`'s day (UTC), from NOAA's approximation: {rise, set} as Dates, or
- * {polar: "jour" | "nuit"} when the sun doesn't rise or set. A minute or two off: a sanity check.
+ * {polar: "day" | "night"} when the sun doesn't rise or set. A minute or two off: a sanity check.
  */
 export function sunTimes(lat, lon, date = new Date()) {
   const rad = Math.PI / 180;
@@ -106,8 +106,8 @@ export function sunTimes(lat, lon, date = new Date()) {
   const decl = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g)
     + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
   const cosH = (Math.cos(90.833 * rad) - Math.sin(lat * rad) * Math.sin(decl)) / (Math.cos(lat * rad) * Math.cos(decl));
-  if (cosH > 1) return { polar: "nuit" };
-  if (cosH < -1) return { polar: "jour" };
+  if (cosH > 1) return { polar: "night" };
+  if (cosH < -1) return { polar: "day" };
   const ha = Math.acos(cosH) / rad;
   const at = (minutes) => new Date(midnight + minutes * 60000);
   return { rise: at(720 - 4 * (lon + ha) - eqTime), set: at(720 - 4 * (lon - ha) - eqTime) };
@@ -121,19 +121,13 @@ export const FILL_DETECT = { litres: 3, minutes: 5 };
 export const FILL_ALARM = { min: 0, max: 1440, step: 5 };
 
 /**
- * Fill Meter Status (off, untested, listening, detected, not_detected) -> how the page says it: {cls (the tag's
- * colour: ok, warn, bad, idle), tag, sub (what to do)}; null for a word it doesn't know (a newer firmware's).
+ * Fill Meter Status (off, untested, listening, detected, not_detected) -> how the page says it: {code (its words are
+ * the page's setup.fill.status.<code>.tag and .sub, with FILL_DETECT's litres and minutes), cls (the tag's colour: ok,
+ * warn, bad, idle)}; null for a word it doesn't know (a newer firmware's).
  */
 export function fillStatus(status) {
-  const { litres, minutes } = FILL_DETECT;
-  switch (String(status ?? "").trim()) {
-    case "off": return { cls: "idle", tag: "Désactivé", sub: "Rien n'est compté." };
-    case "untested": return { cls: "idle", tag: "Pas testé", sub: `« Tester », puis ouvrez le robinet de remplissage : il lui faut ${litres} L en ${minutes} min.` };
-    case "listening": return { cls: "warn", tag: "À l'écoute", sub: `Ouvrez le robinet de remplissage : ${litres} L en ${minutes} min suffisent.` };
-    case "detected": return { cls: "ok", tag: "Détecté", sub: "Il compte : un remplissage a été vu." };
-    case "not_detected": return { cls: "bad", tag: "Pas détecté", sub: `Moins de ${litres} L en ${minutes} min : vérifiez le câblage, puis relancez le test.` };
-    default: return null;
-  }
+  const cls = { off: "idle", untested: "idle", listening: "warn", detected: "ok", not_detected: "bad" }[String(status ?? "").trim()];
+  return cls ? { code: String(status).trim(), cls } : null;
 }
 
 /**
@@ -148,14 +142,15 @@ export function parseAlarmMinutes(text) {
   return Math.round(v / FILL_ALARM.step) * FILL_ALARM.step;
 }
 
-/** Fill Meter Last Pulse ("YYYY-MM-DD HH:MM", "--") -> « aujourd'hui à 14:02 », « le 12/07 à 09:15 », « jamais ». */
-export function lastPulseText(text, now = new Date()) {
+/**
+ * Fill Meter Last Pulse ("YYYY-MM-DD HH:MM", "--") -> {when: today | yesterday | date | never, at (a Date)}: the page
+ * says « aujourd'hui à 14:02 », « le 12/07 à 09:15 », « jamais » (setup.fill.pulse.<when>), with the year when not this one.
+ */
+export function lastPulse(text, now = new Date()) {
   const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/.exec(String(text ?? "").trim());
-  if (!m) return "jamais";
-  const day = new Date(+m[1], +m[2] - 1, +m[3]), y = new Date(now);
+  if (!m) return { when: "never" };
+  const at = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]), y = new Date(now);
   y.setDate(y.getDate() - 1);
-  const at = `${m[4]}:${m[5]}`;
-  if (day.toDateString() === now.toDateString()) return `aujourd'hui à ${at}`;
-  if (day.toDateString() === y.toDateString()) return `hier à ${at}`;
-  return `le ${m[3]}/${m[2]}${+m[1] !== now.getFullYear() ? `/${m[1]}` : ""} à ${at}`;
+  const when = at.toDateString() === now.toDateString() ? "today" : at.toDateString() === y.toDateString() ? "yesterday" : "date";
+  return { when, at, otherYear: at.getFullYear() !== now.getFullYear() };
 }

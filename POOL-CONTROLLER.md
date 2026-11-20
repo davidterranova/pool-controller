@@ -129,7 +129,7 @@ firmware on a board from **Chrome or Edge on a computer** (Web Serial, over
 USB; not from a phone). The board alone is enough to install; the wiring
 can come after.
 
-1. **Install.** Plug the board in, « Installer », pick its port, then
+1. **Install.** Plug the board in, « Install » (« Installer »), pick its port, then
    **Install Pool Controller** and **Install**. Every install erases the
    board first: the page is for a new board or one to start over, never
    for a controller in service, which updates itself (see
@@ -142,20 +142,22 @@ can come after.
 3. **Its page.** Open http://pool-controller.local (or **Visit Device** in
    the install window; or the address your router gives `pool-controller`).
    With no page password yet it opens without a login screen, on the
-   **setup wizard**: Mot de passe → Wi-Fi → Position → Sondes → Home Assistant, one
+   **setup wizard**, in the browser's language (EN | FR | ES at its top
+   right to change it): Password → Wi-Fi → Position → Probes → Home Assistant
+   (« Mot de passe » → « Wi-Fi » → « Position » → « Sondes » → « Home Assistant »), one
    step per item Setup State lists (see
    [Controller settings](#controller-settings)). Set the page password
    first: until then anyone on the network can open the page. Setting it
    logs this browser in with it; any other then gets the login screen. A step left
-   for later reopens where it was. Sondes also asks about the fill meter,
-   optional and never blocking: « J'ai un compteur » runs its pulse test
-   (open the fill tap), « Pas de compteur » turns Fill Meter off (see
+   for later reopens where it was. « Probes » (« Sondes ») also asks about the fill meter,
+   optional and never blocking: « I have a meter » (« J'ai un compteur ») runs its pulse test
+   (open the fill tap), « No meter » (« Pas de compteur ») turns Fill Meter off (see
    [Fill meter](#fill-meter)).
 4. **Home Assistant**, at the wizard's last step: add the controller
    (Settings › Devices & Services › ESPHome; it is usually discovered), and
    Home Assistant sets its encryption key itself (see
    [Home Assistant configuration](#home-assistant-configuration)). Without
-   Home Assistant: « Je n'utilise pas Home Assistant » closes the API with a
+   Home Assistant: « I don't use Home Assistant » (« Je n'utilise pas Home Assistant ») closes the API with a
    key nobody sees. **Add to Home Assistant** in the install window does
    the same as adding it by hand; it can wait for this step.
 
@@ -171,26 +173,30 @@ site), over HTTPS, and keeps every setting (they live in its own storage,
 which an update doesn't touch).
 
 - **Automatic, by default.** **Auto Update** is on; **Update Check
-  Interval** (« À la demande », 6 h, 24 h, 7 j; 24 h by default) says how
+  Interval** (`on_request`, `6h`, `24h`, `7d`; 24 h by default; see
+  [Controller settings](#controller-settings)) says how
   often it looks, the first time a minute after boot. What a scheduled
   check finds, it installs.
-- **On request.** « Vérifier » (Check for Update) looks now, but never
-  installs by itself, Auto Update or not; « Installer » then installs: on
-  the controller's page (Réglages contrôleur › Firmware), in Home Assistant
+- **On request.** « Check » (« Vérifier ») (Check for Update) looks now, but never
+  installs by itself, Auto Update or not; « Install » (« Installer ») then installs: on
+  the controller's page (« Controller settings » (« Réglages contrôleur ») › Firmware), in Home Assistant
   (Settings › Updates, the **Firmware** update entity) or in the pool card
-  (Réglages contrôleur › Firmware). With « À la demande » nothing is checked on a
-  schedule.
+  (« Controller settings » (« Réglages contrôleur ») › Firmware). With `on_request` (« À la demande »)
+  nothing is checked on a schedule.
 - **The gate.** Every install, Home Assistant's included, waits while a
   Manual Override or a fill runs (a reboot would end the override, and lose
   the meter's pulses), then starts by itself. « A fill runs » is **Fill
   Running** (see [Fill meter](#fill-meter)), so nothing waits for a fill
   while Fill Meter is off. **Cancel Update** (« Annuler
   la demande ») drops a waiting install.
-- **Update Status** says where it is: `non vérifié`, `vérification`,
-  `à jour`, `disponible`, `en attente (mode manuel)`, `en attente
-  (remplissage)`, `installation`, `erreur (vérification)`, `erreur
-  (installation)`. A failed install keeps the running firmware and is tried
-  again at the next scheduled check.
+- **Update Status** says where it is, as a code: `unchecked`, `checking`,
+  `up_to_date`, `available`, `pending:override` or `pending:fill` (an
+  install waiting at the gate), `installing`, `error:check`,
+  `error:install`. The page and the card translate it; Home Assistant's
+  device page shows the code as it is. (Before 1.11.0 these were French
+  words, `non vérifié` … `erreur (installation)`, which the card still
+  reads.) A failed install keeps the running firmware and is tried again at
+  the next scheduled check.
 - The install downloads in one go and reboots: the page and Home Assistant
   lose the controller for a minute or so, and the pump keeps its plan
   through the reboot.
@@ -201,7 +207,7 @@ Update off, or the next release replaces it.
 
 ## Factory reset
 
-Réglages contrôleur › Réinitialiser on the controller's page (or the **Factory
+« Controller settings » (« Réglages contrôleur ») › « Reset » (« Réinitialiser ») on the controller's page (or the **Factory
 Reset** button), after a confirmation. A selective erase, not ESPHome's:
 
 - **erased**: the page and OTA passwords, the saved Wi-Fi, the API key
@@ -261,8 +267,7 @@ network) and kept in its NVS, which a firmware update never touches.
   reboot, and logs out every browser; the page that set it logs back in
   with it.
 - **Logout All Devices** — ends every login session: each browser,
-  this one included, gets the login screen. On the page: Réglages
-  contrôleur › Accès › « Déconnecter tous les appareils ».
+  this one included, gets the login screen. On the page: « Controller settings » (« Réglages contrôleur ») › « Access » (« Accès ») › « Log out all devices » (« Déconnecter tous les appareils »).
 - **OTA Password** — guards plaintext firmware uploads (`make ota`). A
   random one is made at first boot, so OTA is never open; set your own to
   upload from a checkout.
@@ -287,12 +292,18 @@ network) and kept in its NVS, which a firmware update never touches.
   the hotspot. The page asks for a confirmation first. See
   [Factory reset](#factory-reset).
 - **Auto Update, Update Check Interval, Check for Update, Cancel Update,
-  Update Status, Firmware** — see [Updates](#updates).
+  Update Status, Firmware** — see [Updates](#updates). Update Check
+  Interval's options are codes: `on_request`, `6h`, `24h`, `7d` (24h by
+  default); the page and the card show them translated, Home Assistant's
+  device page as they are. Before 1.11.0 they were « À la demande »,
+  « 6 h », « 24 h », « 7 j »: the choice is kept across that update (it is
+  stored as hours), but an automation that picks the option by its French
+  text must use the code now.
 - **Fill Meter, Fill Alarm After, Detect Fill Meter** (from
   [fill-meter.yaml](fill-meter.yaml)) — whether the fill-line water meter
   is there (on by default), how long a fill may run before the alarm (60
   min by default, `0` = never), and its pulse test. On the controller's
-  page in Réglages contrôleur › Compteur d'eau, in Home Assistant under the
+  page in « Controller settings » (« Réglages contrôleur ») › « Water meter » (« Compteur d'eau »), in Home Assistant under the
   device's Configuration. See [Fill meter](#fill-meter).
 
 Page Password, OTA Password and API Key are write-only: the controller never
@@ -420,7 +431,8 @@ Re-evaluated every 30 seconds, highest priority wins:
      press is always confirmable even when it lands on a byte-for-byte
      identical plan (e.g. filtration hours already clamped at the same
      `Max Filtration Hours` ceiling) — that's a correct, expected no-op, not
-     the button silently failing to do anything.
+     the button silently failing to do anything. `--` until a first
+     recompute (`Never` before 1.11.0).
    - **Daily History** (diagnostic) lists, for each of the last 7 completed
      days, newest first, how long the pump actually ran and the pool's
      min/max temperature — e.g. `2026-11-13: 6.42 h 25.9/26.6 °C,
@@ -477,8 +489,13 @@ Re-evaluated every 30 seconds, highest priority wins:
      line), so nothing is counted twice; `-` never erases a known value, and
      a day above 65534 L is capped there as the record does. Anything off (a
      bad date, a value that isn't whole litres, too many values, a date in
-     the future, no clock) refuses the whole line; its state then says why,
-     else what was imported (`importé : 30 jours`), never the line itself.
+     the future, no clock) refuses the whole line. Its state is a code,
+     never the line itself: what was imported (`imported:days:30`,
+     `imported:months:12`), else why it was refused (`refused:format`,
+     `refused:date`, `refused:value`, `refused:too_many`, `refused:future`,
+     `refused:record_ahead` when the controller's record is dated after
+     yesterday, `refused:no_clock`); the log says it in English. Before
+     1.11.0 it was French (`importé : 30 jours`).
      A 30-day line is at most 191 characters, within a text entity's 255.
    - **Firmware Version** (diagnostic) is the commit of this repo the
      firmware was compiled from, as `git describe --tags --always --dirty`
@@ -644,10 +661,15 @@ reason.
 ### Suggested dashboard cards
 
 A whole dashboard, with the pool card, is in
-[home-assistant/dashboard/](home-assistant/dashboard/README.md). Its fill
-water component hides itself while Fill Meter is off, and its alerts
-component shows a fill running too long, with « Acquitter ». The cards
-below are simpler single-card alternatives.
+[home-assistant/dashboard/](home-assistant/dashboard/README.md), in
+English, French and Spanish: paste `dashboard.<language>.yaml` and the
+same language's `scripts.<language>.yaml` (`en`, `fr` or `es`). They are
+generated from one template each (`make ha-files`), so the languages only
+differ in their texts; the entity ids, the scripts' ids and their values
+are the same in all three. Its fill water component hides itself while
+Fill Meter is off, and its alerts component shows a fill running too long,
+with « Acknowledge » (« Acquitter »). The cards below are simpler
+single-card alternatives.
 
 **Schedule & status** — a single `entities` card (built-in, no HACS
 dependency):
@@ -800,7 +822,10 @@ the device's IP), via ESPHome's
 no Home Assistant involved. Once a Page Password is set, the page opens on
 its own **login screen**, which asks for that password only (no user name).
 Until one is set, the page opens without a login (setup mode, see
-[Controller settings](#controller-settings)).
+[Controller settings](#controller-settings)). The page, its login screen and
+its wizard speak English, French or Spanish: the browser's language, or the
+EN | FR | ES switch at the top right, which the browser remembers. Nothing
+is fetched to translate: the texts are in the firmware.
 
 How the login works ([components/page_login](components/page_login),
 [docs/plans/page-login.md](docs/plans/page-login.md)):
@@ -817,7 +842,7 @@ How the login works ([components/page_login](components/page_login),
     in use stays logged in;
   - they survive a reboot or a firmware update, so nobody is logged out by
     Auto Update.
-- **Logging out:** « Se déconnecter » (Réglages contrôleur › Accès) ends
+- **Logging out:** « Log out » (« Se déconnecter ») (« Controller settings » (« Réglages contrôleur ») › « Access » (« Accès »)) ends
   this browser's session. Logout All Devices, a new Page Password or
   Factory Reset end them all.
 - **Brute force:** after 5 wrong passwords in a row, the controller refuses
@@ -835,12 +860,12 @@ card's own:
 
 | Tab | What's in it |
 |---|---|
-| **Contrôle** (`#controle`) | The pool card's panel (pump state, today's plan timeline, the pool's temperature over the last 7 days, Auto/Manuel, forced speed and duration, and the long-fill alarm's banner with « Acquitter »), and Remplissage: the fill water from the device's own record (Fill Water Today, Days, Months): today, this month, the flow, litres by day over 30 days or by month over 12 (the pool card's water variant). With Fill Meter off, no Remplissage: Filtration takes the width |
-| **Réglages** (`#reglages`) | Today's plan in detail, the device's sensors, « Filtration et hors gel »: the filtration settings with their Apply gate, boost pulses and freeze-protection threshold (the pool card's settings variant, as in Home Assistant), the last 7 days (Daily History) |
-| **Réglages contrôleur** (`#reglages-controleur`) | Wi-Fi: the connection and its statistics, joining another network (see "Wi-Fi and the fallback hotspot" below). Position, Sondes, Compteur d'eau (Fill Meter Oui | Non; while on, the pulse test « Tester » with Fill Meter Status, the last pulse, « Alarme après » in minutes, 0 = never; see [Fill meter](#fill-meter)). Firmware: the version it runs, ESPHome's, and its updates (« Vérifier », « Installer », Auto Update, the check interval, Update Status, « Annuler la demande »; see [Updates](#updates)). Accès (page and OTA passwords), Home Assistant, Réinitialiser (see [Controller settings](#controller-settings)). Its live log (Journal). |
+| **Control** (« Contrôle », `#controle`) | The pool card's panel (pump state, today's plan timeline, the pool's temperature over the last 7 days, Auto/Manual (« Auto » / « Manuel »), forced speed and duration, and the long-fill alarm's banner with « Acknowledge » (« Acquitter »)), and « Filling » (« Remplissage »): the fill water from the device's own record (Fill Water Today, Days, Months): today, this month, the flow, litres by day over 30 days or by month over 12 (the pool card's water variant). With Fill Meter off, no « Filling » (« Remplissage »): Filtration takes the width |
+| **Settings** (« Réglages », `#reglages`) | Today's plan in detail, the device's sensors, « Filtration and freeze protection » (« Filtration et hors gel »): the filtration settings with their Apply gate, boost pulses and freeze-protection threshold (the pool card's settings variant, as in Home Assistant), the last 7 days (Daily History) |
+| **Controller settings** (« Réglages contrôleur », `#reglages-controleur`) | Wi-Fi: the connection and its statistics, joining another network (see "Wi-Fi and the fallback hotspot" below). Position, « Probes » (« Sondes »), « Water meter » (« Compteur d'eau ») (Fill Meter « Yes » (« Oui ») | « No » (« Non »); while on, the pulse test « Test » (« Tester ») with Fill Meter Status, the last pulse, « Alarm after » (« Alarme après ») in minutes, 0 = never; see [Fill meter](#fill-meter)). Firmware: the version it runs, ESPHome's, and its updates (« Check » (« Vérifier »), « Install » (« Installer »), Auto Update, the check interval, Update Status, « Cancel the request » (« Annuler la demande »); see [Updates](#updates)). « Access » (« Accès ») (page and OTA passwords), Home Assistant, « Reset » (« Réinitialiser ») (see [Controller settings](#controller-settings)). Its live log (« Log » (« Journal »)). |
 
-The tabs' old addresses still land: `#avance` on Réglages, `#controleur` and
-`#wifi` on Réglages contrôleur, `#remplissage` on Contrôle at its Remplissage.
+The tabs' old addresses still land: `#avance` on Settings (Réglages), `#controleur` and
+`#wifi` on Controller settings (Réglages contrôleur), `#remplissage` on Control (Contrôle) at its Filling (Remplissage).
 
 The `sorting_groups:` under `web_server:` (Pump, Today's Plan, Filtration
 Settings, Sensors, Wi-Fi) and each entity's `web_server: {sorting_group_id,
@@ -919,9 +944,9 @@ From [wifi-setup.yaml](wifi-setup.yaml), a package of the firmware:
 
 **Freeze Protection Temperature** (number, default 3 °C, kept across
 reboots) is the cutoff: set it from Home Assistant (the pool card's
-« Réglages » › « Filtration et hors gel », or the settings component of
+« Settings » (« Réglages ») › « Filtration and freeze protection » (« Filtration et hors gel »), or the settings component of
 [home-assistant/dashboard](home-assistant/dashboard/README.md)), from the
-device's own page (Réglages › Filtration et hors gel › Hors gel), or as any HA number. It
+device's own page (« Settings » (« Réglages ») › « Filtration and freeze protection » (« Filtration et hors gel ») › « Freeze protection » (« Hors gel »)), or as any HA number. It
 applies on the spot, no Apply needed: it only moves a comparison the
 controller makes on every tick. The pool card draws it on its temperature
 graph, in red.
@@ -1002,9 +1027,9 @@ was counting keeps counting after the update). Off:
 - no fill, no alarm, no pulse test, and a firmware install never waits for a
   fill;
 - the entities stay (ESPHome can't remove them at run time): the pool card
-  and the controller's page hide « Remplissage » instead.
+  and the controller's page hide « Filling » (« Remplissage ») instead.
 
-On the controller's page it is in Réglages contrôleur › Compteur d'eau; in
+On the controller's page it is in « Controller settings » (« Réglages contrôleur ») › « Water meter » (« Compteur d'eau »); in
 Home Assistant under the device's Configuration (not in the pool card).
 
 **Detecting the meter.** It is a dry contact with a pull-up, so it has no
@@ -1032,12 +1057,14 @@ Alarm** sets **Fill Alarm Acknowledged** until the fill ends: the alarm
 itself stays on while the fill runs, but Home Assistant's reminders stop.
 The next fill that runs too long alarms again.
 
-Home Assistant notifies from these through the blueprint
-[pool_fill_too_long.yaml](home-assistant/blueprints/pool_fill_too_long.yaml):
+Home Assistant notifies from these through the blueprint, in English
+([pool_fill_too_long.en.yaml](home-assistant/blueprints/pool_fill_too_long.en.yaml)),
+French ([pool_fill_too_long.yaml](home-assistant/blueprints/pool_fill_too_long.yaml))
+or Spanish ([pool_fill_too_long.es.yaml](home-assistant/blueprints/pool_fill_too_long.es.yaml)):
 a reminder every 15 min while the alarm is on and not acknowledged, each
-replacing the last, with « Acquitter » on the phone notification; cleared
-once acknowledged or once the fill ends, then an optional all-clear. Import
-it and its inputs: [the dashboard's README](home-assistant/dashboard/README.md#fill-alarm-notifications).
+replacing the last, with « Acknowledge » (« Acquitter ») on the phone
+notification; cleared once acknowledged or once the fill ends, then an
+optional all-clear. Import it and its inputs: [the dashboard's README](home-assistant/dashboard/README.md#fill-alarm-notifications).
 
 The three thresholds (the 5-min gap, 3 L and 5 min for the test) are
 constants at the top of [fill_meter.h](fill_meter.h).

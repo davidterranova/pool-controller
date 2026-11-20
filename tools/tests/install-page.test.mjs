@@ -1,9 +1,15 @@
-// node --test (make webui-test): the install page's decisions (docs/install/install-model.js).
+// node --test (make webui-test): the install page's decisions (docs/install/install-model.js) and its languages
+// (docs/install/install-i18n.js, docs/install/i18n/*.json).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   REPO, isPhone, browserSupport, releaseNotesUrl, firmwareFromManifest, loadFirmware, statusMessage,
 } from "../../docs/install/install-model.js";
+import {
+  LANGS, DICTS, LANG_KEY, pickLang, readLang, saveLang, translator, rich, snippets,
+} from "../../docs/install/install-i18n.js";
+import { flatten, placeholders, tags, scanUsage } from "../i18n/lib.mjs";
 
 const UA = {
   chromeMac: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
@@ -84,15 +90,139 @@ test("loading the manifest: asks past the browser's cache, for the URL given", a
   assert.deepEqual(seen, { url: "firmware/manifest.json", init: { cache: "no-cache" } });
 });
 
-test("the live status: one sentence per state", () => {
-  const ok = { state: "ok", version: "v1.5.0" };
-  assert.equal(statusMessage("supported", { state: "loading" }, "loading"), "Recherche du firmware…");
-  assert.match(statusMessage("supported", { state: "none" }, "ready"), /Pas encore de firmware publié/);
-  assert.match(statusMessage("supported", { state: "error" }, "ready"), /Impossible de lire le firmware/);
-  assert.equal(statusMessage("supported", ok, "ready"), "Firmware v1.5.0, prêt à installer.");
-  assert.match(statusMessage("supported", ok, "loading"), /Chargement de l'outil/);
-  assert.match(statusMessage("supported", ok, "error"), /n'a pas pu être chargé/);
-  assert.match(statusMessage("phone", ok, "loading"), /depuis un ordinateur/);
-  assert.match(statusMessage("unsupported", ok, "loading"), /Chrome ou Edge/);
-  assert.match(statusMessage("not-allowed", ok, "loading"), /HTTPS/);
+const OK = { state: "ok", version: "v1.5.0" };
+/** Every situation the live status region can be in, with the code it gives. */
+const SITUATIONS = [
+  [["supported", { state: "loading" }, "loading"], "searching"],
+  [["supported", { state: "none" }, "ready"], "none"],
+  [["supported", { state: "error" }, "ready"], "error"],
+  [["supported", OK, "ready"], "ready"],
+  [["supported", OK, "loading"], "tool_loading"],
+  [["supported", OK, "error"], "tool_error"],
+  [["phone", OK, "loading"], "phone"],
+  [["unsupported", OK, "loading"], "unsupported"],
+  [["not-allowed", OK, "loading"], "not_allowed"],
+];
+
+test("the live status: a code per state, with the version once there is one", () => {
+  for (const [args, code] of SITUATIONS) {
+    const msg = statusMessage(...args);
+    assert.equal(msg.code, code, JSON.stringify(args));
+    assert.deepEqual(msg.vars, args[1].state === "ok" ? { version: "v1.5.0" } : {});
+  }
+});
+
+test("the live status reads as a sentence in every language", () => {
+  const seen = new Map();
+  for (const lang of LANGS) {
+    const t = translator(lang);
+    for (const [args] of SITUATIONS) {
+      const { code, vars } = statusMessage(...args);
+      const text = t(`status.${code}`, vars);
+      assert.notEqual(text, `status.${code}`, `${lang}: status.${code} has no text`);
+      assert.doesNotMatch(text, /[{}]/, `${lang}: ${text}`);
+      if (vars.version) assert.ok(text.includes("v1.5.0"), `${lang}: ${text}`);
+      seen.set(`${lang}:${code}`, text);
+    }
+  }
+  assert.equal(seen.get("en:ready"), "Firmware v1.5.0, ready to install.");
+  assert.equal(seen.get("fr:ready"), "Firmware v1.5.0, prêt à installer.");
+  assert.equal(seen.get("es:ready"), "Firmware v1.5.0, listo para instalar.");
+  assert.equal(seen.get("fr:searching"), "Recherche du firmware…");
+});
+
+// ------------------------------------------------------------------ the dictionaries
+
+const FLAT = Object.fromEntries(LANGS.map((l) => [l, flatten(DICTS[l]).map]));
+const SNIPPETS = snippets(translator("en"), { site: "pool-controller.example", ext: "<svg></svg>" });
+/** What the model's messages fill in, beside the page's own snippets. */
+const MODEL_VARS = ["version"];
+
+test("the dictionaries: the same keys, placeholders and (no) markup in every language", () => {
+  const keys = [...FLAT.en.keys()];
+  assert.ok(keys.length > 50, `${keys.length} keys`);
+  for (const lang of LANGS) {
+    assert.deepEqual([...FLAT[lang].keys()].sort(), [...keys].sort(), `${lang}'s keys`);
+    for (const key of keys) {
+      const text = FLAT[lang].get(key);
+      assert.equal(typeof text, "string", `${lang}: ${key}`);
+      assert.ok(text.trim(), `${lang}: ${key} is empty`);
+      assert.deepEqual(placeholders(text), placeholders(FLAT.en.get(key)), `${lang}: ${key}'s placeholders`);
+      // Markup is the page's (snippets), never a dictionary's: a translation tool can't break it.
+      assert.deepEqual(tags(text), [], `${lang}: ${key} holds markup`);
+    }
+  }
+});
+
+test("the dictionaries: every placeholder is one the page fills", () => {
+  for (const [key, text] of FLAT.en) {
+    for (const p of placeholders(text)) assert.ok(p in SNIPPETS || MODEL_VARS.includes(p), `${key}: {${p}}`);
+  }
+});
+
+test("index.html: every key it names exists; its title and description are en.json's", () => {
+  const html = readFileSync(new URL("../../docs/install/index.html", import.meta.url), "utf8");
+  const { keys } = scanUsage(html, "code");
+  assert.ok(keys.size > 50, `${keys.size} keys`);
+  for (const k of keys) assert.ok(FLAT.en.has(k), `index.html: ${k}`);
+  const decode = (s) => s.replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+  assert.equal(decode(html.match(/<title>([^<]*)<\/title>/)[1]), DICTS.en.meta.title);
+  assert.equal(decode(html.match(/<meta name="description" content="([^"]*)">/)[1]), DICTS.en.meta.description);
+  assert.match(html, /<html lang="en">/);
+});
+
+// ------------------------------------------------------------------ the language
+
+test("the language: the remembered choice, else the browser's first supported, else English", () => {
+  assert.equal(pickLang("es", ["fr-FR", "en"]), "es");
+  assert.equal(pickLang(null, ["de-DE", "fr-CA", "en"]), "fr");
+  assert.equal(pickLang("de", ["es-419"]), "es"); // a choice the page doesn't have is ignored
+  assert.equal(pickLang(null, ["de", "it"]), "en");
+  assert.equal(pickLang(null), "en");
+});
+
+/** A Storage stand-in; `fail` makes every call throw, as a blocked one does. */
+function store({ fail = false } = {}) {
+  const m = new Map();
+  const guard = () => { if (fail) throw new DOMException("blocked", "SecurityError"); };
+  return {
+    getItem: (k) => { guard(); return m.has(k) ? m.get(k) : null; },
+    setItem: (k, v) => { guard(); m.set(k, String(v)); },
+    map: m,
+  };
+}
+
+test("the choice is remembered in storage, and a missing or blocked storage is no error", () => {
+  const s = store();
+  assert.equal(readLang(s), null);
+  assert.equal(saveLang(s, "fr"), true);
+  assert.equal(s.map.get(LANG_KEY), "fr");
+  assert.equal(readLang(s), "fr");
+  assert.equal(readLang(store({ fail: true })), null);
+  assert.equal(saveLang(store({ fail: true }), "fr"), false);
+  assert.equal(readLang(null), null);
+  assert.equal(saveLang(null, "fr"), false);
+});
+
+// ------------------------------------------------------------------ texts as HTML
+
+test("rich: the text escaped, the page's snippets as markup, an unknown placeholder left as it is", () => {
+  assert.equal(rich("Open {address} <now> & {other}", { address: "<b>x</b>" }), "Open <b>x</b> &lt;now&gt; &amp; {other}");
+  assert.equal(rich("L'outil", {}), "L&#39;outil");
+  assert.equal(rich("{toString}", {}), "{toString}"); // only the snippets' own names
+});
+
+test("snippets: ESP Web Tools' buttons stay English, the section links follow the language", () => {
+  const fr = snippets(translator("fr"), { site: "x.example" });
+  const es = snippets(translator("es"), { site: "x.example" });
+  assert.equal(fr.connect, '<span class="k">Connect</span>');
+  assert.equal(es.connect, fr.connect);
+  assert.equal(fr.updates_link, '<a href="#maj">Mises à jour</a>');
+  assert.equal(es.updates_link, '<a href="#maj">Actualizaciones</a>');
+  assert.equal(fr.https_site, '<span class="mono">https://x.example</span>');
+  const t = translator("es");
+  assert.equal(
+    rich(t("install.erase.never"), es),
+    'Nunca en un controlador que ya está en servicio: se actualiza solo y conserva su configuración (consulta <a href="#maj">Actualizaciones</a>).',
+  );
 });

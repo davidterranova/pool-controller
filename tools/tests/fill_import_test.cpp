@@ -231,6 +231,23 @@ static void test_import_twice_is_the_same() {
   EXPECT(b.months[0] == 6);
 }
 
+/// The entity's state is a code (docs/plans/i18n.md), and the log's reason English (plain ASCII).
+static void test_outcome() {
+  Record r;
+  EXPECT(outcome(r.import("2026-11-17: 1 2 3", 20261118)) == "imported:days:3");
+  EXPECT(outcome(r.import("2026-11-18: 1", 20261118)) == "imported:days:0");  // today only: nothing written
+  EXPECT(outcome(r.import("2026-10: 5 6", 20261118)) == "imported:months:2");
+  EXPECT(outcome(r.import("nonsense", 20261118)) == "refused:format");
+  EXPECT(outcome(r.import("2026-02-30: 5", 20261118)) == "refused:date");
+  EXPECT(outcome(r.import("2026-11-17: 1.5", 20261118)) == "refused:value");
+  EXPECT(outcome(r.import("2026-11: 1 2 3 4 5 6 7 8 9 10 11 12 13", 20261118)) == "refused:too_many");
+  EXPECT(outcome(r.import("2026-11-19: 1", 20261118)) == "refused:future");
+  EXPECT(outcome(r.import("2026-11-01: 1", 20261101)) == "refused:record_ahead");  // the record is dated 11-17
+  EXPECT(std::string(REFUSED_NO_CLOCK) == "refused:no_clock");
+  for (Error e : {Error::FORMAT, Error::DATE, Error::VALUE, Error::TOO_MANY, Error::FUTURE, Error::RECORD_AHEAD})
+    for (const char *c = error_text(e); *c; c++) EXPECT((unsigned char) *c < 0x80);
+}
+
 int main() {
   test_dates();
   test_parse();
@@ -244,6 +261,7 @@ int main() {
   test_refused_imports_change_nothing();
   test_saturation();
   test_import_twice_is_the_same();
+  test_outcome();
   if (failures) {
     std::printf("%d failure(s)\n", failures);
     return 1;

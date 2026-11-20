@@ -1,0 +1,491 @@
+{
+  "page": {
+    "title": "Piscine",
+    "lang": {
+      "label": "Langue"
+    },
+    "conn": {
+      "connecting": "Connexion…",
+      "ok": "Connecté au contrôleur",
+      "lost": "Connexion perdue…"
+    },
+    "refused": "Refusé par le contrôleur ({error})",
+    "press": "Appuyer",
+    "yes": "Oui",
+    "no": "Non",
+    "uptime": {
+      "d": "{d} j {h} h {m} min"
+    },
+    "pw": {
+      "label": "Mot de passe",
+      "show": "Afficher",
+      "hide": "Masquer",
+      "show_aria": "Afficher le mot de passe"
+    },
+    "fill": {
+      "heading": "Remplissage"
+    },
+    "device": {
+      "title": "Capteurs internes",
+      "link": "Liaison avec cette page",
+      "link_ok": "Connectée",
+      "link_lost": "Perdue, nouvelle tentative…",
+      "uptime": "En marche depuis",
+      "last_event": "Dernière donnée reçue",
+      "ago_s": "il y a {s} s",
+      "controller": "Contrôleur",
+      "ha_sub": "Liaison API du contrôleur",
+      "ha_on": "Connecté",
+      "ha_off": "Non connecté",
+      "clock": "Horloge",
+      "clock_unset": "Pas réglée",
+      "sensors": "Capteurs",
+      "flow": "Débit de remplissage",
+      "volume": "Volume total rempli",
+      "others": "Autres entités"
+    },
+    "clock": {
+      "sntp": "Synchronisée par internet",
+      "browser": "Réglée depuis un navigateur",
+      "none": "Aucune source : pas de plan du jour",
+      "set": "Horloge du contrôleur réglée sur ce navigateur ({time})"
+    },
+    "alert": {
+      "hotspot": "Le contrôleur n'est relié à aucun réseau Wi-Fi : vous êtes sur son point d'accès « {ssid} ».",
+      "hotspot_btn": "Configurer le Wi-Fi",
+      "no_clock": "Le contrôleur n'a pas l'heure : il ne peut pas calculer le plan du jour.",
+      "no_clock_btn": "Régler sur ce navigateur"
+    },
+    "plan": {
+      "not_computed": "Non calculé",
+      "waits": "Attend {what}",
+      "forced_nolimit": "Vitesse forcée sans limite",
+      "forced_30": "Depuis plus de 30 min"
+    },
+    "pos": {
+      "title": "Soleil et heure locale"
+    },
+    "probes": {
+      "title": "Rôle de chaque sonde"
+    },
+    "wifi": {
+      "connection": "Connexion",
+      "join_title": "Rejoindre un réseau",
+      "network": "Réseau",
+      "join": "Se connecter",
+      "bssid": "Borne Wi-Fi (BSSID)",
+      "ip": "Adresse IP",
+      "hotspot_clients": "Appareils sur le point d'accès",
+      "mac": "Adresse MAC",
+      "disconnects": "Déconnexions",
+      "since_boot": "Depuis le démarrage",
+      "chip": {
+        "connected": "Connecté",
+        "hotspot": "Point d'accès",
+        "connecting": "Connexion…"
+      },
+      "connected_to": "Connecté à « {ssid} »",
+      "signal_line": "Signal {dbm} dBm · {pct} % · {word}",
+      "signal": {
+        "good": "bon",
+        "fair": "moyen",
+        "weak": "faible"
+      },
+      "hotspot_named": "Point d'accès « {ssid} »",
+      "hotspot_open": {
+        "one": "Ouvert, sans mot de passe · {count} appareil connecté",
+        "other": "Ouvert, sans mot de passe · {count} appareils connectés"
+      },
+      "connecting_to": "Connexion à « {ssid} »",
+      "up_to_30s": "Jusqu'à 30 s",
+      "joined": "Connecté à « {ssid} » ; réseau enregistré",
+      "join_failed": "Impossible de rejoindre « {ssid} » (mot de passe ou portée). Le contrôleur garde son réseau.",
+      "join_hint_hotspot": "Le contrôleur essaie ce réseau 30 s et ne l'enregistre que si la connexion réussit. Une fois connecté, son point d'accès s'arrête : rejoignez ce réseau avec ce téléphone, puis ouvrez {url}.",
+      "join_hint": "Le contrôleur essaie ce réseau 30 s et ne l'enregistre que si la connexion réussit ; sinon il garde le réseau actuel. S'il change de réseau, cette page perd la liaison : retrouvez-le sur {url}.",
+      "none": "Aucun réseau détecté pour l'instant.",
+      "tag_connected": "connecté",
+      "pw_short": "Mot de passe : 8 caractères minimum, ou vide pour un réseau ouvert.",
+      "confirm_switch": "Le contrôleur va quitter « {from} » pour « {to} ». Cette page perdra la liaison : retrouvez-le ensuite sur {url}. Continuer ?"
+    },
+    "fw": {
+      "version": "Version",
+      "new_version": "la nouvelle version",
+      "rebooting": "Redémarrage du contrôleur sur la nouvelle version…",
+      "installing": "Installation de {version}… Le contrôleur redémarre ensuite (environ 1 min).",
+      "pending_fill": "{version} s'installera à la fin du remplissage en cours.",
+      "pending_override": "{version} s'installera à la fin de la vitesse forcée.",
+      "checking": "Vérification de la dernière version…",
+      "error_check": "La vérification a échoué : pas de réseau, ou aucune version publiée pour l'instant.",
+      "error_install": "L'installation de {version} a échoué ; le contrôleur garde {installed}.",
+      "available": "{version} disponible (installée : {installed}).",
+      "up_to_date": "À jour : {installed} est la dernière version.",
+      "not_checked_every": "Pas encore vérifiée : le contrôleur vérifie toutes les {every}.",
+      "not_checked": "Pas encore vérifiée.",
+      "confirm_install": "Installer {version} ? Le contrôleur le télécharge, l'installe puis redémarre (environ 1 min) ; la pompe reprend ensuite son plan. Pendant une vitesse forcée ou un remplissage, il attend qu'ils se terminent.",
+      "install_requested": "Installation demandée",
+      "updated": "Firmware mis à jour : {version}",
+      "auto": "Installer automatiquement",
+      "auto_sub": "Une version trouvée par la vérification périodique s'installe seule, après une vitesse forcée ou un remplissage en cours. Celle trouvée avec « Vérifier » attend « Installer ».",
+      "interval": "Vérifier les mises à jour",
+      "interval_sub": "Le contrôleur demande la dernière version publiée sur GitHub.",
+      "steps": {
+        "requested": "Demandée",
+        "download": "Téléchargement",
+        "reboot": "Redémarrage",
+        "installed": "Installée"
+      },
+      "inst": {
+        "done": "{version} installée : le contrôleur a redémarré dessus.",
+        "wait_fill": "Attend la fin du remplissage en cours.",
+        "wait_override": "Attend la fin de la vitesse forcée.",
+        "rebooting": "Redémarrage sur {version}…",
+        "verifying": "Vérification du firmware, puis redémarrage…",
+        "downloading": "Téléchargement de {version}",
+        "connecting": "Connexion au serveur des versions…",
+        "failed": "Échec : le contrôleur garde {version}.",
+        "its_version": "sa version"
+      }
+    },
+    "log": {
+      "heading": "Journal",
+      "title": "Messages du contrôleur",
+      "level": "Niveau",
+      "all": "Tout",
+      "warn": "Avertissements",
+      "error": "Erreurs",
+      "pause": "Pause",
+      "resume": "Reprendre",
+      "clear": "Vider",
+      "none": "Aucune ligne pour l'instant. Le contrôleur n'envoie que les messages émis pendant que la page est ouverte (niveau INFO et au-dessus).",
+      "count": {
+        "one": "{count} ligne",
+        "other": "{count} lignes"
+      }
+    }
+  },
+  "login": {
+    "sub": "Contrôleur de la piscine",
+    "title": "Connexion",
+    "password": "Mot de passe de cette page",
+    "button": "Se connecter",
+    "hint": "Celui choisi à l'installation. Ce navigateur reste ensuite connecté ; après 6 h sans s'en servir, la page le redemande.",
+    "wrong": "Mot de passe incorrect.",
+    "no_answer": "Le contrôleur ne répond pas : réessayez dans un instant.",
+    "locked": "Trop d'essais : nouvel essai possible dans {wait}."
+  },
+  "setup": {
+    "save": "Enregistrer",
+    "set": "défini",
+    "unset": "non défini",
+    "step": {
+      "page_password": {
+        "name": "Mot de passe",
+        "title": "Mot de passe de cette page"
+      },
+      "wifi": {
+        "name": "Wi-Fi",
+        "title": "Wi-Fi"
+      },
+      "position": {
+        "name": "Position",
+        "title": "Position et fuseau horaire"
+      },
+      "probes": {
+        "name": "Sondes",
+        "title": "Sondes de température"
+      },
+      "api_key": {
+        "name": "Home Assistant",
+        "title": "Home Assistant"
+      }
+    },
+    "need": {
+      "page_password": "un mot de passe pour cette page",
+      "wifi": "le réseau Wi-Fi",
+      "position": "sa position et son fuseau",
+      "probes": "le rôle de ses sondes",
+      "api_key": "la liaison avec Home Assistant"
+    },
+    "waiting": {
+      "position": "la position",
+      "timezone": "le fuseau horaire",
+      "clock": "l'heure",
+      "pool_probe": "la sonde du bassin",
+      "pool_temperature": "une mesure de la sonde du bassin",
+      "sun": "le lever et le coucher du soleil"
+    },
+    "pw": {
+      "new": "Nouveau mot de passe",
+      "confirm": "Confirmer",
+      "min": "8 caractères au moins.",
+      "others_relog": "Les autres appareils devront se reconnecter avec ; celui-ci le fait de lui-même.",
+      "short": "Mot de passe : 8 caractères au moins.",
+      "long": "Mot de passe : 64 caractères au plus.",
+      "differ": "Les deux saisies diffèrent.",
+      "not_confirmed": "Le contrôleur n'a pas confirmé le mot de passe.",
+      "page_changed": "Mot de passe de la page changé : les autres appareils devront se reconnecter.",
+      "ota_changed": "Mot de passe OTA changé."
+    },
+    "pos": {
+      "lat": "Latitude (°)",
+      "lon": "Longitude (°)",
+      "rounded": "Arrondies à 0,01° (environ 1 km) : assez pour le soleil, sans situer la maison. Nord et est positifs. Sur une carte, un appui long sur la piscine donne ses coordonnées.",
+      "other_posix": "Autre : chaîne POSIX…",
+      "posix": "Chaîne POSIX",
+      "iana": "Nom (IANA, affiché)",
+      "browser_unlisted": "Ce navigateur est sur {zone}, absent de la liste : choisissez un fuseau à la même heure, ou saisissez sa chaîne POSIX (la colonne « TZ » de la base des fuseaux).",
+      "name_display": "Le nom ne sert qu'à l'affichage ; le contrôleur applique la chaîne POSIX.",
+      "posix_invalid": "Chaîne POSIX invalide.",
+      "iana_invalid": "Nom IANA invalide (Zone/Ville).",
+      "preset": "Préréglé d'après ce navigateur.",
+      "keeps_both": "Le contrôleur garde les deux : {zone}, qu'il affiche, et la chaîne POSIX qu'il applique, {posix}.",
+      "sun_intro": "Avec la latitude et la longitude, le contrôleur calcule le lever et le coucher du soleil, d'où il place la filtration.",
+      "polar_day": "Avec ces valeurs, aujourd'hui : jour polaire. Vérifiez le signe de la latitude.",
+      "polar_night": "Avec ces valeurs, aujourd'hui : nuit polaire. Vérifiez le signe de la latitude.",
+      "sun": "Avec ces valeurs, aujourd'hui : lever {rise}, coucher {set}. S'ils sont loin des vôtres, vérifiez les signes et le fuseau.",
+      "bad_degrees": "Latitude entre -90 et 90, longitude entre -180 et 180, en degrés décimaux.",
+      "bad_posix": "Fuseau horaire : chaîne POSIX invalide.",
+      "bad_name": "Nom du fuseau : Zone/Ville, comme Asia/Kolkata.",
+      "tz_refused": "Le contrôleur a refusé ce fuseau : sa chaîne POSIX ne passe pas son analyse.",
+      "not_confirmed": "Le contrôleur n'a pas confirmé la position.",
+      "from_ha": "Ou depuis Home Assistant : carte Piscine › Réglages contrôleur › Position.",
+      "same": "Rien n'a changé",
+      "saved": "Position enregistrée : plan du jour recalculé"
+    },
+    "probes": {
+      "scanning": "Recherche des sondes sur le bus 1-Wire…",
+      "role_of": "Rôle de la sonde {address}",
+      "unused": "Non utilisée",
+      "none": "Aucune sonde n'a répondu sur le bus 1-Wire. Vérifiez le câblage, puis relancez la détection.",
+      "hint": "Pour les reconnaître, tenez-en une dans la main : en une minute elle prend plusieurs degrés. {pool} (sur le retour du filtre) est indispensable, le plan et le hors gel en dépendent ; les deux autres sont facultatives.",
+      "rescan": "Relancer la détection",
+      "no_answer": "pas de réponse",
+      "trend_up": "↗ se réchauffe",
+      "trend_down": "↘ refroidit",
+      "moved": "{role} : sonde {probe} ; {previous} n'a plus de rôle",
+      "found": {
+        "one": "{count} sonde trouvée",
+        "other": "{count} sondes trouvées"
+      },
+      "found_none": "Aucune sonde trouvée"
+    },
+    "fill": {
+      "heading": "Compteur d'eau",
+      "optional": "facultatif",
+      "status": {
+        "off": {
+          "tag": "Désactivé",
+          "sub": "Rien n'est compté."
+        },
+        "untested": {
+          "tag": "Pas testé",
+          "sub": "« Tester », puis ouvrez le robinet de remplissage : il lui faut {litres} L en {minutes} min."
+        },
+        "listening": {
+          "tag": "À l'écoute",
+          "sub": "Ouvrez le robinet de remplissage : {litres} L en {minutes} min suffisent."
+        },
+        "detected": {
+          "tag": "Détecté",
+          "sub": "Il compte : un remplissage a été vu."
+        },
+        "not_detected": {
+          "tag": "Pas détecté",
+          "sub": "Moins de {litres} L en {minutes} min : vérifiez le câblage, puis relancez le test."
+        }
+      },
+      "pulse": {
+        "never": "jamais",
+        "today": "aujourd'hui à {time}",
+        "yesterday": "hier à {time}",
+        "date": "le {date} à {time}"
+      },
+      "on_toast": "Compteur d'eau activé",
+      "off_toast": "Compteur d'eau désactivé : rien n'est compté",
+      "listening_toast": "À l'écoute : ouvrez le robinet de remplissage ({litres} L en {minutes} min)",
+      "detect": "Détecter le compteur",
+      "listening": "À l'écoute…",
+      "test": "Tester",
+      "switch_aria": "Compteur d'eau sur le remplissage",
+      "switch": "Compteur sur le remplissage",
+      "on_sub": "Il compte l'eau ajoutée (Contrôle › Remplissage) et alarme si un remplissage dure trop.",
+      "off_sub": "Rien n'est compté : ni Remplissage, ni alarme. Pour une piscine sans compteur sur sa conduite de remplissage.",
+      "last_pulse": "Dernière impulsion",
+      "last_pulse_sub": "Le dernier litre compté",
+      "alarm": "Alarme après",
+      "alarm_sub": "Un remplissage plus long déclenche l'alarme : ici, et Home Assistant prévient toutes les 15 min jusqu'à « Acquitter ». 0 = jamais.",
+      "alarm_aria": "Alarme après, en minutes",
+      "alarm_bad": "Alarme après : un nombre de minutes, de {min} à {max}",
+      "alarm_set": "Alarme après {min} min de remplissage",
+      "alarm_none": "Plus d'alarme de remplissage",
+      "wz_none": "Pas de compteur d'eau",
+      "wz_none_sub": "Rien n'est compté. Pour en ajouter un : Réglages contrôleur › Compteur d'eau.",
+      "wz_detected": "Compteur détecté",
+      "wz_detected_sub": "Il compte : Remplissage et son alarme sont en place.",
+      "wz_not_detected": "Compteur pas détecté",
+      "wz_intro": "Un compteur à impulsions sur la conduite de remplissage (1 L par impulsion) : le contrôleur compte l'eau ajoutée, et alarme si un remplissage dure trop.",
+      "retest": "Retester",
+      "have": "J'ai un compteur",
+      "have_not": "Pas de compteur"
+    },
+    "ha": {
+      "title": "Clé de chiffrement",
+      "step1": "Dans Home Assistant : <b>Paramètres › Appareils et services</b>. Le contrôleur y apparaît tout seul, « Découvert » : ESPHome, Pool Controller (sinon : « Ajouter une intégration » › ESPHome › pool-controller.local).",
+      "step2": "<b>Ajouter</b>, puis valider. Home Assistant génère la clé et l'envoie au contrôleur : rien à copier, rien à garder.",
+      "waiting": "En attente de Home Assistant",
+      "waiting_sub": "Cette page se met à jour dès que la clé est définie.",
+      "open_note": "Tant qu'aucune clé n'est définie, n'importe quel appareil du réseau peut parler au contrôleur : ajoutez-le maintenant.",
+      "no_ha": "Je n'utilise pas Home Assistant",
+      "paste": "Coller une clé existante",
+      "key_label": "Clé de chiffrement (base64, 44 caractères)",
+      "paste_hint": "Pour un contrôleur que Home Assistant connaît déjà (migration : la valeur api_encryption_key de l'ancien secrets.yaml) : il se reconnecte avec elle, sans rien changer. D'ici là, ne confirmez pas « chiffrement retiré » dans Home Assistant.",
+      "save_key": "Enregistrer sur le contrôleur",
+      "key_invalid": "Clé invalide : 32 octets en base64, soit 44 caractères finissant par « = ».",
+      "key_refused": "Le contrôleur a refusé cette clé.",
+      "key_saved": "Clé enregistrée : Home Assistant se reconnecte avec elle.",
+      "key_gen_failed": "Le contrôleur n'a pas pu se donner de clé.",
+      "key_generated": "Sans Home Assistant : clé aléatoire définie",
+      "forget_failed": "Le contrôleur n'a pas oublié sa clé.",
+      "forgotten": "Clé oubliée : ajoutez le contrôleur dans Home Assistant",
+      "key_row": "Clé de chiffrement (API)",
+      "key_unset_sub": "Home Assistant la définit quand il ajoute le contrôleur.",
+      "state_waiting": "en attente",
+      "state_waiting_sub": "Ajoutez le contrôleur dans Home Assistant : il définit la clé lui-même.",
+      "by_paste": "Collée sur cette page (migration). Jamais réaffichée.",
+      "by_generated": "Aléatoire, tirée par le contrôleur : personne ne la connaît, personne n'en a besoin.",
+      "by_ha": "Par Home Assistant, quand il a ajouté le contrôleur. Affichée nulle part, ni ici ni dans Home Assistant.",
+      "by_unknown": "Le contrôleur ne la montre jamais, ni ici ni ailleurs.",
+      "state_linked": "connecté",
+      "state_linked_sub": "Il échange avec le contrôleur, chiffré par cette clé.",
+      "state_unused": "non utilisé",
+      "state_unused_sub": "Le contrôleur fonctionne seul : plan, hors gel et mises à jour.",
+      "state_unlinked": "non connecté",
+      "state_unlinked_sub": "Sans Home Assistant, c'est normal : le contrôleur fonctionne seul. Pour l'y ajouter, il doit d'abord oublier sa clé.",
+      "forget_hint": "Le contrôleur oublie sa clé et attend Home Assistant, qui en définira une en l'ajoutant (Paramètres › Appareils et services). D'ici là, n'importe quel appareil du réseau peut lui parler : faites-le dans la foulée.",
+      "forget": "Oublier la clé",
+      "add": "Ajouter à Home Assistant",
+      "key_set": "définie",
+      "key_unset": "non définie"
+    },
+    "acc": {
+      "heading": "Accès",
+      "title": "Mots de passe",
+      "change": "Changer",
+      "page": "Mot de passe de la page",
+      "page_sub": "Cette page le demande pour s'ouvrir, puis chaque navigateur reste connecté jusqu'à 6 h sans s'en servir. Il protège aussi le point d'accès, qui reste ouvert.",
+      "ota": "Mot de passe OTA",
+      "ota_sub": "Pour envoyer un firmware depuis un ordinateur (make ota). Tiré au hasard au premier démarrage tant que vous n'en choisissez pas ; les mises à jour de cette page et de Home Assistant n'en ont pas besoin.",
+      "write_only": "Écrits seulement : le contrôleur ne les montre jamais, il dit seulement s'ils sont définis.",
+      "sessions": "Connexions",
+      "logout_hint": "« Se déconnecter » : cette page redemandera le mot de passe ici.",
+      "logout_all_hint": "« Déconnecter tous les appareils » : chacun devra le redonner, celui-ci compris. Pour un téléphone perdu, ou prêté.",
+      "logout": "Se déconnecter",
+      "logout_all": "Déconnecter tous les appareils"
+    },
+    "reset": {
+      "heading": "Réinitialiser",
+      "title": "Réglages d'usine",
+      "row": "Réinitialiser le contrôleur",
+      "row_sub": "Efface les accès, le Wi-Fi et la clé ; garde les sondes, la position et le fuseau, donc le plan et le hors gel.",
+      "ask": "Réinitialiser…",
+      "aria": "Confirmer la réinitialisation",
+      "confirm": "Effacer les accès et redémarrer ?",
+      "wiped": "Seront effacés :",
+      "wiped_pw": "les mots de passe de la page et OTA ;",
+      "wiped_wifi": "le réseau Wi-Fi enregistré ;",
+      "wiped_key": "la clé de chiffrement : Home Assistant perd la liaison.",
+      "kept": "Restent :",
+      "kept_probes": "le rôle des sondes, la position et le fuseau : le plan de filtration et le hors gel continuent ;",
+      "kept_settings": "les réglages (filtration, hors gel, compteur d'eau, mises à jour) et l'historique gardé ici (7 derniers jours, remplissage) ;",
+      "kept_fw": "le firmware.",
+      "kept_fw_v": "le firmware ({version}).",
+      "after": "Le contrôleur redémarre sur son point d'accès « {ssid} », ouvert : connectez-y un téléphone et ouvrez http://192.168.4.1. L'installation ne redemande que ce qui est effacé : un mot de passe, le Wi-Fi, puis Home Assistant.",
+      "yes": "Effacer et redémarrer",
+      "toast": "Réinitialisation : le contrôleur efface ses accès et redémarre…"
+    },
+    "wz1": {
+      "after_reset": "Ce contrôleur a été réinitialisé. Il a gardé le rôle de ses sondes, sa position et son fuseau : le plan de filtration et le hors gel continuent. Il lui faut de nouveau {needs}.",
+      "new": "Ce contrôleur sort d'usine : rien n'y est encore réglé. Cinq étapes, quelques minutes, et tout reste sur le contrôleur.",
+      "hotspot": "Son point d'accès « {ssid} » est ouvert, sans mot de passe Wi-Fi : c'est le mot de passe de cette page qui protège le contrôleur. Choisissez-le d'abord ; tant qu'il n'y en a pas, quiconque se connecte au point d'accès peut ouvrir cette page.",
+      "hint": "8 caractères au moins. Cette page le demandera pour s'ouvrir, et le contrôleur ne le réaffichera jamais : gardez-le dans votre gestionnaire de mots de passe.",
+      "set": "Mot de passe défini. Laissez vide pour le garder.",
+      "choose": "Choisissez un mot de passe pour cette page."
+    },
+    "wz2": {
+      "hotspot_off": "Le contrôleur a coupé son point d'accès : cette page ne le joint plus ici.",
+      "hotspot_will_stop": "Une fois connecté, le contrôleur coupe son point d'accès : cette page ne le joint plus ici.",
+      "reconnect": "Reconnectez ce téléphone au Wi-Fi « {ssid} ».",
+      "open": "Ouvrez {url}",
+      "or": "ou",
+      "resume": "La page demande le mot de passe de l'étape 1. Puis elle lit Setup State et reprend à la première étape qui manque : {step}.",
+      "none": "aucune",
+      "signal": "Signal {dbm} dBm",
+      "change_later": "Pour changer de réseau plus tard : Réglages contrôleur › Wi-Fi.",
+      "connecting_sub": "Jusqu'à 30 s ; s'il échoue, le point d'accès reste.",
+      "hotspot_sub": "Ce téléphone est connecté au contrôleur lui-même. Point d'accès ouvert : cette page, elle, a son mot de passe.",
+      "intro": "Choisissez le réseau de la maison : le contrôleur s'y connecte, puis coupe son point d'accès. Il lui en faut un : l'heure lui vient d'Internet, et Home Assistant passe par là.",
+      "lose_link": "Cette page perd alors la liaison ; rouverte sur le réseau de la maison, elle reprend où elle en était (Setup State garde {item} jusque-là)."
+    },
+    "wz3": {
+      "intro": "Le contrôleur place la filtration d'après le lever du soleil et la chaleur de l'après-midi : il lui faut la position de la piscine et l'heure locale."
+    },
+    "wz4": {
+      "found": {
+        "one": "{count} sonde trouvée sur le bus. Donnez un rôle à chacune :",
+        "other": "{count} sondes trouvées sur le bus. Donnez un rôle à chacune :"
+      },
+      "need_pool": "Indiquez au moins la sonde du bassin.",
+      "not_confirmed": "Le contrôleur n'a pas confirmé la sonde du bassin."
+    },
+    "wz5": {
+      "intro": "Home Assistant parle au contrôleur en chiffré. La clé, c'est lui qui la crée : ajoutez-y le contrôleur, il la génère et la lui envoie.",
+      "not_home": "Le contrôleur n'est pas encore sur le réseau de la maison (étape 2) : Home Assistant ne peut pas le joindre.",
+      "after_reset": "Home Assistant connaissait ce contrôleur avec l'ancienne clé : il signale « chiffrement retiré » sur l'appareil. Confirmez : il en définit une nouvelle de lui-même.",
+      "otherwise": "Sinon :",
+      "key_set": "Clé définie",
+      "pasted": "Collée depuis l'ancien secrets.yaml : Home Assistant se reconnecte avec elle.",
+      "without_ha": "Sans Home Assistant",
+      "generated": "Le contrôleur s'est donné une clé aléatoire, que personne ne voit. Pour l'ajouter plus tard : Réglages contrôleur › Home Assistant.",
+      "by_ha": "Clé définie par Home Assistant",
+      "by_ha_sub": "Il est connecté, chiffré. La clé n'est affichée nulle part.",
+      "unlinked": "Le contrôleur a sa clé. Home Assistant n'est pas connecté pour l'instant : Réglages contrôleur › Home Assistant."
+    },
+    "done": {
+      "waits": "Le plan du jour attend {what}.",
+      "plan2": "Le plan du jour est calculé : {hours} h, {block1} et {block2}.",
+      "plan1": "Le plan du jour est calculé : {hours} h, {block1}.",
+      "plan": "Le plan du jour est calculé.",
+      "role_none": "{role} aucune",
+      "page_sub": "Cette page le demande pour s'ouvrir",
+      "key_set": "clé définie",
+      "ha_linked": "Connecté, chiffré.",
+      "ha_generated": "Clé aléatoire ; Réglages contrôleur › Home Assistant pour l'ajouter.",
+      "ha_where": "Réglages contrôleur › Home Assistant."
+    },
+    "nav": {
+      "open": "Ouvrir la page",
+      "back": "Retour",
+      "finish": "Terminer",
+      "next": "Continuer",
+      "later": "Finir plus tard",
+      "step": "Étape {n} : {name}",
+      "step_done": "Étape {n} : {name}, faite",
+      "configured_title": "Contrôleur configuré",
+      "after_reset": "Après réinitialisation",
+      "first_install": "Première installation",
+      "step_of": "étape {n} sur 5",
+      "todo": {
+        "one": "{count} à faire",
+        "other": "{count} à faire"
+      },
+      "only_this": "plus que celle-ci",
+      "reinstall_done": "Réinstallation terminée",
+      "install_done": "Première installation terminée",
+      "not_configured": "Non configuré",
+      "configured": "Configuré",
+      "configured_toast": "Contrôleur configuré"
+    },
+    "banner": "Le contrôleur n'est pas encore configuré : il lui faut {needs}.",
+    "banner_btn": "Reprendre"
+  }
+}

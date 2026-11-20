@@ -5,7 +5,7 @@
   `make card-preview-check` drive it headless (shoot.mjs).
 
   ?s=<scenario>&w=<panel width>&theme=light|dark&tab=pump|settings|controller, and &shot for the bare tile and
-  panel the screenshots take. Entity ids are a fresh install's: the dashboard's map (dashboard.yaml, &pool), then the
+  panel the screenshots take. Entity ids are a fresh install's: the dashboard's map (dashboard.tmpl.yaml, &pool, the same in every language), then the
   card's own defaults for what that map leaves out.
 -->
 <html lang="fr">
@@ -59,7 +59,6 @@
     }
   });
 </script>
-<script src="../../home-assistant/piscine-card.js"></script>
 </head>
 <body>
 <div class="app" id="app">
@@ -71,6 +70,8 @@
     <div class="seg" id="width"><button data-w="390">Téléphone 390</button><button data-w="760">Écran 760</button></div>
     <h2>Thème</h2>
     <div class="seg" id="theme"><button data-t="light">Clair</button><button data-t="dark">Sombre</button></div>
+    <h2>Langue</h2>
+    <div class="seg" id="lang"><button data-l="fr">FR</button><button data-l="en">EN</button><button data-l="es">ES</button></div>
     <div class="seg"><button id="reset">Recharger la situation</button></div>
     <h2>Appels du card</h2>
     <ol class="log" id="log"></ol>
@@ -81,6 +82,8 @@
 import { FakeHass } from "./fake-hass.js";
 import { SCENARIOS, statesOf } from "./scenarios.js";
 import { ICONS } from "../../webui/icons.js";
+// The card: its source (a module: it imports its texts), or with ?bundle the release's minified file (make card).
+await import(new URLSearchParams(location.search).has("bundle") ? "../../home-assistant/dist/piscine-card.js" : "../../home-assistant/piscine-card.js");
 
 // Home Assistant's <ha-icon icon="mdi:…">, from the paths the controller's page ships (a dot for one it lacks).
 customElements.define("ha-icon", class extends HTMLElement {
@@ -95,14 +98,14 @@ customElements.define("ha-icon", class extends HTMLElement {
 
 const q = new URLSearchParams(location.search);
 const shot = q.has("shot");
-const view = { s: q.get("s") || "normal", w: +(q.get("w") || 390), theme: q.get("theme") || "light", tab: q.get("tab") };
+const view = { s: q.get("s") || "normal", w: +(q.get("w") || 390), theme: q.get("theme") || "light", tab: q.get("tab"), lang: q.get("lang") || "fr" };
 const $ = (id) => document.getElementById(id);
 let done, home = location.href;
 window.preview = { scenarios: SCENARIOS.map(({ id, name, tab }) => ({ id, name, tab: tab || "pump" })), errors: [] };
 
-/** The dashboard's entity map (dashboard.yaml, `entities: &pool`): a fresh install's ids, as `make ha-dashboard-check` keeps them. */
+/** The dashboard's entity map (dashboard.tmpl.yaml, `entities: &pool`, the same in every language): a fresh install's ids, as `make ha-dashboard-check` keeps them. */
 async function poolEntities() {
-  const text = await (await fetch("../../home-assistant/dashboard/dashboard.yaml")).text();
+  const text = await (await fetch("../../home-assistant/dashboard/dashboard.tmpl.yaml")).text();
   const lines = text.slice(text.indexOf("entities: &pool")).split("\n").slice(1), out = {};
   const indent = /^\s*/.exec(lines[0])[0].length;
   for (const l of lines) {
@@ -148,6 +151,7 @@ function render() {
     for (const b of $("scen").children) b.setAttribute("aria-current", String(b.dataset.s === sc.id));
     for (const b of $("width").children) b.setAttribute("aria-pressed", String(+b.dataset.w === view.w));
     for (const b of $("theme").children) b.setAttribute("aria-pressed", String(b.dataset.t === view.theme));
+    for (const b of $("lang").children) b.setAttribute("aria-pressed", String(b.dataset.l === view.lang));
   }
   const main = $("main"), cfg = sc.config || {};
   main.innerHTML = shot ? "" : `<p class="note"><b></b> — <span></span></p>`;
@@ -161,7 +165,7 @@ function render() {
     const more = document.createElement("div"); more.className = "row"; main.append(more);
     cards.push(card(more, "variant: water", { variant: "water", ...cfg }, 390), card(more, "variant: settings", { variant: "settings", ...cfg }, 390));
   }
-  const hass = new FakeHass({ ids, specs: statesOf(sc), scenario: sc, dark: view.theme === "dark", log,
+  const hass = new FakeHass({ ids, specs: statesOf(sc), scenario: sc, dark: view.theme === "dark", lang: view.lang, log,
     onChange: () => { const h = hass.snapshot(); for (const c of cards) c.hass = h; } });
   hass.onChange();
   const tab = view.tab || sc.tab;
@@ -173,7 +177,7 @@ function render() {
 
 function go(changes) {
   Object.assign(view, changes);
-  const p = new URLSearchParams({ s: view.s, w: view.w, theme: view.theme });
+  const p = new URLSearchParams({ s: view.s, w: view.w, theme: view.theme, lang: view.lang });
   if (view.tab) p.set("tab", view.tab);
   history.replaceState(null, "", `?${p}`);
   home = location.href;
@@ -192,6 +196,7 @@ else {
   }
   $("width").addEventListener("click", (e) => e.target.dataset.w && go({ w: +e.target.dataset.w }));
   $("theme").addEventListener("click", (e) => e.target.dataset.t && go({ theme: e.target.dataset.t }));
+  $("lang").addEventListener("click", (e) => e.target.dataset.l && go({ lang: e.target.dataset.l }));
   $("reset").addEventListener("click", () => render());
 }
 // The card navigates like Home Assistant (history + « location-changed »): the device page, the tile's pop-up hash.

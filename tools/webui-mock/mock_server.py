@@ -340,6 +340,8 @@ U = {
     "check": "Check for Update",
     "cancel": "Cancel Update",
 }
+# Update Check Interval's options (codes, as updates.h's INTERVAL_OPTIONS) and the hours each one means.
+UPDATE_INTERVAL_HOURS = {"on_request": 0, "6h": 6, "24h": 24, "7d": 168}
 # The fill meter as an option (fill-meter.yaml): FillSim below.
 F = {
     "enabled": "Fill Meter",
@@ -831,18 +833,18 @@ class UpdateSim:
             self.state = "NO UPDATE" if self.latest == version else "UPDATE AVAILABLE"
 
     def status(self, blocker: str | None) -> str:
-        """Update Status, as updates.h's status_text() words it."""
+        """Update Status, the code updates.h's status_text() publishes."""
         if self.state == "INSTALLING":
-            return "installation"
+            return "installing"
         if self.pending_origin and blocker:
-            return f"en attente ({blocker})"
+            return f"pending:{blocker}"
         if self.pending_origin:
-            return "installation"
+            return "installing"
         if self.checking_until:
-            return "vérification"
+            return "checking"
         if self.error:
-            return "erreur (installation)" if self.last_op == "install" else "erreur (vérification)"
-        return {"UPDATE AVAILABLE": "disponible", "NO UPDATE": "à jour"}.get(self.state, "non vérifié")
+            return "error:install" if self.last_op == "install" else "error:check"
+        return {"UPDATE AVAILABLE": "available", "NO UPDATE": "up_to_date"}.get(self.state, "unchecked")
 
     def entity(self) -> dict:
         return {"state": self.state, "latest": self.latest or "", "installed": self.installed,
@@ -1002,7 +1004,7 @@ class PoolSim:
         self.rebooted = False  # set by an install: the server drops the page's event stream
         self.started = time.time()
         self.numbers: dict[str, float] = {}
-        self.selects: dict[str, str] = {U["interval"]: "24 h"}
+        self.selects: dict[str, str] = {U["interval"]: "24h"}
         self.static: dict[str, object] = {}  # values for entities the sim doesn't model
         # What each probe on the simulated bus measures (PROBES); Pool Return Temperature & co. read
         # the one their role holds (reading()).
@@ -1263,13 +1265,13 @@ class PoolSim:
 
     @property
     def update_blocker(self) -> str | None:
-        """What an install waits for (updates.h's gate_blocker): the override first, then a fill."""
+        """What an install waits for (updates.h's gate_blocker, blocker_label): the override first, then a fill."""
         if self.override != "Auto":
-            return "mode manuel"
-        return "remplissage" if self.fill.running else None  # Fill Running, as updates.h's gate
+            return "override"
+        return "fill" if self.fill.running else None  # Fill Running, as updates.h's gate
 
     def tick_updates(self):
-        hours = {"À la demande": 0, "6 h": 6, "24 h": 24, "7 j": 168}.get(self.selects.get(U["interval"]), 24)
+        hours = UPDATE_INTERVAL_HOURS.get(self.selects.get(U["interval"]), 24)
         online = self.wifi.mode == "Connected"  # the releases are on the internet
         if self.updates.tick(bool(self.static.get(U["auto"])), hours if online else 0, self.update_blocker):
             self.reboot()
@@ -1355,20 +1357,23 @@ class PoolSim:
 
     def import_fill(self, text: str):
         """Fill Water Import (fill_import.h): writes a Fill Water Days / Months line into the record, as the firmware
-        does, and says what it did -- the entity's state, never the line."""
+        does, and says what it did as fill_import.h's outcome() codes it -- the entity's state, never the line."""
+        if not self.wifi.clock_ok:
+            self.log("Fill water import refused: no clock yet")
+            self.fill_import_state = "refused:no_clock"
+            return
         today = datetime.now().date()
         try:
             line = parse_fill_line(text)
             done = apply_fill_line(line, today, self.fill_days, self.fill_months)
-        except ValueError as err:
+        except FillImportRefused as err:
             self.log(f"Fill water import refused ({len(text)} characters): {err}")
-            self.fill_import_state = f"refusé : {err}"
+            self.fill_import_state = f"refused:{err.code}"
             return
         self.log(f"Fill water import: {done['written']} {'months' if line[0] else 'days'} written, {done['unknown']} unknown, "
                  f"{done['open']} open (today / this month), {done['outside']} older than the record, "
                  f"{done['clamped']} capped at 65534 L; this month's closed days: {self.fill_months[0]} L")
-        unit = "mois" if line[0] else "jours" if done["written"] > 1 else "jour"
-        self.fill_import_state = f"importé : {done['written']} {unit}"
+        self.fill_import_state = f"imported:{'months' if line[0] else 'days'}:{done['written']}"
 
     def snapshot(self) -> dict:
         now = time.time()
@@ -1397,7 +1402,7 @@ class PoolSim:
             N["next_speed"]: nxt_speed if nxt else "--",
             N["next_boost_start"]: _hhmm(nbs),
             N["next_boost_end"]: _hhmm(nbe),
-            N["last_recompute"]: _stamp(self.last_recompute) if self.last_recompute else "Never",
+            N["last_recompute"]: _stamp(self.last_recompute) if self.last_recompute else "--",
             N["not_computed"]: b1s == 0 and b2s == 0 and (now - self.started > 300
                                                            or self.waiting_for() in ("position", "timezone")),
             N["pending"]: any(abs(self.num(k) - self.active[k]) > 0.01 for k in self.active),
@@ -1443,40 +1448,57 @@ def _fill_line(head, values) -> str:
 
 
 FILL_DAYS, FILL_MONTHS, FILL_DAY_MAX = 30, 12, 0xFFFE
+# fill_import.h's error_code() -> its error_text(), the log's English reason.
+FILL_IMPORT_ERRORS = {
+    "format": 'format (expected "2026-11-17: 0 19 - 940" or "2026-11: 23 950")',
+    "date": "invalid date",
+    "value": "invalid value (whole litres >= 0, or -)",
+    "too_many": "too many values (30 days or 12 months at most)",
+    "future": "date in the future",
+}
+
+
+class FillImportRefused(ValueError):
+    """A refused Fill Water Import: `code` is fill_import.h's error_code(), the message its English error_text()."""
+
+    def __init__(self, code: str):
+        super().__init__(FILL_IMPORT_ERRORS[code])
+        self.code = code
 
 
 def parse_fill_line(text: str):
     """A Fill Water Days / Months line -> (months?, newest date, [litres or None]), with fill_import.h's parse() rules;
-    ValueError(reason, in the firmware's words) otherwise."""
+    FillImportRefused otherwise."""
     m = re.fullmatch(r" *(\d{4})-(\d{2})(?:-(\d{2}))?:((?: +\S+)+) *", text or "")
     if not m:
-        raise ValueError("format (attendu « 2026-11-17: 0 19 - 940 » ou « 2026-11: 23 950 »)")
+        raise FillImportRefused("format")
     months = m.group(3) is None
     try:
         date = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3) or 1)).date()
     except ValueError:
-        raise ValueError("date invalide") from None
+        raise FillImportRefused("date") from None
     if date.year < 2000:
-        raise ValueError("date invalide")
+        raise FillImportRefused("date")
     tokens = m.group(4).split()
     if len(tokens) > (FILL_MONTHS if months else FILL_DAYS):
-        raise ValueError("trop de valeurs (30 jours ou 12 mois au plus)")
+        raise FillImportRefused("too_many")
     values = []
     for tok in tokens:
         if tok != "-" and not (re.fullmatch(r"\d{1,10}", tok) and int(tok) < 0xFFFFFFFF):
-            raise ValueError("valeur invalide (litres entiers >= 0, ou -)")
+            raise FillImportRefused("value")
         values.append(None if tok == "-" else int(tok))
     return months, date, values
 
 
 def apply_fill_line(line, today, days: list, months: list) -> dict:
     """fill_import.h's apply() on the mock's record, which is always dated yesterday (days) and this month (months):
-    every closed day or month of the line, then this month's total as its closed days. ValueError for a future line."""
+    every closed day or month of the line, then this month's total as its closed days. FillImportRefused for a future
+    line (never record_ahead: the mock's record can't be dated after yesterday)."""
     is_months, date, values = line
     yesterday = today - timedelta(days=1)
     month_no = lambda d: d.year * 12 + d.month - 1  # noqa: E731
     if (month_no(date) > month_no(today)) if is_months else date > today:
-        raise ValueError("date dans le futur")
+        raise FillImportRefused("future")
     done = {"written": 0, "unknown": 0, "open": 0, "outside": 0, "clamped": 0}
     for k, v in enumerate(values):
         idx = month_no(today) - (month_no(date) - k) if is_months else (yesterday - (date - timedelta(days=k))).days
@@ -1703,7 +1725,7 @@ class MockServer:
         if not self.index_path:
             return []
         root = os.path.dirname(os.path.abspath(self.index_path))
-        return [os.path.join(d, f) for d, _dirs, files in os.walk(root) for f in files
+        return [os.path.join(d, f) for d, _dirs, files in os.walk(root, followlinks=True) for f in files
                 if os.path.splitext(f)[1] in STATIC_TYPES]
 
     def asset(self, url_path: str) -> str | None:

@@ -1,0 +1,196 @@
+{
+  "meta": {
+    "title": "Pool controller · Install",
+    "description": "Install the pool controller's firmware on an ESP32, from the browser, over USB."
+  },
+  "skip": "Skip to the install",
+  "lang": {
+    "label": "Language"
+  },
+  "header": {
+    "title": "Pool controller",
+    "subtitle": "Install its firmware from the browser"
+  },
+  "lede": "A filtration controller for a swimming pool, on an ESP32. It drives a variable-speed pump, schedules each day's filtration from the water temperature and the sun, provides freeze protection and counts the fill water. It works on its own; Home Assistant, if you have it, follows and adjusts it.",
+  "firmware": {
+    "chip": "Firmware {version}",
+    "none_chip": "No firmware published",
+    "error_chip": "Firmware unreachable",
+    "notes": "Release notes",
+    "none": {
+      "title": "No firmware published yet",
+      "next": "The first one comes with the project's next release; this page will then offer it by itself.",
+      "build": "Meanwhile, you can build it yourself from the repository: {make_build} then {make_flash} (see the README).",
+      "follow": "Follow the releases"
+    },
+    "error": {
+      "title": "Can't read the firmware",
+      "body": "{manifest} does not answer. Check the connection, then try again."
+    },
+    "retry": "Try again"
+  },
+  "tool": {
+    "error": {
+      "title": "The install tool could not be loaded",
+      "body": "ESP Web Tools comes from {unpkg}: check the connection (or a content blocker), then try again."
+    }
+  },
+  "browser": {
+    "phone": {
+      "title": "Prepare on the phone, install from a computer",
+      "body": "Installing is done over USB, with Chrome or Edge on a computer. Open this page there: {site}. The phone is useful again right after, to set up the controller.",
+      "copy": "Copy the link",
+      "copied": "Link copied"
+    },
+    "http": {
+      "title": "Page opened without HTTPS",
+      "body": "The browser only allows USB access over HTTPS: open {https_site}."
+    },
+    "unsupported": {
+      "title": "This browser can't install",
+      "body": "It has no access to USB ports (Web Serial). Open this page in Chrome or Edge, on a computer."
+    }
+  },
+  "status": {
+    "searching": "Looking for the firmware…",
+    "none": "No firmware published yet: installing isn't possible yet.",
+    "error": "Can't read the firmware: check the connection, then try again.",
+    "phone": "Firmware {version}. Prepare on the phone, install from a computer.",
+    "not_allowed": "Firmware {version}. Page opened without HTTPS: installing isn't possible here.",
+    "unsupported": "Firmware {version}. This browser can't install: open the page in Chrome or Edge, on a computer.",
+    "tool_error": "Firmware {version}. The install tool could not be loaded.",
+    "tool_loading": "Firmware {version}. Loading the install tool…",
+    "ready": "Firmware {version}, ready to install."
+  },
+  "install": {
+    "title": "Install on a new board",
+    "button": "Install",
+    "button_version": "Install {version}",
+    "erase": {
+      "title": "Installing erases the board",
+      "new": "For a new board, or one to start over: everything on it is lost.",
+      "never": "Never for a controller already in service: it updates itself and keeps its settings (see {updates_link})."
+    },
+    "hint": "Plug the board in over USB, then click: the browser asks which port to use. The board alone is enough to install; the wiring can come later."
+  },
+  "dialog": {
+    "title": "In the install window",
+    "note": "ESP Web Tools' own, in English",
+    "port": "Choose the board's port (often “CP2102”, “CH340” or “USB to UART”), then {connect}.",
+    "port_note": "Nothing in the list? A charge-only cable, or the board's USB driver is missing (CP210x or CH34x). Unplug, plug back in, try again.",
+    "install": "{install_pool_controller}, then {install}.",
+    "install_note": "The window warns that everything will be erased: that is intended, every install starts from an empty board.",
+    "wait": "The install itself: about two minutes. Keep the page in front, don't unplug.",
+    "wifi": "{configure_wifi}: the home network and its password, then {connect}.",
+    "wifi_note": "They go through the USB cable (Improv); the controller keeps them only once it is connected. {skip}: it opens its own hotspot instead (see {after_link}).",
+    "visit": "{visit_device} opens the controller's page: the rest happens there.",
+    "visit_note": "{add_to_home_assistant} can wait: it is the last step of the controller's wizard."
+  },
+  "need": {
+    "title": "What you need",
+    "optional": "optional",
+    "board": {
+      "name": "An ESP32 board",
+      "note": "A development board with an ESP32-WROOM (“ESP32 DevKit”), and its USB port."
+    },
+    "relay": {
+      "name": "A 5 V relay module, with 4 channels or more",
+      "note": "Optocoupled and active-low (the common 8-channel modules work: 4 are used). It closes the pump's inputs."
+    },
+    "pump": {
+      "name": "A variable-speed pump",
+      "note": "With dry-contact control inputs: three speeds and on/off (DI1 to DI4)."
+    },
+    "probes": {
+      "name": "DS18B20 probes",
+      "note": "At least one, on the return line to the pool; two more for the equipment pad and outdoors. A 4.7 kΩ resistor between the data line and 3.3 V. Genuine probes: a counterfeit one can block the whole bus."
+    },
+    "meter": {
+      "name": "A pulse water meter",
+      "note": "On the fill inlet, dry contact, 1 pulse per litre: the controller counts the water added."
+    },
+    "power": {
+      "name": "A 5 V power supply",
+      "note": "For the board and the relay module."
+    },
+    "cable": {
+      "name": "A USB data cable",
+      "note": "Not a charge-only cable: with one, the board doesn't appear in the list of ports."
+    },
+    "computer": {
+      "name": "A computer with Chrome or Edge",
+      "note": "Windows, macOS or Linux. A phone is then enough to set up the controller."
+    }
+  },
+  "wiring": {
+    "summary": "Wiring (fixed in the published firmware)",
+    "pin": "Pin",
+    "goes_to": "Goes to",
+    "relay1": "Relay 1 → DI1, speed 1 (slow)",
+    "relay2": "Relay 2 → DI2, speed 2",
+    "relay3": "Relay 3 → DI3, speed 3 (fast)",
+    "relay4": "Relay 4 → DI4, on/off",
+    "probes": "DS18B20 probes (1-Wire bus), 4.7 kΩ to 3.3 V",
+    "meter": "Water meter; its other wire to GND",
+    "note": "Relays on COM/NO: with the board off, they all open and the pump stops. Other pins? They are compiled in: change them in {yaml} and build the firmware yourself. The details: {hardware_link}."
+  },
+  "after": {
+    "title": "After the install",
+    "restart": "The controller restarts and joins the Wi-Fi given in the install window.",
+    "open": "Open {address} from a phone or a computer on the same network (or {visit_device}).",
+    "open_note": "If the address doesn't answer: the one your router gives to “{hostname}”.",
+    "wizard": "Its page opens the setup wizard: five steps, a few minutes, and everything stays on the controller.",
+    "wizard_steps": "The wizard's steps",
+    "step": {
+      "password": "Password",
+      "location": "Location",
+      "probes": "Probes"
+    },
+    "wizard_note": "Start right away with the page's password: until there is one, anyone on the network can open it. The Wi-Fi given during the install is already ticked there.",
+    "ha": "Home Assistant, at the last step: add the controller there (Settings › Devices & services › ESPHome; it often discovers it by itself). Home Assistant creates the encryption key and sends it to the controller.",
+    "ha_note": "Without Home Assistant, the controller works too: “I don't use Home Assistant”.",
+    "no_wifi": {
+      "title": "No Wi-Fi?",
+      "body": "Wi-Fi skipped or refused: the controller opens its own hotspot, “{hostname}”, with no Wi-Fi password. Connect a phone to it and open {hotspot_address}: the wizard starts there, with the page's password, then the Wi-Fi.",
+      "later": "Later, if it loses its network for more than a minute, it opens this same hotspot again."
+    }
+  },
+  "updates": {
+    "title": "Updates",
+    "intro": "An installed controller never comes back here.",
+    "auto": {
+      "name": "Automatic",
+      "note": "It looks for a new version every 24 h and installs it (adjustable: on request, 6 h, 24 h, 7 d, in Controller settings › Firmware). Never during an override or a fill: it waits until they end."
+    },
+    "request": {
+      "name": "On request",
+      "note": "“Install” on its page (Controller settings › Firmware) or in Home Assistant (Settings › Updates)."
+    },
+    "kept": {
+      "name": "Settings are kept",
+      "note": "Password, Wi-Fi, location, probes, Home Assistant key: an update changes none of them."
+    },
+    "secrets": {
+      "name": "Built with secrets.yaml (v1.3.x)?",
+      "note": "Once, from the repository: {make_migrate}. It keeps all its settings and its Home Assistant key, with no wizard to go through again; after that it updates like the others."
+    }
+  },
+  "code": {
+    "title": "The code",
+    "repo": {
+      "note": "The ESPHome firmware, the controller's page, the Home Assistant card. MIT licence. Questions and problems: the repository's issues."
+    },
+    "releases": {
+      "name": "Releases",
+      "note": "Each release's notes, and its files."
+    },
+    "files": {
+      "name": "The firmware's files",
+      "note": "For esptool: the full image at address 0x0."
+    }
+  },
+  "footer": {
+    "source": "Source code",
+    "ewt": "Installed with {ewt_link}"
+  }
+}

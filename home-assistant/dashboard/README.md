@@ -4,9 +4,14 @@ Building blocks for a dashboard around this firmware, not anyone's dashboard in 
 
 | File | What it is |
 |---|---|
-| [dashboard.yaml](dashboard.yaml) | A two-view dashboard whose sections are the components: the pump (piscine-card, which has the controls and settings itself), temperatures, plan against reality, fill water; then alerts, settings (piscine-card's settings variant), today's plan and the controller. |
-| [scripts.yaml](scripts.yaml) | The two scripts piscine-card calls to force a speed and to go back to Auto. |
-| [../blueprints/pool_fill_too_long.yaml](../blueprints/pool_fill_too_long.yaml) | An automation blueprint: phone reminders while a fill runs too long, with « Acquitter » (see « Fill alarm notifications »). |
+| [dashboard.en.yaml](dashboard.en.yaml), [dashboard.fr.yaml](dashboard.fr.yaml), [dashboard.es.yaml](dashboard.es.yaml) | A two-view dashboard whose sections are the components: the pump (piscine-card, which has the controls and settings itself), temperatures, plan against reality, fill water; then alerts, settings (piscine-card's settings variant), today's plan and the controller. |
+| [scripts.en.yaml](scripts.en.yaml), [scripts.fr.yaml](scripts.fr.yaml), [scripts.es.yaml](scripts.es.yaml) | The two scripts piscine-card calls to force a speed and to go back to Auto. |
+| [pool_fill_too_long.en.yaml](../blueprints/pool_fill_too_long.en.yaml), [pool_fill_too_long.yaml](../blueprints/pool_fill_too_long.yaml) (French), [pool_fill_too_long.es.yaml](../blueprints/pool_fill_too_long.es.yaml) | An automation blueprint: phone reminders while a fill runs too long, with an action to acknowledge it (see « Fill alarm notifications »). |
+
+Each comes in English (`en`), French (`fr`) and Spanish (`es`): take the files of one language. The
+languages differ only in their texts (titles, names, descriptions); the entity ids, the scripts' ids,
+fields and values are the same in all three, so a dashboard in one language works with the scripts of
+another, and the card works with any of them.
 
 They use Home Assistant's own cards only, plus [piscine-card](../piscine-card.js) from this repo (its
 panel and its settings variant). No helper, no other custom card, and the blueprint is optional.
@@ -16,13 +21,14 @@ panel and its settings variant). No helper, no other custom card, and the bluepr
 1. **Install the card.** Settings → Marketplace (HACS on Home Assistant before 2026.11) → custom
    repository `davidterranova/pool-controller`, type Dashboard → « Piscine Card ». See the repo's
    README, « Installing it in Home Assistant ».
-2. **Add the scripts.** Copy [scripts.yaml](scripts.yaml) into Home Assistant's `scripts.yaml`, or
-   create each script in Settings → Automations & scenes → Scripts → ⋮ → Edit in YAML, with the key
-   as its id (`piscine_forcer_vitesse`, `piscine_retour_auto`). The card writes the Manual Override
+2. **Add the scripts.** Copy your language's `scripts.<language>.yaml` (above) into Home Assistant's
+   `scripts.yaml`, or create each script in Settings → Automations & scenes → Scripts → ⋮ → Edit in
+   YAML, with the key as its id (`piscine_forcer_vitesse`, `piscine_retour_auto`). The card writes the Manual Override
    select only through them.
 3. **Create the dashboard.** Settings → Dashboards → Add dashboard → New dashboard from scratch (any
-   URL). Open it → ✏️ → ⋮ → Raw configuration editor, paste [dashboard.yaml](dashboard.yaml), save.
-4. **Or take only some components.** Each section of `dashboard.yaml` stands on its own: copy one into
+   URL). Open it → ✏️ → ⋮ → Raw configuration editor, paste your language's `dashboard.<language>.yaml`
+   (above), save.
+4. **Or take only some components.** Each section of the dashboard stands on its own: copy one into
    a sections view of your own dashboard the same way (its cards, or the whole `- type: grid` block).
 
 ### The card as a tile with a pop-up
@@ -35,7 +41,7 @@ pop-up; the tile is the card's own:
 - type: custom:piscine-card
   variant: tile            # tapping it opens #piscine
   layout: horizontal       # or vertical
-  entities: { … the same map as in dashboard.yaml … }
+  entities: { … the same map as in dashboard.<language>.yaml … }
 - type: vertical-stack
   cards:
     - type: custom:bubble-card
@@ -50,34 +56,37 @@ pop-up; the tile is the card's own:
 
 The panel has three tabs, the controller's own page's, so the pop-up needs no dashboard behind it:
 
-- « Contrôle »: state, today's plan, the pool's temperature (24 h to a year), Auto/Manuel, then the fill
+- « Control » (« Contrôle »): state, today's plan, the pool's temperature (24 h to a year), Auto/Manual (« Auto » / « Manuel »), then the fill
   water today, this month, and by day, week or month. The fill water needs the `volume` entity, the
   recorder, and Fill Meter on (`fillEnabled`); without them it isn't there (`variant: water` draws it alone,
   and hides itself while the meter is off). A fill running longer than Fill Alarm After adds a banner with
-  « Acquitter »;
-- « Réglages »: today's plan in detail with « Recalculer », the probes with « Relire » (a tap on one opens
-  Home Assistant's more-info, with its history), « Filtration et hors gel », every setting with its Apply
+  « Acknowledge » (« Acquitter »);
+- « Settings » (« Réglages »): today's plan in detail with « Recompute » (« Recalculer »), the probes with « Re-read » (« Relire ») (a tap on one opens
+  Home Assistant's more-info, with its history), « Filtration and freeze protection » (« Filtration et hors gel »), every setting with its Apply
   gate, then the last 7 days of filtration against the plan. On a screen, two columns cut after
-  « Appliquer »: « Filtration » on the left, « Impulsions et hors gel » on the right;
-- « Réglages contrôleur »: the controller's position and time zone, with « Utiliser la position et le
-  fuseau de Home Assistant » (Home Assistant's location rounded to 0.01°, its zone as the controller's
+  « Apply » (« Appliquer »): « Filtration » on the left, « Pulses and freeze protection » (« Impulsions et hors gel ») on the right;
+- « Controller settings » (« Réglages contrôleur »): the controller's position and time zone, with « Use Home Assistant's position and time zone » (« Utiliser la position et le fuseau de Home Assistant ») (Home Assistant's location rounded to 0.01°, its zone as the controller's
   Timezone Name and its POSIX string), then the firmware on its update entity (installed and latest
-  version, a tap opening Home Assistant's own update dialog with the release notes, « Vérifier »,
-  « Installer », held by the firmware while a manual override or a fill runs: the card asks first, then
+  version, a tap opening Home Assistant's own update dialog with the release notes, « Check » (« Vérifier »),
+  « Install » (« Installer »), held by the firmware while a manual override or a fill runs: the card asks first, then
   says it waits, and the wait can be cancelled; automatic updates, what a scheduled check finds, and how
   often to check). A firmware without the update entity (before v1.4) has no firmware section.
 
-`settings_tab: false` drops both « Réglages » tabs, and with them the tab bar. `temperatures` (before
-1.8.0) is deprecated: accepted and ignored, the outdoor and equipment-pad probes are in « Réglages » › Sondes.
+`settings_tab: false` drops both « Settings » (« Réglages ») tabs, and with them the tab bar. `temperatures` (before
+1.8.0) is deprecated: accepted and ignored, the outdoor and equipment-pad probes are in « Settings » (« Réglages ») › « Probes » (« Sondes »).
+
+The card speaks the Home Assistant user's language (English, French or Spanish, from their profile, English
+for any other), with the profile's number and time formats. `language: fr` (or `en`, `es`) fixes it for that
+card whoever looks.
 
 Its header, and the tile, have a light for the controller: green while it talks (the Device Clock, `clock`,
 changes every minute), amber when it goes quiet or has been offline for less than 15 min, red beyond. In the
 header it says when the controller was last heard and opens Home Assistant's device page for the controller
-(Paramètres › Appareils et services › ESPHome › Pool Controller), where its link, Wi-Fi signal and
+(Settings › Devices & services › ESPHome › Pool Controller), where its link, Wi-Fi signal and
 disconnections are; `more_path` leads elsewhere instead. `controller_light: false` drops it;
 `controller_health: { warn: 3, alert: 15, beat: 4 }` sets its minutes before amber and red. While a fill runs
 too long and nobody has acknowledged it, the light is amber and keeps pulsing (steady with reduced motion),
-reads « Remplissage depuis 1 h 12 », and leads to the banner in « Contrôle » instead.
+reads « Filling for 1 h 12 » (« Remplissage depuis 1 h 12 »), and leads to the banner in « Control » (« Contrôle ») instead.
 
 What this dashboard adds to the card: the three probes' curves and their 90-day daily means, the
 pump's plan against reality over the last days, and the fill water with Home Assistant's own cards.
@@ -87,32 +96,37 @@ pump's plan against reality over the last days, and the fill water with Home Ass
 The fill meter is optional (Fill Meter, on by default). While it is on, the controller raises **Fill Running
 Too Long** once a fill has run **Fill Alarm After** minutes (60 by default, `0` = never): the card's light
 pulses amber, and the card, the controller's own page and the alerts component above show it with
-« Acquitter ». Both settings are on the controller's device page in Home Assistant (Paramètres › Appareils
-et services › ESPHome › Pool Controller › Configuration) and in its own page (« Réglages contrôleur » ›
-« Compteur d'eau »), not in the card.
+« Acknowledge » (« Acquitter »). Both settings are on the controller's device page in Home Assistant (Settings › Devices & services › ESPHome › Pool Controller › Configuration) and in its own page (« Réglages contrôleur » ›
+« Water meter » (« Compteur d'eau »)), not in the card.
 
-To get it on a phone, import the blueprint:
+To get it on a phone, import the blueprint in your language:
 
-[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fdavidterranova%2Fpool-controller%2Fblob%2Fmain%2Fhome-assistant%2Fblueprints%2Fpool_fill_too_long.yaml)
+| Language | Import | URL |
+|---|---|---|
+| English | [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fdavidterranova%2Fpool-controller%2Fblob%2Fmain%2Fhome-assistant%2Fblueprints%2Fpool_fill_too_long.en.yaml) | `https://github.com/davidterranova/pool-controller/blob/main/home-assistant/blueprints/pool_fill_too_long.en.yaml` |
+| French | [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fdavidterranova%2Fpool-controller%2Fblob%2Fmain%2Fhome-assistant%2Fblueprints%2Fpool_fill_too_long.yaml) | `https://github.com/davidterranova/pool-controller/blob/main/home-assistant/blueprints/pool_fill_too_long.yaml` |
+| Spanish | [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fdavidterranova%2Fpool-controller%2Fblob%2Fmain%2Fhome-assistant%2Fblueprints%2Fpool_fill_too_long.es.yaml) | `https://github.com/davidterranova/pool-controller/blob/main/home-assistant/blueprints/pool_fill_too_long.es.yaml` |
 
-or Settings → Automations & scenes → Blueprints → Import blueprint, with the URL
-`https://github.com/davidterranova/pool-controller/blob/main/home-assistant/blueprints/pool_fill_too_long.yaml`.
-Then « Create automation » from it:
+The button opens Home Assistant's import dialog; or Settings → Automations & scenes → Blueprints → Import
+blueprint, with the URL. The French one keeps the path the blueprint had before it came in three
+languages, so an automation imported from it then still re-imports from the right place. Then « Create
+automation » from it:
 
 | Input | What it is |
 |---|---|
-| Fill Running Too Long, Fill Alarm Acknowledged, Acknowledge Fill Alarm | The controller's alarm, its acknowledgement and the button that sets it. Pre-filled with a fresh install's ids. |
-| Phones | Phones with the Home Assistant app (none or several). Each gets the reminders, with an « Acquitter » action. |
+| Controller (Fill Running Too Long, Fill Alarm Acknowledged, Acknowledge Fill Alarm) | The controller's alarm, its acknowledgement and the button that sets it. Pre-filled with a fresh install's ids. |
+| Phones | Phones with the Home Assistant app (none or several). Each gets the reminders, with an action to acknowledge the alarm. |
 | Repeat every | Minutes between reminders, 15 by default. |
-| Title, Message | The reminder's text, in French by default. The message may use `{{ since }}`, the time the alarm went on. |
+| Title, Message | The reminder's text, in the blueprint's language by default. The message may use `{{ since }}`, the time the alarm went on, and `{{ minutes }}`, the minutes since. |
 | All-clear message | Sent when the alarm ends, in place of the last reminder. Empty for none. |
+| Acknowledge action's title | The title of the phone notification's action: « Acknowledge », « Acquitter » or « Confirmar » by default. |
 | On each reminder, When the alarm ends | Actions of your own (a speaker, a light, another notifier), under « More actions ». |
 
 What it does:
 
 - the alarm turns on: a notification at once, then one every « Repeat every » minutes, each replacing the last
   (one `tag`), until someone acknowledges it or the fill ends;
-- « Acquitter », on a phone, presses Acknowledge Fill Alarm on the controller. An acknowledgement from anywhere
+- the acknowledge action (« Acknowledge », « Acquitter », « Confirmar »), on a phone, presses Acknowledge Fill Alarm on the controller. An acknowledgement from anywhere
   (the card, the controller's page, the device page, a phone) stops the reminders and clears the notification;
   the alarm itself stays on until the fill ends, but no longer pulses the light;
 - the alarm ends (the fill ended, or Fill Alarm After was raised past it): the notification is cleared, then
@@ -135,21 +149,32 @@ Devices & services → ESPHome → Pool Controller, then either rename the entit
 replace the `pool_controller_` prefix in the files.
 
 piscine-card has default entity ids of its own, but most are one particular install's: give it the
-whole `entities:` map, as `dashboard.yaml` does. The firmware-update ones (`firmware`, `checkUpdate`,
+whole `entities:` map, as the dashboard does. The firmware-update ones (`firmware`, `checkUpdate`,
 `cancelUpdate`, `autoUpdate`, `updateInterval`, `updateStatus`) and the fill meter's (`fillEnabled`,
 `fillAlarmAfter`, `fillRunning`, `fillTooLong`, `fillAck`, `fillAcked`) already are a fresh install's ids;
-`dashboard.yaml` maps the fill meter's anyway, so a renamed device changes them with the rest.
+the dashboard maps the fill meter's anyway, so a renamed device changes them with the rest. The ids are
+the same in every language's files.
 
 ## Keeping it in step with the firmware
 
-`make ha-dashboard-check` (also in CI) reads `pool-controller.yaml` and its packages and fails when
-the dashboard or the scripts name a controller entity that doesn't exist, or when the pool card in
-`dashboard.yaml` leaves out an entity the card uses (unless the card's default already is a fresh
-install's id; one the firmware doesn't have yet is only noted, since the card hides its rows). It reads
-the blueprints of `home-assistant/blueprints/` too: each `!input` must be declared and each input used,
-`source_url` must be its own path in the repo (Home Assistant re-imports from it), and the ids its
-inputs default to must exist. A firmware change that renames or adds an entity the dashboard relies on
-therefore can't land without the dashboard following.
+`make ha-dashboard-check` (also in CI) reads `pool-controller.yaml` and its packages and checks each
+language's files: it fails when the dashboard or the scripts name a controller entity that doesn't
+exist, when the pool card in the dashboard leaves out an entity the card uses (unless the card's
+default already is a fresh install's id; one the firmware doesn't have yet is only noted, since the
+card hides its rows), when a dashboard calls a script its language's scripts lack, or when a template
+lacks one of the languages. It reads the blueprints of `home-assistant/blueprints/` too: each `!input`
+must be declared and each input used, `source_url` must be its own path in the repo (Home Assistant
+re-imports from it), and the ids its inputs default to must exist. A firmware change that renames or
+adds an entity the dashboard relies on therefore can't land without the dashboard following.
+
+## Changing a text, or the files
+
+The files of each language are generated, never edited by hand. Each has one template beside it
+(`dashboard.tmpl.yaml`, `scripts.tmpl.yaml`, `../blueprints/pool_fill_too_long.tmpl.yaml`), where a text
+is `{{t:key}}`, and its texts are in [../i18n-yaml/](../i18n-yaml/) (`en.json`, `fr.json`, `es.json`).
+Change the template (cards, entities, ids) or the texts, then `make ha-files` writes every language's
+file again; `make i18n-check` fails while one is out of date. A new text goes in all three languages at
+once (`.claude/rules/translations.md` at the repo's root).
 
 ## What the components show, and why that way
 
@@ -162,7 +187,7 @@ therefore can't land without the dashboard following.
   statistics: Filtration Hours Today resets at midnight, and a statistics day also counts the value
   it starts with, so a day that filtered less than the one before would show the day before's total.
 - **Fill water.** The meter's total only grows, so its statistics (`change`) are exact, over any
-  span. The card's « Contrôle » shows them by day (30 days), by week (13 weeks) or by month
+  span. The card's « Control » (« Contrôle ») shows them by day (30 days), by week (13 weeks) or by month
   (12 months), with the period's total, its average and its largest bar; the running day, week or
   month adds what the meter counted since the last hour Home Assistant compiled. The component in
   the Piscine view draws the same with Home Assistant's own cards. The meter is optional: the
@@ -170,11 +195,11 @@ therefore can't land without the dashboard following.
   before the switch, without that entity, still shows it), as the card's fill section does.
 - **Alerts.** One card per problem the controller raises, shown only while it is on: an open-ended
   manual override, a plan it couldn't compute, a fill running too long. The fill alarm's card says
-  since when and whether it was acknowledged, and has « Acquitter » until someone does.
+  since when and whether it was acknowledged, and has « Acknowledge » (« Acquitter ») until someone does.
 - **Settings.** Everything the controller lets you tune, grouped by when it applies: the four
-  filtration-length settings wait for « Appliquer » because they reshape today's plan; freeze
+  filtration-length settings wait for « Apply » (« Appliquer ») because they reshape today's plan; freeze
   protection and the boost pulses apply at once. The override's duration isn't one of them: it is
-  chosen with the override, in the panel's « Contrôle » › Manuel. It is piscine-card's settings
+  chosen with the override, in the panel's « Control » (« Contrôle ») › « Manual » (« Manuel »). It is piscine-card's settings
   variant, not Home Assistant's entities card: the latter cuts a long name short on a phone
-  (« Min filtration h… ») and has no line for what a setting does. The panel's « Réglages » tab and
-  the device's own page (Réglages › Filtration et hors gel) draw the same rows, so all three read alike.
+  (« Min filtration h… ») and has no line for what a setting does. The panel's « Settings » (« Réglages ») tab and
+  the device's own page (« Settings » (« Réglages ») › « Filtration and freeze protection » (« Filtration et hors gel »)) draw the same rows, so all three read alike.

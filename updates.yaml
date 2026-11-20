@@ -20,16 +20,22 @@
 # pulses of the fill; « a fill runs » is Fill Running, fill-meter.yaml, so
 # never while the meter is off), and starts by itself once both are over,
 # unless Cancel Update (the page's « Annuler la demande ») drops it
-# meanwhile. Update Status says where it is: non vérifié, vérification, à
-# jour, disponible, en attente (mode manuel | remplissage), installation,
-# erreur (vérification | installation). The Home Assistant card parses these
-# words: keep them.
+# meanwhile. Update Status says where it is, as a code: unchecked, checking,
+# up_to_date, available, pending:override, pending:fill, installing,
+# error:check, error:install (updates.h's status_text). The card and the
+# page translate the codes (docs/plans/i18n.md); Home Assistant's device page
+# shows them as they are. A published code is never renamed (the card, users'
+# automations and the recorder's history read them): add a new one instead.
+# Before 1.11.0 these were French words, which the card still reads.
 #
-# Checks: every Update Check Interval (À la demande, 6 h, 24 h, 7 j), the
-# first one a minute after boot; Check for Update (the page's « Vérifier »)
-# any time. Auto Update acts on scheduled checks only: an update one of them
-# finds is installed through the gate. One a manual check finds (or any, with
-# the interval on « À la demande ») waits for an explicit install: the page,
+# Checks: every Update Check Interval (on_request, 6h, 24h, 7d: codes too,
+# translated by the UIs; before 1.11.0, « À la demande », « 6 h », « 24 h »,
+# « 7 j »; the choice is kept as hours, update_check_hours, so it survived
+# that change), the first one a minute after boot; Check for Update (the
+# page's « Vérifier ») any time. Auto Update acts on scheduled checks only:
+# an update one of them finds is installed through the gate. One a manual
+# check finds (or any, with the interval on on_request) waits for an
+# explicit install: the page,
 # Home Assistant, the card. An install that fails is tried again at the next
 # scheduled check, not in a loop.
 #
@@ -121,7 +127,7 @@ update:
     on_install:
       - script.execute:
           id: update_install_request
-          origin: "Home Assistant ou la page"
+          origin: "Home Assistant or the page"
 
 globals:
   # See the header: these ids never change.
@@ -326,7 +332,8 @@ select:
     web_server: {sorting_group_id: grp_firmware, sorting_weight: 40}
     icon: mdi:timer-outline
     entity_category: config
-    options: ["À la demande", "6 h", "24 h", "7 j"]
+    # Codes, as updates.h's INTERVAL_OPTIONS (keep both in step); the UIs translate them.
+    options: ["on_request", "6h", "24h", "7d"]
     update_interval: never
     lambda: 'return std::string(pool_updates::interval_label(id(update_check_hours)));'
     set_action:
@@ -348,7 +355,7 @@ button:
       - script.execute: {id: update_check, origin: "on request"}
   # Drops an install waiting for a Manual Override or a fill to end; does
   # nothing otherwise. The page shows it only while Update Status is
-  # « en attente (…) ».
+  # pending:override or pending:fill.
   - platform: template
     name: "Cancel Update"
     id: cancel_update

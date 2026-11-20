@@ -101,15 +101,15 @@ export function posixStandardOffset(posix) {
  * "HH:MM" of `date` in a zone: by its IANA name when this browser knows it (summer time included),
  * else by the POSIX string's standard offset.
  */
-export function clockIn(date, name, posix) {
-  const opts = { hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
+export function clockIn(date, name, posix, locale = "fr-FR") {
+  const opts = { hour: "2-digit", minute: "2-digit" };
   if (name) {
     try {
-      return date.toLocaleTimeString("fr-FR", { ...opts, timeZone: name });
+      return date.toLocaleTimeString(locale, { ...opts, timeZone: name });
     } catch {
       // not a zone this browser knows: the POSIX offset below
     }
   }
   const shifted = new Date(date.getTime() + posixStandardOffset(posix) * 60000);
-  return shifted.toLocaleTimeString("fr-FR", { ...opts, timeZone: "UTC" });
+  return shifted.toLocaleTimeString(locale, { ...opts, timeZone: "UTC" });
 }

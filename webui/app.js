@@ -11,6 +11,10 @@
  * sensors, so the only charts are of what it records itself: the pool's min/max and filtration of the
  * last 7 days, and the fill water of 30 days and 12 months. Everything talks to the ESP32 only, so it
  * keeps working while Home Assistant is down.
+ *
+ * Every text is in the page's language (page-i18n.js: English, French or Spanish, the EN | FR | ES switch in the
+ * headers): rows take keys and translate them at each update, caches of what was drawn include the language, and a
+ * change redraws in place; the card follows through hass.locale.
  */
 import { EspHass, E } from "./esphome-hass.js";
 import { ICONS } from "./icons.js";
@@ -18,6 +22,7 @@ import { mountSetup } from "./setup.js";
 import { WAITING_FOR } from "./setup-model.js";
 import { mountLogin } from "./login.js";
 import { keepAlive } from "./session.js";
+import { t, fmt, setLang, onLang, pageLang, applyStatic, langSwitch } from "./page-i18n.js";
 
 const hass = new EspHass();
 const $ = (id) => document.getElementById(id);
@@ -25,11 +30,13 @@ const st = (id) => hass.states[id];
 const s = (id) => st(id)?.state;
 const n = (id) => parseFloat(s(id));
 const shown = (id) => st(id)?.attributes.display ?? s(id) ?? "—";
-const fmt1 = (v) => (Number.isFinite(v) ? v.toFixed(1).replace(".", ",") : "–");
+/** One decimal in the page's language: « 25,9 », « 25.9 ». */
+const fmt1 = (v) => (Number.isFinite(v) ? fmt().number(v, { minimumFractionDigits: 1, maximumFractionDigits: 1, useGrouping: false }) : "–");
 const pad2 = (v) => String(v).padStart(2, "0");
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-const SPEED_FR = { Off: "Arrêt", Low: "Low", Medium: "Medium", High: "High", Auto: "Auto" };
+/** A speed code (Off, Low…, Auto) in words: the card's glossary keys. */
+const speed = (v) => (["Off", "Low", "Medium", "High"].includes(v) ? t(`common.speed.${v}`) : v === "Auto" ? t("common.mode.auto") : v);
 /** Fill Meter turned off (fill-meter.yaml): no Remplissage, no flow nor volume rows. A firmware without it counts. */
 const fillOff = () => s(E.fillEnabled) === "off";
 
@@ -45,15 +52,22 @@ function h(html) {
 function duration(sec) {
   if (!Number.isFinite(sec)) return "—";
   const d = Math.floor(sec / 86400), hr = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
-  if (d) return `${d} j ${hr} h ${pad2(m)} min`;
+  if (d) return t("page.uptime.d", { d, h: hr, m: pad2(m) });
   if (hr) return `${hr} h ${pad2(m)} min`;
   return `${m} min ${pad2(Math.floor(sec % 60))} s`;
 }
-/** ms -> "HH:MM" today, else "DD/MM HH:MM". */
-function clock(t) {
-  const d = new Date(t);
-  const hm = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-  return d.toDateString() === new Date().toDateString() ? hm : `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)} ${hm}`;
+/** ms -> "HH:MM" today, else "DD/MM HH:MM", in the page's language and formats. */
+function clock(ms) {
+  const d = new Date(ms), hm = fmt().time(d);
+  return d.toDateString() === new Date().toDateString() ? hm : `${fmt().date(d, { day: "2-digit", month: "2-digit" })} ${hm}`;
+}
+/** The controller's « HH:MM » (a block, the next change) in the page's time format. */
+function hhmm(v) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(v || ""));
+  if (!m) return v;
+  const d = new Date();
+  d.setHours(+m[1], +m[2], 0, 0);
+  return fmt().time(d);
 }
 /** The device's "YYYY-MM-DD HH:MM:SS" -> clock(). */
 function stamp(v) {
@@ -70,7 +84,9 @@ function toast(msg, err = false) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove("show"), err ? 4500 : 2600);
 }
-const run = (p, ok) => p.then(() => ok && toast(ok)).catch((e) => toast(`Refusé par le contrôleur (${e.message})`, true));
+const refusedMsg = (e) => t("page.refused", { error: e.message });
+/** Runs a write; `ok` (a key, or a function returning the text) is the toast once the controller took it. */
+const run = (p, ok) => p.then(() => ok && toast(typeof ok === "function" ? ok() : t(ok))).catch((e) => toast(refusedMsg(e), true));
 
 /* ================================================================ tabs */
 
@@ -108,14 +124,14 @@ addEventListener("hashchange", route);
 addEventListener("popstate", route);
 addEventListener("location-changed", route); // what piscine-card fires after its own pushState
 
-/* ================================================================ « Contrôle » */
+/* ================================================================ « Contrôle » */
 
 const card = document.createElement("piscine-card");
 card.setConfig({
   variant: "panel",
   recorder: false, // no recorder nor statistics here: the temperature graph keeps its 7 days, from Daily History
   settings_tab: false, // this page has its own « Réglages » and « Réglages contrôleur »
-  controller_light: false, // its header's « Connecté au contrôleur » chip is this page's link to the controller
+  controller_light: false, // its header's « Connected to the controller » chip is this page's link to the controller
   entities: {
     override: E.override, commanded: E.commanded, planned: E.planned, nextAt: E.nextAt, nextTo: E.nextTo,
     b1s: E.b1s, b1e: E.b1e, b2s: E.b2s, b2e: E.b2e, hoursToday: E.hoursToday, hoursPlanned: E.hoursPlanned,
@@ -138,33 +154,38 @@ function updateControl() {
     card.shadowRoot.getElementById("close").hidden = true;
     cardReady = true;
   } else if (cardReady) card.hass = hass;
-  $("subtitle").textContent = `${fmt1(n(E.water))} °C · ${s(E.commanded) ?? "–"} · ${fmt1(n(E.hoursToday))} h`;
+  $("subtitle").textContent = `${fmt1(n(E.water))} °C · ${speed(s(E.commanded)) ?? "–"} · ${fmt1(n(E.hoursToday))} h`;
   const c = $("conn");
   c.className = `chip ${hass.connected ? "ok" : "bad"}`;
-  c.textContent = hass.connected ? "Connecté au contrôleur" : "Connexion perdue…";
+  c.textContent = t(hass.connected ? "page.conn.ok" : "page.conn.lost");
 }
 
 /* ================================================================ « Réglages » and « Réglages contrôleur »: entity rows */
 
 const updaters = [];
 
-/** Read-only row: icon, label (+ sub-label), value. `value` defaults to the entity's display state. */
-function valueRow(host, { id, label, sub, iconName, value, problem, visible }) {
+/** A row's words: a key (translated at each update, so a language change shows at once), or a function. */
+const words = (v) => (typeof v === "function" ? v() : v ? t(v) : "");
+/**
+ * Read-only row: icon, label (+ sub-label), value. `label` and `sub` are keys (or functions); `name` a text as is (an
+ * entity's own name). `value` defaults to the entity's display state; `problem` is the key shown when it is on.
+ */
+function valueRow(host, { id, label, name, sub, iconName, value, problem, visible }) {
   const row = h(`<div class="erow"><span class="ic"></span><span class="name"><span></span><small></small></span><span class="val num"></span></div>`);
-  row.querySelector(".name span").textContent = label;
   host.appendChild(row);
   updaters.push(() => {
     const e = id ? st(id) : null;
     row.hidden = (!!id && !e) || (!!visible && !visible());
     if (row.hidden) return;
+    row.querySelector(".name span").textContent = name ?? words(label);
     row.querySelector(".ic").innerHTML = icon(typeof iconName === "function" ? iconName() : iconName || e?.attributes.icon);
-    const subText = typeof sub === "function" ? sub() : sub || "";
+    const subText = words(sub);
     row.querySelector("small").textContent = subText;
     row.querySelector("small").hidden = !subText;
     const val = row.querySelector(".val");
     if (problem) {
       const on = e.state === "on";
-      val.textContent = on ? problem : "OK";
+      val.textContent = on ? t(problem) : "OK";
       val.className = `val ${on ? "bad" : "good"}`;
       row.classList.toggle("problem", on);
     } else val.textContent = value ? value() : shown(id);
@@ -172,22 +193,20 @@ function valueRow(host, { id, label, sub, iconName, value, problem, visible }) {
   return row;
 }
 
-/** Number row: slider + value, written when released (the HA entities-card slider row). */
-function numberRow(host, { id, label, sub }) {
-  const row = h(`<div class="erow"><span class="ic"></span><span class="name"><span></span><small></small></span>
+/** Number row: slider + value, written when released (the HA entities-card slider row). `name`: the entity's own. */
+function numberRow(host, { id, name }) {
+  const row = h(`<div class="erow"><span class="ic"></span><span class="name"><span></span><small hidden></small></span>
     <span class="ctl"><input type="range"><span class="v num"></span></span></div>`);
-  row.querySelector(".name span").textContent = label;
-  row.querySelector("small").textContent = sub || "";
-  row.querySelector("small").hidden = !sub;
+  row.querySelector(".name span").textContent = name;
   const input = row.querySelector("input"), out = row.querySelector(".v");
-  input.setAttribute("aria-label", label);
+  input.setAttribute("aria-label", name);
   let editing = 0; // until when the slider wins over pushed states
   const unit = () => st(id)?.attributes.unit_of_measurement || "";
   const decimals = () => {
     const step = String(st(id)?.attributes.step ?? 1);
     return step.includes(".") ? step.split(".")[1].length : 0;
   };
-  const label_ = (v) => `${(+v).toFixed(decimals()).replace(".", ",")} ${unit()}`.trim();
+  const label_ = (v) => `${fmt().number(+v, { minimumFractionDigits: decimals(), maximumFractionDigits: decimals(), useGrouping: false })} ${unit()}`.trim();
   input.addEventListener("input", () => {
     editing = Date.now() + 60000;
     out.textContent = label_(input.value);
@@ -215,13 +234,10 @@ function numberRow(host, { id, label, sub }) {
   });
 }
 
-function buttonRow(host, { id, label, sub, iconName, text = "Appuyer", ok, fill, disabled }) {
+/** Button row: `label`, `sub`, `text` and `ok` (its toast) are keys; `name` an entity's own name, as is. */
+function buttonRow(host, { id, label, name, sub, iconName, text = "page.press", ok, fill, disabled }) {
   const row = h(`<div class="erow"><span class="ic"></span><span class="name"><span></span><small></small></span><button class="btn"></button></div>`);
-  row.querySelector(".name span").textContent = label;
-  row.querySelector("small").textContent = sub || "";
-  row.querySelector("small").hidden = !sub;
   const b = row.querySelector("button");
-  b.textContent = text;
   if (fill) b.classList.add("fill");
   b.addEventListener("click", () => {
     b.classList.add("busy");
@@ -232,25 +248,36 @@ function buttonRow(host, { id, label, sub, iconName, text = "Appuyer", ok, fill,
     const e = st(id);
     row.hidden = !e;
     if (!e) return;
+    row.querySelector(".name span").textContent = name ?? t(label);
+    row.querySelector("small").textContent = sub ? t(sub) : "";
+    row.querySelector("small").hidden = !sub;
+    b.textContent = t(text);
     row.querySelector(".ic").innerHTML = icon(iconName || e.attributes.icon);
     b.disabled = disabled ? disabled() : false;
   });
   return row;
 }
-const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}</div>`));
+/** A section's heading: `key`, translated at each update. */
+const sect = (host, key) => {
+  const el = host.appendChild(h(`<div class="sect"></div>`));
+  updaters.push(() => { el.textContent = t(key); });
+  return el;
+};
 
 /* ---- Filtration et hors gel: piscine-card's settings variant, the rows Home Assistant's card shows too */
 {
   const settings = document.createElement("piscine-card");
-  settings.setConfig({
+  const configure = () => settings.setConfig({
     variant: "settings",
-    title: "Filtration et hors gel", // the section's name in Home Assistant's card too
+    title: t("card.sec.filtration_freeze"), // the section's name in Home Assistant's card too
     icons: ICONS, // no <ha-icon> here
     entities: {
       min: E.min, max: E.max, offset: E.offset, warm: E.warm, pending: E.pending, apply: E.apply,
       boostDuration: E.boostDuration, boostInterval: E.boostInterval, highEvery: E.highEvery, freezeAt: E.freezeAt,
     },
   });
+  configure();
+  onLang(() => { configure(); if (st(E.min)) settings.hass = hass; }); // its title is the page's
   settings.classList.add("o3"); // Réglages: after Plan du jour and Capteurs internes (index.html)
   $("settingsHost").replaceWith(settings);
   updaters.push(() => { if (st(E.min)) settings.hass = hass; });
@@ -279,30 +306,30 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
 {
   const host = $("planRows");
   // "--:--" when there is none; start == end when the firmware folded block 2 into block 1.
-  const range = (a, b) => () => (s(a) && s(a) !== "--:--" && s(a) !== s(b) ? `${s(a)} → ${s(b)}` : "—");
-  valueRow(host, { id: E.hoursPlanned, label: "Durée planifiée" });
-  valueRow(host, { id: E.hoursToday, label: "Filtrée aujourd'hui",
-    sub: () => (n(E.hoursPlanned) > 0 ? `${Math.round((n(E.hoursToday) / n(E.hoursPlanned)) * 100)} % du plan` : "") });
-  valueRow(host, { id: E.b1s, label: "Bloc 1", iconName: "clock-start", value: range(E.b1s, E.b1e) });
-  valueRow(host, { id: E.b2s, label: "Bloc 2", iconName: "clock-end", value: range(E.b2s, E.b2e) });
-  valueRow(host, { id: E.planned, label: "Vitesse du plan maintenant", value: () => SPEED_FR[s(E.planned)] || s(E.planned) });
-  valueRow(host, { id: E.commanded, label: "Vitesse commandée", value: () => SPEED_FR[s(E.commanded)] || s(E.commanded),
-    sub: () => (s(E.override) && s(E.override) !== "Auto" ? `Override manuel : ${SPEED_FR[s(E.override)]}` : "Suit le plan") });
-  valueRow(host, { id: E.nextAt, label: "Prochain changement",
-    value: () => (s(E.nextAt) && s(E.nextAt) !== "--:--" ? `${s(E.nextAt)} → ${SPEED_FR[s(E.nextTo)] || s(E.nextTo)}` : "Plus rien aujourd'hui") });
-  valueRow(host, { id: E.nextBoostStart, label: "Prochaine impulsion", value: range(E.nextBoostStart, E.nextBoostEnd) });
-  valueRow(host, { id: E.recomputed, label: "Plan calculé à", value: () => stamp(s(E.recomputed)) });
-  valueRow(host, { id: E.notComputed, label: "Plan du jour", problem: "Non calculé",
-    sub: () => (s(E.notComputed) === "on" && WAITING_FOR[s(E.waitingFor)] ? `Attend ${WAITING_FOR[s(E.waitingFor)]}` : "") });
-  valueRow(host, { id: E.overrideActive, label: "Override sans limite", problem: "Depuis plus de 30 min" });
-  buttonRow(host, { id: E.recompute, label: "Recalculer le plan maintenant", text: "Recalculer", ok: "Plan du jour recalculé" });
+  const range = (a, b) => () => (s(a) && s(a) !== "--:--" && s(a) !== s(b) ? `${hhmm(s(a))} → ${hhmm(s(b))}` : "—");
+  // Most of the words are the card's (its « Réglages » › Plan du jour shows the same rows).
+  valueRow(host, { id: E.hoursPlanned, label: "card.row.hoursPlanned.label" });
+  valueRow(host, { id: E.hoursToday, label: "card.row.hoursToday.label",
+    sub: () => (n(E.hoursPlanned) > 0 ? t("card.row.hoursToday.pct", { pct: Math.round((n(E.hoursToday) / n(E.hoursPlanned)) * 100) }) : "") });
+  valueRow(host, { id: E.b1s, label: "card.row.b1s.label", iconName: "clock-start", value: range(E.b1s, E.b1e) });
+  valueRow(host, { id: E.b2s, label: "card.row.b2s.label", iconName: "clock-end", value: range(E.b2s, E.b2e) });
+  valueRow(host, { id: E.planned, label: "card.row.planned.label", value: () => speed(s(E.planned)) });
+  valueRow(host, { id: E.commanded, label: "card.row.commanded.label", value: () => speed(s(E.commanded)),
+    sub: () => (s(E.override) && s(E.override) !== "Auto" ? t("card.row.commanded.forced", { speed: speed(s(E.override)) }) : t("card.row.commanded.follows")) });
+  valueRow(host, { id: E.nextAt, label: "card.row.nextAt.label",
+    value: () => (s(E.nextAt) && s(E.nextAt) !== "--:--" ? `${hhmm(s(E.nextAt))} → ${speed(s(E.nextTo))}` : t("card.nothing_today")) });
+  valueRow(host, { id: E.nextBoostStart, label: "card.row.nextBoostStart.label", value: range(E.nextBoostStart, E.nextBoostEnd) });
+  valueRow(host, { id: E.recomputed, label: "card.row.recomputed.label", value: () => stamp(s(E.recomputed)) });
+  valueRow(host, { id: E.notComputed, label: "card.sec.plan", problem: "page.plan.not_computed",
+    sub: () => (s(E.notComputed) === "on" && WAITING_FOR[s(E.waitingFor)] ? t("page.plan.waits", { what: t(WAITING_FOR[s(E.waitingFor)]) }) : "") });
+  valueRow(host, { id: E.overrideActive, label: "page.plan.forced_nolimit", problem: "page.plan.forced_30" });
+  buttonRow(host, { id: E.recompute, label: "card.row.recompute.label", text: "card.row.recompute.button", ok: "card.row.recompute.ok" });
 }
 
 /* ---- 7 derniers jours: closed days from the device's Daily History, each with its plan from Daily Plan History
    (days closed since the firmware that has it), plus today so far. As piscine-card's « 7 derniers jours ». */
 {
   const host = $("days");
-  const WD = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
   const dayKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   /** "2026-11-13: 6.42 h 25.9/26.6 °C, 2026-11-12: 6.70 h" -> { "2026-11-13": {hours, lo, hi}, … } */
   const parse = (text) => Object.fromEntries([...String(text || "").matchAll(
@@ -310,30 +337,32 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
     .map((m) => [m[1], { hours: +m[2], lo: m[3] === undefined ? NaN : +m[3], hi: m[4] === undefined ? NaN : +m[4] }]));
   const SHORT_TOLERANCE_H = 0.25; // under its plan by more than the day boundary and the minute rounding
   const isShort = (r) => Number.isFinite(r.hours) && Number.isFinite(r.planned) && r.hours < r.planned - SHORT_TOLERANCE_H;
+  // The card's words (its « 7 derniers jours »)
   const title = (r) => {
-    if (r.today) return "En cours ; le trait marque la durée planifiée";
-    if (!Number.isFinite(r.hours)) return "Pas de données : contrôleur éteint ou sans heure ce jour-là";
-    if (!Number.isFinite(r.planned)) return "Plan du jour non enregistré";
+    if (r.today) return t("card.days.tip_today");
+    if (!Number.isFinite(r.hours)) return t("card.days.tip_nodata");
+    if (!Number.isFinite(r.planned)) return t("card.days.tip_noplan");
     const gap = r.hours - r.planned;
-    return `Plan ${fmt1(r.planned)} h ; ${Math.abs(gap) < 0.05 ? "plan tenu" : `${gap > 0 ? "+" : "−"}${fmt1(Math.abs(gap))} h`}`;
+    return t("card.days.tip_plan", { planned: fmt1(r.planned), gap: Math.abs(gap) < 0.05 ? t("card.days.plan_kept") : `${gap > 0 ? "+" : "−"}${fmt1(Math.abs(gap))} h` });
   };
   let drawn = "";
   updaters.push(() => {
     if (!st(E.history) && !st(E.hoursToday)) return;
     const today = new Date();
-    const key = [s(E.history), s(E.planHistory), s(E.hoursToday), s(E.hoursPlanned), s(E.waterMin), s(E.waterMax), today.toDateString()].join("|");
+    const key = [s(E.history), s(E.planHistory), s(E.hoursToday), s(E.hoursPlanned), s(E.waterMin), s(E.waterMax), today.toDateString(), pageLang()].join("|");
     if (key === drawn) return;
     drawn = key;
     const closed = parse(s(E.history)), plans = parse(s(E.planHistory));
-    const rows = [{ label: "Aujourd'hui", hours: n(E.hoursToday), planned: n(E.hoursPlanned), lo: n(E.waterMin), hi: n(E.waterMax), today: true }];
+    const rows = [{ label: t("common.today_cap"), hours: n(E.hoursToday), planned: n(E.hoursPlanned), lo: n(E.waterMin), hi: n(E.waterMax), today: true }];
     for (let i = 1; i <= 7; i++) {
       const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
-      rows.push({ label: i === 1 ? "Hier" : `${WD[d.getDay()]} ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`, ...closed[dayKey(d)], planned: plans[dayKey(d)]?.hours });
+      const label = `${fmt().date(d, { weekday: "short" })} ${fmt().date(d, { day: "2-digit", month: "2-digit" })}`;
+      rows.push({ label: i === 1 ? t("common.yesterday_cap") : label, ...closed[dayKey(d)], planned: plans[dayKey(d)]?.hours });
     }
     const scale = Math.max(1, ...rows.flatMap((r) => [r.hours, r.planned]).filter(Number.isFinite));
     const pct = (v) => `${Math.min(100, (v / scale) * 100).toFixed(1)}%`;
     const water = (r) => Number.isFinite(r.lo) && Number.isFinite(r.hi) ? `${fmt1(r.lo)}–${fmt1(r.hi)}°` : "—";
-    host.innerHTML = `<div class="day head"><span></span><span>Filtration</span><span></span><span class="w">Eau</span></div>`
+    host.innerHTML = `<div class="day head"><span></span><span>${t("card.sec.filtration")}</span><span></span><span class="w">${t("card.days.water")}</span></div>`
       + rows.map((r) => {
         const known = Number.isFinite(r.hours);
         return `<div class="day${r.today ? " today" : ""}${known ? "" : " missing"}${!r.today && isShort(r) ? " short" : ""}"
@@ -345,25 +374,20 @@ const sect = (host, text) => host.appendChild(h(`<div class="sect">${esc(text)}<
       }).join("");
     const past = rows.filter((r) => !r.today && Number.isFinite(r.hours));
     host.appendChild(h(`<p class="foot">${past.length
-      ? `Moyenne ${fmt1(past.reduce((a, r) => a + r.hours, 0) / past.length)} h de filtration par jour sur ${past.length} jour${past.length > 1 ? "s" : ""}.`
-      : "Aucune journée complète pour l'instant."}
-      Le trait marque la durée planifiée ; en orange, une journée restée sous son plan.
-      Eau : minimum et maximum du jour, mesurés pompe en marche. Le contrôleur enregistre chaque journée à minuit.</p>`));
+      ? t("card.days.mean", { hours: fmt1(past.reduce((a, r) => a + r.hours, 0) / past.length), count: past.length })
+      : t("card.days.none")} ${t("card.days.legend")}</p>`));
   });
 }
 
 /* ---- Wi-Fi and clock (wifi-setup.yaml) */
 const AP_SSID = "pool-controller";
-const CLOCK_SOURCE = {
-  SNTP: "Synchronisée par internet",
-  Browser: "Réglée depuis un navigateur",
-  None: "Aucune source : pas de plan du jour",
-};
+/** Clock Source (SNTP, Browser, None) -> its key. */
+const CLOCK_SOURCE = { SNTP: "page.clock.sntp", Browser: "page.clock.browser", None: "page.clock.none" };
 /** The device sends "0-00-00 00:00:00" for a clock that was never set. */
 const clockSet = () => s(E.clockSource) !== "None" && /^\d{4}-/.test(s(E.clock) || "");
 const quality = (dbm) => Math.max(0, Math.min(100, 2 * (dbm + 100))); // HA's dBm -> % rule of thumb
-/** bon / moyen / faible, as the card says it (its steps are this page's bars below). */
-const signalWord = (dbm) => (dbm >= -67 ? "bon" : dbm >= -75 ? "moyen" : "faible");
+/** good / fair / weak (its steps are this page's bars below). */
+const signalWord = (dbm) => t(`page.wifi.signal.${dbm >= -67 ? "good" : dbm >= -75 ? "fair" : "weak"}`);
 const bars = (dbm) =>
   !Number.isFinite(dbm) ? "wifi-strength-outline"
   : dbm >= -55 ? "wifi-strength-4" : dbm >= -67 ? "wifi-strength-3" : dbm >= -75 ? "wifi-strength-2" : "wifi-strength-1";
@@ -378,12 +402,12 @@ const orDash = (id) => () => s(id) || "—";
   const form = $("joinForm"), ssidIn = $("joinSsid"), pwIn = $("joinPw"), joinBtn = $("joinBtn");
   const connected = () => mode() === "Connected";
   // Network and signal are in the hero line above.
-  valueRow(rows, { id: E.wifiBssid, label: "Borne Wi-Fi (BSSID)", iconName: "router-wireless", visible: connected, value: orDash(E.wifiBssid) });
-  valueRow(rows, { id: E.ip, label: "Adresse IP", iconName: "ip-network", visible: connected, value: orDash(E.ip) });
-  valueRow(rows, { id: E.hotspotClients, label: "Appareils sur le point d'accès", iconName: "access-point",
+  valueRow(rows, { id: E.wifiBssid, label: "page.wifi.bssid", iconName: "router-wireless", visible: connected, value: orDash(E.wifiBssid) });
+  valueRow(rows, { id: E.ip, label: "page.wifi.ip", iconName: "ip-network", visible: connected, value: orDash(E.ip) });
+  valueRow(rows, { id: E.hotspotClients, label: "page.wifi.hotspot_clients", iconName: "access-point",
     visible: () => mode() === "Hotspot", value: () => String(n(E.hotspotClients) || 0) });
-  valueRow(rows, { id: E.mac, label: "Adresse MAC", iconName: "identifier", value: orDash(E.mac) });
-  valueRow(rows, { id: E.disconnects, label: "Déconnexions", sub: "Depuis le démarrage", iconName: "wifi-alert",
+  valueRow(rows, { id: E.mac, label: "page.wifi.mac", iconName: "identifier", value: orDash(E.mac) });
+  valueRow(rows, { id: E.disconnects, label: "page.wifi.disconnects", sub: "page.wifi.since_boot", iconName: "wifi-alert",
     value: () => String(n(E.disconnects) || 0) });
 
   let joiningTo = null, lastMode = null, netsKey = "";
@@ -393,37 +417,35 @@ const orDash = (id) => () => s(id) || "—";
     if (!st(E.wifiMode)) return;
     const m = mode(), chip = $("wifiChip");
     chip.className = `chip ${m === "Connected" ? "ok" : m === "Hotspot" ? "warn" : ""}`;
-    chip.textContent = m === "Connected" ? "Connecté" : m === "Hotspot" ? "Point d'accès" : "Connexion…";
+    chip.textContent = t(m === "Connected" ? "page.wifi.chip.connected" : m === "Hotspot" ? "page.wifi.chip.hotspot" : "page.wifi.chip.connecting");
     hero.className = `wifi-hero ${m === "Hotspot" ? "hotspot" : m === "Connecting" ? "connecting" : ""}`;
     const clients = n(E.hotspotClients) || 0;
     const [ic, title, sub] =
-      m === "Connected" ? [bars(n(E.wifiSignal)), `Connecté à « ${s(E.wifiSsid)} »`,
-        Number.isFinite(n(E.wifiSignal)) ? `Signal ${n(E.wifiSignal)} dBm · ${quality(n(E.wifiSignal))} % · ${signalWord(n(E.wifiSignal))}` : ""]
-      : m === "Hotspot" ? ["access-point", `Point d'accès « ${AP_SSID} »`,
-        `Ouvert, sans mot de passe · ${clients} appareil${clients > 1 ? "s" : ""} connecté${clients > 1 ? "s" : ""} · http://192.168.4.1`]
-      : ["wifi-sync", `Connexion à « ${joiningTo || s(E.joinSsid) || "…"} »`, "Jusqu'à 30 s"];
+      m === "Connected" ? [bars(n(E.wifiSignal)), t("page.wifi.connected_to", { ssid: s(E.wifiSsid) }),
+        Number.isFinite(n(E.wifiSignal)) ? t("page.wifi.signal_line", { dbm: n(E.wifiSignal), pct: quality(n(E.wifiSignal)), word: signalWord(n(E.wifiSignal)) }) : ""]
+      : m === "Hotspot" ? ["access-point", t("page.wifi.hotspot_named", { ssid: AP_SSID }),
+        `${t("page.wifi.hotspot_open", { count: clients })} · http://192.168.4.1`]
+      : ["wifi-sync", t("page.wifi.connecting_to", { ssid: joiningTo || s(E.joinSsid) || "…" }), t("page.wifi.up_to_30s")];
     hero.innerHTML = `<span class="ic">${icon(ic)}</span><span><b>${esc(title)}</b><small>${esc(sub)}</small></span>`;
 
     // The outcome of a join this page asked for.
     if (lastMode === "Connecting" && m !== "Connecting" && joiningTo) {
-      if (m === "Connected" && s(E.wifiSsid) === joiningTo) toast(`Connecté à « ${joiningTo} » ; réseau enregistré`);
-      else toast(`Impossible de rejoindre « ${joiningTo} » (mot de passe ou portée). Le contrôleur garde son réseau.`, true);
+      if (m === "Connected" && s(E.wifiSsid) === joiningTo) toast(t("page.wifi.joined", { ssid: joiningTo }));
+      else toast(t("page.wifi.join_failed", { ssid: joiningTo }), true);
       joiningTo = null;
     }
     lastMode = m;
     joinBtn.disabled = m === "Connecting";
-    $("joinHint").textContent = m === "Hotspot"
-      ? "Le contrôleur essaie ce réseau 30 s et ne l'enregistre que si la connexion réussit. Une fois connecté, son point d'accès s'arrête : rejoignez ce réseau avec ce téléphone, puis ouvrez http://pool-controller.local."
-      : "Le contrôleur essaie ce réseau 30 s et ne l'enregistre que si la connexion réussit ; sinon il garde le réseau actuel. S'il change de réseau, cette page perd la liaison : retrouvez-le sur http://pool-controller.local.";
+    $("joinHint").textContent = t(m === "Hotspot" ? "page.wifi.join_hint_hotspot" : "page.wifi.join_hint", { url: "http://pool-controller.local" });
 
     const list = nearby(), current = connected() ? s(E.wifiSsid) : null;
-    const key = JSON.stringify([list, current]);
+    const key = JSON.stringify([list, current, pageLang()]);
     if (key === netsKey) return;
     netsKey = key;
-    nets.innerHTML = list.length ? "" : `<p class="hint">Aucun réseau détecté pour l'instant.</p>`;
+    nets.innerHTML = list.length ? "" : `<p class="hint">${t("page.wifi.none")}</p>`;
     for (const net of list) {
       const b = h(`<button type="button" class="net"><span class="ic">${icon(bars(net.rssi))}</span>
-        <span class="ssid"></span>${net.ssid === current ? '<span class="tag">connecté</span>' : ""}<span class="dbm num">${net.rssi} dBm</span></button>`);
+        <span class="ssid"></span>${net.ssid === current ? `<span class="tag">${t("page.wifi.tag_connected")}</span>` : ""}<span class="dbm num">${net.rssi} dBm</span></button>`);
       b.querySelector(".ssid").textContent = net.ssid;
       b.setAttribute("aria-current", String(net.ssid === current));
       b.addEventListener("click", () => {
@@ -438,15 +460,15 @@ const orDash = (id) => () => s(id) || "—";
     const show = pwIn.type === "password";
     pwIn.type = show ? "text" : "password";
     ev.currentTarget.innerHTML = icon(show ? "eye-off" : "eye");
-    ev.currentTarget.title = show ? "Masquer" : "Afficher";
+    ev.currentTarget.title = t(show ? "page.pw.hide" : "page.pw.show");
   });
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const ssid = ssidIn.value.trim(), pw = pwIn.value;
     if (!ssid) return;
-    if (pw.length && pw.length < 8) return toast("Mot de passe : 8 caractères minimum, ou vide pour un réseau ouvert.", true);
+    if (pw.length && pw.length < 8) return toast(t("page.wifi.pw_short"), true);
     if (connected() && ssid !== s(E.wifiSsid) &&
-        !confirm(`Le contrôleur va quitter « ${s(E.wifiSsid)} » pour « ${ssid} ». Cette page perdra la liaison : retrouvez-le ensuite sur http://pool-controller.local. Continuer ?`)) return;
+        !confirm(t("page.wifi.confirm_switch", { from: s(E.wifiSsid), to: ssid, url: "http://pool-controller.local" }))) return;
     joinBtn.classList.add("busy");
     try {
       await hass.setText(E.joinSsid, ssid);
@@ -455,7 +477,7 @@ const orDash = (id) => () => s(id) || "—";
       joiningTo = ssid;
       pwIn.value = "";
     } catch (e) {
-      toast(`Refusé par le contrôleur (${e.message})`, true);
+      toast(refusedMsg(e), true);
     } finally {
       joinBtn.classList.remove("busy");
     }
@@ -471,24 +493,26 @@ const orDash = (id) => () => s(id) || "—";
   const Card = customElements.get("piscine-card"), host = $("fwRows");
   const version = () => Card.parseVersion(s(E.fwVersion)), esphome = () => Card.parseEsphome(s(E.esphomeVersion));
   const hasUpdates = () => !!st(E.fwUpdate);
-  valueRow(host, { id: E.fwVersion, label: "Version", iconName: "tag-outline", value: () => version()?.label || "—", sub: () => version()?.sub || "" });
-  valueRow(host, { id: E.esphomeVersion, label: "ESPHome", iconName: "chip", value: () => esphome()?.version || "—", sub: () => esphome()?.built || "" });
+  valueRow(host, { id: E.fwVersion, label: "page.fw.version", iconName: "tag-outline", value: () => version()?.label || "—", sub: () => version()?.sub || "" });
+  valueRow(host, { id: E.esphomeVersion, name: "ESPHome", iconName: "chip", value: () => esphome()?.version || "—", sub: () => esphome()?.built || "" });
 
   /** A row whose sub-line is drawn only when it changes: a link rebuilt every second would lose its hover. */
   const statusRow = (buttons) => {
-    const row = h(`<div class="erow"><span class="ic">${icon("cloud-sync-outline")}</span><span class="name"><span>Mise à jour</span><small></small></span>
-      ${buttons.map((b) => `<button class="btn${b.fill ? " fill" : ""}">${b.text}</button>`).join("")}</div>`);
+    const row = h(`<div class="erow"><span class="ic">${icon("cloud-sync-outline")}</span><span class="name"><span></span><small></small></span>
+      ${buttons.map((b) => `<button class="btn${b.fill ? " fill" : ""}"></button>`).join("")}</div>`);
     host.appendChild(row);
     let drawn = "";
-    const small = row.querySelector("small");
+    const small = row.querySelector("small"), btns = [...row.querySelectorAll("button")];
     return {
-      row, buttons: [...row.querySelectorAll("button")],
+      row, buttons: btns,
       draw(r) {
-        const key = [r.text, r.cls, r.href, r.link].join("|");
+        const key = [r.text, r.cls, r.href, r.link, pageLang()].join("|");
         if (key === drawn) return;
         drawn = key;
+        row.querySelector(".name span").textContent = t("card.fw.update");
+        btns.forEach((b, i) => { b.textContent = t(buttons[i].text); });
         small.className = r.cls || ""; small.textContent = r.text;
-        if (r.href) small.append(" ", h(`<a href="${esc(r.href)}" target="_blank" rel="noopener">${esc(r.link || "Voir les changements")}</a>`));
+        if (r.href) small.append(" ", h(`<a href="${esc(r.href)}" target="_blank" rel="noopener">${esc(r.link)}</a>`));
       },
     };
   };
@@ -496,28 +520,34 @@ const orDash = (id) => () => s(id) || "—";
   /* -- updates.yaml: the controller checks the releases and installs through its gate */
   {
     const { row, buttons: [check, install, cancel], draw } = statusRow(
-      [{ text: "Vérifier" }, { text: "Installer", fill: true }, { text: "Annuler la demande" }]);
+      [{ text: "card.fw.check" }, { text: "card.fw.install", fill: true }, { text: "card.fw.cancel_request" }]);
     const fw = () => st(E.fwUpdate)?.attributes || {};
-    const status = () => s(E.updateStatus) || "";
+    // An older firmware (before 1.11.0) says Update Status and the interval's options in French: read as their codes.
+    const LEGACY_UPDATE = { "non vérifié": "unchecked", "vérification": "checking", "à jour": "up_to_date", "disponible": "available", // i18n-ignore: an old firmware's words
+      "installation": "installing", "en attente (mode manuel)": "pending:override", "en attente (remplissage)": "pending:fill",
+      "erreur (vérification)": "error:check", "erreur (installation)": "error:install" }; // i18n-ignore: an old firmware's words
+    const LEGACY_INTERVAL = { "À la demande": "on_request", "6 h": "6h", "24 h": "24h", "7 j": "7d" }; // i18n-ignore: an old firmware's options
+    /** Update Check Interval's option (a code, or an older firmware's French) in words. */
+    const intervalLabel = (o) => {
+      const c = LEGACY_INTERVAL[o] || o, m = /^(\d+)([hd])$/.exec(c);
+      return c === "on_request" ? t("card.fw.opt.on_request") : !m ? o : m[2] === "h" ? `${m[1]} h` : t("card.fw.opt.days", { count: +m[1] });
+    };
+    const status = () => { const v = s(E.updateStatus) || ""; return LEGACY_UPDATE[v] || v; };
     let installed = null; // the installed version last seen: a change after a reboot is an update done
-    /** Update Status (the firmware's words) -> the sentence under « Mise à jour ». */
+    /** Update Status (the firmware's code) -> the sentence under « Mise à jour ». */
     const sentence = () => {
-      const a = fw(), latest = a.latest_version || "la nouvelle version", now = a.installed_version || "—";
-      const st_ = status();
-      if (!hass.connected && (st_ === "installation" || a.in_progress)) return { text: "Redémarrage du contrôleur sur la nouvelle version…", cls: "fw-up" };
-      if (st_ === "installation" || a.in_progress) return { text: `Installation de ${latest}… Le contrôleur redémarre ensuite (environ 1 min).`, cls: "fw-up" };
-      if (st_.startsWith("en attente")) {
-        const why = st_.includes("remplissage") ? "la fin du remplissage en cours" : "la fin de l'override manuel";
-        return { text: `${latest} s'installera à ${why}.`, cls: "fw-up" };
-      }
-      if (st_ === "vérification") return { text: "Vérification de la dernière version…" };
+      const a = fw(), latest = a.latest_version || t("page.fw.new_version"), now = a.installed_version || "—";
+      const st_ = status(), every = LEGACY_INTERVAL[s(E.updateInterval)] || s(E.updateInterval);
+      if (!hass.connected && (st_ === "installing" || a.in_progress)) return { text: t("page.fw.rebooting"), cls: "fw-up" };
+      if (st_ === "installing" || a.in_progress) return { text: t("page.fw.installing", { version: latest }), cls: "fw-up" };
+      if (st_.startsWith("pending:")) return { text: t(st_ === "pending:fill" ? "page.fw.pending_fill" : "page.fw.pending_override", { version: latest }), cls: "fw-up" };
+      if (st_ === "checking") return { text: t("page.fw.checking") };
       // Also every check until a first release is published: the controller only knows it got no answer.
-      if (st_ === "erreur (vérification)") return { text: "La vérification a échoué : pas de réseau, ou aucune version publiée pour l'instant.", cls: "fw-err" };
-      if (st_ === "erreur (installation)") return { text: `L'installation de ${latest} a échoué ; le contrôleur garde ${now}.`, cls: "fw-err" };
-      if (st(E.fwUpdate).state === "on") return { text: `${latest} disponible (installée : ${now}).`, cls: "fw-up", href: a.release_url, link: "Notes de version" };
-      if (st(E.fwUpdate).state === "off") return { text: `À jour : ${now} est la dernière version.`, cls: "fw-ok" };
-      return { text: s(E.updateInterval) && s(E.updateInterval) !== "À la demande"
-        ? `Pas encore vérifiée : le contrôleur vérifie toutes les ${s(E.updateInterval)}.` : "Pas encore vérifiée." };
+      if (st_ === "error:check") return { text: t("page.fw.error_check"), cls: "fw-err" };
+      if (st_ === "error:install") return { text: t("page.fw.error_install", { version: latest, installed: now }), cls: "fw-err" };
+      if (st(E.fwUpdate).state === "on") return { text: t("page.fw.available", { version: latest, installed: now }), cls: "fw-up", href: a.release_url, link: t("card.fw.notes") };
+      if (st(E.fwUpdate).state === "off") return { text: t("page.fw.up_to_date", { installed: now }), cls: "fw-ok" };
+      return { text: every && every !== "on_request" ? t("page.fw.not_checked_every", { every: intervalLabel(every) }) : t("page.fw.not_checked") };
     };
     check.addEventListener("click", () => {
       check.classList.add("busy");
@@ -525,37 +555,36 @@ const orDash = (id) => () => s(id) || "—";
     });
     install.addEventListener("click", () => {
       const a = fw();
-      if (!confirm(`Installer ${a.latest_version} ? Le contrôleur le télécharge, l'installe puis redémarre (environ 1 min) ; `
-        + "la pompe reprend ensuite son plan. Pendant un override manuel ou un remplissage, il attend qu'ils se terminent.")) return;
+      if (!confirm(t("page.fw.confirm_install", { version: a.latest_version }))) return;
       install.classList.add("busy");
-      run(hass.install(E.fwUpdate), "Installation demandée").finally(() => install.classList.remove("busy"));
+      run(hass.install(E.fwUpdate), "page.fw.install_requested").finally(() => install.classList.remove("busy"));
     });
     cancel.addEventListener("click", () => {
       cancel.classList.add("busy");
-      run(hass.press(E.cancelUpdate), "Demande d'installation annulée").finally(() => cancel.classList.remove("busy"));
+      run(hass.press(E.cancelUpdate), "card.fw.cancelled").finally(() => cancel.classList.remove("busy"));
     });
     updaters.push(() => {
       row.hidden = !hasUpdates();
       if (row.hidden) return;
       const a = fw(), st_ = status();
-      const busy = st_ === "installation" || st_.startsWith("en attente") || a.in_progress;
-      check.disabled = !hass.connected || busy || st_ === "vérification" || !st(E.checkUpdate);
+      const busy = st_ === "installing" || st_.startsWith("pending:") || a.in_progress;
+      check.disabled = !hass.connected || busy || st_ === "checking" || !st(E.checkUpdate);
       install.hidden = st(E.fwUpdate).state !== "on" || busy;
       install.disabled = !hass.connected;
       // Only while the install waits at the gate: the controller ignores it otherwise.
-      cancel.hidden = !st_.startsWith("en attente") || !st(E.cancelUpdate);
+      cancel.hidden = !st_.startsWith("pending:") || !st(E.cancelUpdate);
       cancel.disabled = !hass.connected;
       draw(sentence());
-      if (a.installed_version && installed && a.installed_version !== installed) toast(`Firmware mis à jour : ${a.installed_version}`);
+      if (a.installed_version && installed && a.installed_version !== installed) toast(t("page.fw.updated", { version: a.installed_version }));
       if (a.installed_version) installed = a.installed_version;
     });
 
     /* -- An install, step by step, under « Mise à jour »: requested (and what it waits for), the download (Update
        Progress: written to flash as it arrives), the reboot, then installed. The page reloads onto the new firmware
        (esphome-hass.js), so the version it waits for is kept in sessionStorage to say « Installée » after it. */
-    const STEPS = ["Demandée", "Téléchargement", "Redémarrage", "Installée"];
+    const STEPS = ["requested", "download", "reboot", "installed"]; // their words: page.fw.steps.*
     const inst = h(`<div class="fw-inst" hidden aria-live="polite">
-      <ol class="fw-steps">${STEPS.map((t) => `<li><i></i>${t}</li>`).join("")}</ol>
+      <ol class="fw-steps">${STEPS.map(() => "<li><i></i><span></span></li>").join("")}</ol>
       <div class="prog"><i></i></div>
       <p class="fw-line"><span></span><b class="num"></b></p></div>`);
     row.after(inst);
@@ -567,19 +596,18 @@ const orDash = (id) => () => s(id) || "—";
     let watched = false, drawnInst = "";
     /** Where the install is: { step, state ("on" | "err" | "done"), pct (number, or null for an unknown amount), text }. */
     const phase = () => {
-      const a = fw(), st_ = status(), p = n(E.updateProgress), latest = a.latest_version || "la nouvelle version";
+      const a = fw(), st_ = status(), p = n(E.updateProgress), latest = a.latest_version || t("page.fw.new_version");
       const job = saved();
       if (job?.to && a.installed_version === job.to && !a.in_progress) {
         if (Date.now() - job.at > DONE_MS) return save(null), null;
-        return { step: 3, state: "done", pct: 100, text: `${job.to} installée : le contrôleur a redémarré dessus.` };
+        return { step: 3, state: "done", pct: 100, text: t("page.fw.inst.done", { version: job.to }) };
       }
-      if (st_.startsWith("en attente")) return { step: 0, state: "on", text: st_.includes("remplissage")
-        ? "Attend la fin du remplissage en cours." : "Attend la fin de l'override manuel." };
-      if (a.in_progress && !hass.connected) return { step: 2, state: "on", pct: null, text: `Redémarrage sur ${latest}…` };
-      if (a.in_progress && p >= 100) return { step: 2, state: "on", pct: null, text: "Vérification du firmware, puis redémarrage…" };
-      if (a.in_progress && Number.isFinite(p)) return { step: 1, state: "on", pct: p, text: `Téléchargement de ${latest}` };
-      if (a.in_progress || st_ === "installation") return { step: 1, state: "on", pct: null, text: "Connexion au serveur des versions…" };
-      if (st_ === "erreur (installation)" && watched) return { step: 1, state: "err", text: `Échec : le contrôleur garde ${a.installed_version || "sa version"}.` };
+      if (st_.startsWith("pending:")) return { step: 0, state: "on", text: t(st_ === "pending:fill" ? "page.fw.inst.wait_fill" : "page.fw.inst.wait_override") };
+      if (a.in_progress && !hass.connected) return { step: 2, state: "on", pct: null, text: t("page.fw.inst.rebooting", { version: latest }) };
+      if (a.in_progress && p >= 100) return { step: 2, state: "on", pct: null, text: t("page.fw.inst.verifying") };
+      if (a.in_progress && Number.isFinite(p)) return { step: 1, state: "on", pct: p, text: t("page.fw.inst.downloading", { version: latest }) };
+      if (a.in_progress || st_ === "installing") return { step: 1, state: "on", pct: null, text: t("page.fw.inst.connecting") };
+      if (st_ === "error:install" && watched) return { step: 1, state: "err", text: t("page.fw.inst.failed", { version: a.installed_version || t("page.fw.inst.its_version") }) };
       return null;
     };
     updaters.push(() => {
@@ -589,13 +617,14 @@ const orDash = (id) => () => s(id) || "—";
         if (saved()?.to !== fw().latest_version) save({ to: fw().latest_version, at: Date.now() });
       }
       if (ph?.state === "on" && ph.step === 2) save({ ...saved(), at: Date.now() }); // « Installée » counts from the reboot
-      const key = JSON.stringify(ph && [ph.step, ph.state, ph.pct == null ? null : Math.floor(ph.pct), ph.text]);
+      const key = JSON.stringify(ph && [ph.step, ph.state, ph.pct == null ? null : Math.floor(ph.pct), ph.text, pageLang()]);
       if (key === drawnInst) return;
       drawnInst = key;
       inst.hidden = !ph;
       if (!ph) return;
       inst.querySelectorAll(".fw-steps li").forEach((li, i) => {
         li.className = i < ph.step ? "done" : i === ph.step ? ph.state : "";
+        li.querySelector("span").textContent = t(`page.fw.steps.${STEPS[i]}`);
       });
       bar.hidden = ph.step === 0 || ph.state === "err";
       bar.classList.toggle("ind", ph.pct === null);
@@ -606,19 +635,22 @@ const orDash = (id) => () => s(id) || "—";
       pct.textContent = ph.step === 1 && ph.pct != null ? `${Math.floor(ph.pct)} %` : "";
     });
 
-    /** A segmented control on a switch or a select: [label, value] pairs, the entity's state picks one. */
+    /** A segmented control on a switch or a select: [label, value] pairs, the entity's state picks one. Keys. */
     const segRow = ({ id, label, sub, iconName, options, set }) => {
-      const r = h(`<div class="erow"><span class="ic">${icon(iconName)}</span><span class="name"><span>${esc(label)}</span><small>${esc(sub)}</small></span>
-        <span class="ctl"><span class="seg" role="radiogroup" aria-label="${esc(label)}"></span></span></div>`);
+      const r = h(`<div class="erow"><span class="ic">${icon(iconName)}</span><span class="name"><span></span><small></small></span>
+        <span class="ctl"><span class="seg" role="radiogroup"></span></span></div>`);
       const seg = r.querySelector(".seg");
       host.appendChild(r);
       let drawn = "";
       updaters.push(() => {
         r.hidden = !st(id);
         if (r.hidden) return;
-        const opts = options(), key = JSON.stringify([opts, s(id)]);
+        const opts = options(), key = JSON.stringify([opts, s(id), pageLang()]);
         if (key === drawn) return;
         drawn = key;
+        r.querySelector(".name span").textContent = t(label);
+        r.querySelector("small").textContent = t(sub);
+        seg.setAttribute("aria-label", t(label));
         seg.innerHTML = "";
         for (const [text, value] of opts) {
           const b = h(`<button role="radio" aria-checked="${s(id) === value}"></button>`);
@@ -628,13 +660,11 @@ const orDash = (id) => () => s(id) || "—";
         }
       });
     };
-    segRow({ id: E.autoUpdate, label: "Installer automatiquement", iconName: "timer-check",
-      sub: "Une version trouvée par la vérification périodique s'installe seule, après un override manuel ou un remplissage en cours. Celle trouvée avec « Vérifier » attend « Installer ».",
-      options: () => [["Non", "off"], ["Oui", "on"]],
+    segRow({ id: E.autoUpdate, label: "page.fw.auto", iconName: "timer-check", sub: "page.fw.auto_sub",
+      options: () => [[t("page.no"), "off"], [t("page.yes"), "on"]],
       set: (v) => hass.callService("switch", v === "on" ? "turn_on" : "turn_off", { entity_id: E.autoUpdate }) });
-    segRow({ id: E.updateInterval, label: "Vérifier les mises à jour", iconName: "timer-outline",
-      sub: "Le contrôleur demande la dernière version publiée sur GitHub.",
-      options: () => (st(E.updateInterval)?.attributes.options || []).map((o) => [o, o]),
+    segRow({ id: E.updateInterval, label: "page.fw.interval", iconName: "timer-outline", sub: "page.fw.interval_sub",
+      options: () => (st(E.updateInterval)?.attributes.options || []).map((o) => [intervalLabel(o), o]),
       set: (v) => hass.select(E.updateInterval, v) });
   }
 }
@@ -647,7 +677,7 @@ const orDash = (id) => () => s(id) || "—";
     `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
   const setClock = () => {
     const d = new Date();
-    return run(hass.setDateTime(E.clock, localStamp(d)), `Horloge du contrôleur réglée sur ce navigateur (${clock(d)})`);
+    return run(hass.setDateTime(E.clock, localStamp(d)), () => t("page.clock.set", { time: clock(d) }));
   };
   const goWifi = () => (location.hash = "#wifi");
   updaters.push(() => {
@@ -659,17 +689,17 @@ const orDash = (id) => () => s(id) || "—";
       setClock();
     }
     const hotspot = mode() === "Hotspot";
-    const key = `${hotspot}|${noClock}`;
+    const key = `${hotspot}|${noClock}|${pageLang()}`;
     if (key === drawn) return;
     drawn = key;
     host.innerHTML = "";
     if (hotspot) {
-      const b = h(`<div class="banner info">${icon("access-point")}<span>Le contrôleur n'est relié à aucun réseau Wi-Fi : vous êtes sur son point d'accès « ${AP_SSID} ».</span><button class="btn">Configurer le Wi-Fi</button></div>`);
+      const b = h(`<div class="banner info">${icon("access-point")}<span>${esc(t("page.alert.hotspot", { ssid: AP_SSID }))}</span><button class="btn">${t("page.alert.hotspot_btn")}</button></div>`);
       b.querySelector("button").addEventListener("click", goWifi);
       host.appendChild(b);
     }
     if (noClock) {
-      const b = h(`<div class="banner">${icon("clock-alert-outline")}<span>Le contrôleur n'a pas l'heure : il ne peut pas calculer le plan du jour.</span><button class="btn">Régler sur ce navigateur</button></div>`);
+      const b = h(`<div class="banner">${icon("clock-alert-outline")}<span>${t("page.alert.no_clock")}</span><button class="btn">${t("page.alert.no_clock_btn")}</button></div>`);
       b.querySelector("button").addEventListener("click", setClock);
       host.appendChild(b);
     }
@@ -699,25 +729,25 @@ updaters.push(mountSetup({ hass, E, login, ui: { icon, esc, toast, fmt1, bars } 
 const KNOWN = new Set(Object.values(E));
 {
   const host = $("deviceRows");
-  valueRow(host, { label: "Liaison avec cette page", iconName: "lan-connect",
-    value: () => (hass.connected ? "Connectée" : "Perdue, nouvelle tentative…") });
-  valueRow(host, { label: "En marche depuis", iconName: "clock-outline",
+  valueRow(host, { label: "page.device.link", iconName: "lan-connect",
+    value: () => t(hass.connected ? "page.device.link_ok" : "page.device.link_lost") });
+  valueRow(host, { label: "page.device.uptime", iconName: "clock-outline",
     value: () => duration(hass.uptime === null ? NaN : hass.uptime + (Date.now() - hass.uptimeAt) / 1000) });
-  valueRow(host, { label: "Dernière donnée reçue", iconName: "information-outline",
-    value: () => (hass.lastEventAt ? `il y a ${Math.round((Date.now() - hass.lastEventAt) / 1000)} s` : "—") });
-  valueRow(host, { label: "Contrôleur", iconName: "chip",
+  valueRow(host, { label: "page.device.last_event", iconName: "information-outline",
+    value: () => (hass.lastEventAt ? t("page.device.ago_s", { s: Math.round((Date.now() - hass.lastEventAt) / 1000) }) : "—") });
+  valueRow(host, { label: "page.device.controller", iconName: "chip",
     value: () => hass.config.title || "—", sub: () => hass.config.comment || "" });
-  valueRow(host, { id: E.haLink, label: "Home Assistant", iconName: "home-assistant", sub: "Liaison API du contrôleur",
-    value: () => (s(E.haLink) === "on" ? "Connecté" : "Non connecté") });
-  valueRow(host, { id: E.clock, label: "Horloge", iconName: () => (clockSet() ? "clock-check-outline" : "clock-alert-outline"),
-    value: () => (clockSet() ? stamp(s(E.clock)) : "Pas réglée"), sub: () => CLOCK_SOURCE[s(E.clockSource)] || "" });
-  sect(host, "Capteurs");
-  valueRow(host, { id: E.water, label: "Eau (retour filtre)", iconName: "thermometer-water" });
-  valueRow(host, { id: E.pad, label: "Local technique", iconName: "home-thermometer-outline" });
-  valueRow(host, { id: E.outdoor, label: "Extérieur", iconName: "weather-partly-cloudy" });
-  valueRow(host, { id: E.flow, label: "Débit de remplissage", visible: () => !fillOff() });
-  valueRow(host, { id: E.volume, label: "Volume total rempli", visible: () => !fillOff() });
-  buttonRow(host, { id: E.updateTemps, label: "Relire les sondes de température", iconName: "thermometer", text: "Relire", ok: "Sondes relues" });
+  valueRow(host, { id: E.haLink, name: "Home Assistant", iconName: "home-assistant", sub: "page.device.ha_sub",
+    value: () => t(s(E.haLink) === "on" ? "page.device.ha_on" : "page.device.ha_off") });
+  valueRow(host, { id: E.clock, label: "page.device.clock", iconName: () => (clockSet() ? "clock-check-outline" : "clock-alert-outline"),
+    value: () => (clockSet() ? stamp(s(E.clock)) : t("page.device.clock_unset")), sub: () => (CLOCK_SOURCE[s(E.clockSource)] ? t(CLOCK_SOURCE[s(E.clockSource)]) : "") });
+  sect(host, "page.device.sensors");
+  valueRow(host, { id: E.water, label: "card.row.water.label", iconName: "thermometer-water" });
+  valueRow(host, { id: E.pad, label: "card.row.pad.label", iconName: "home-thermometer-outline" });
+  valueRow(host, { id: E.outdoor, label: "card.row.outdoor.label", iconName: "weather-partly-cloudy" });
+  valueRow(host, { id: E.flow, label: "page.device.flow", visible: () => !fillOff() });
+  valueRow(host, { id: E.volume, label: "page.device.volume", visible: () => !fillOff() });
+  buttonRow(host, { id: E.updateTemps, label: "card.row.updateTemps.label", iconName: "thermometer", text: "card.row.updateTemps.button", ok: "card.row.updateTemps.ok" });
   const others = h(`<div></div>`);
   host.appendChild(others);
   let seen = "";
@@ -727,12 +757,13 @@ const KNOWN = new Set(Object.values(E));
     if (ids.join() === seen) return;
     seen = ids.join();
     others.innerHTML = "";
-    if (ids.length) sect(others, "Autres entités");
+    if (ids.length) sect(others, "page.device.others");
+    // the entities' own names, as the firmware gives them (English)
     for (const id of ids) {
       const domain = st(id).attributes.domain;
-      if (domain === "number") numberRow(others, { id, label: st(id).attributes.friendly_name });
-      else if (domain === "button") buttonRow(others, { id, label: st(id).attributes.friendly_name });
-      else valueRow(others, { id, label: st(id).attributes.friendly_name });
+      if (domain === "number") numberRow(others, { id, name: st(id).attributes.friendly_name });
+      else if (domain === "button") buttonRow(others, { id, name: st(id).attributes.friendly_name });
+      else valueRow(others, { id, name: st(id).attributes.friendly_name });
     }
     for (const u of updaters) u();
   });
@@ -747,16 +778,16 @@ function logLine(l) {
   const d = new Date(l.t);
   const row = document.createElement("div");
   row.className = l.level;
-  row.innerHTML = `<span class="t">${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}</span>` +
+  row.innerHTML = `<span class="t">${fmt().time(d, { second: "2-digit" })}</span>` +
     `${l.tag ? `<span class="tag">[${esc(l.tag)}]</span> ` : ""}${esc(l.msg)}`;
   return row;
 }
 function renderLog() {
   logBox.innerHTML = "";
   const lines = hass.logs.filter(LOG_FILTERS[logFilter]);
-  if (!lines.length) logBox.innerHTML = `<div class="none">Aucune ligne pour l'instant. Le contrôleur n'envoie que les messages émis pendant que la page est ouverte (niveau INFO et au-dessus).</div>`;
+  if (!lines.length) logBox.innerHTML = `<div class="none">${t("page.log.none")}</div>`;
   for (const l of lines) logBox.appendChild(logLine(l));
-  $("logCount").textContent = `${hass.logs.length} ligne${hass.logs.length > 1 ? "s" : ""}`;
+  $("logCount").textContent = t("page.log.count", { count: hass.logs.length });
   scrollLogToEnd();
 }
 function scrollLogToEnd() {
@@ -769,7 +800,7 @@ hass.addEventListener("log", (ev) => {
   logBox.querySelector(".none")?.remove();
   logBox.appendChild(logLine(ev.detail));
   while (logBox.childElementCount > 500) logBox.firstElementChild.remove();
-  $("logCount").textContent = `${hass.logs.length} ligne${hass.logs.length > 1 ? "s" : ""}`;
+  $("logCount").textContent = t("page.log.count", { count: hass.logs.length });
   if (atEnd) scrollLogToEnd();
 });
 for (const b of document.querySelectorAll("#logSeg button")) {
@@ -782,7 +813,8 @@ for (const b of document.querySelectorAll("#logSeg button")) {
 $("logPause").addEventListener("click", (ev) => {
   logPaused = !logPaused;
   ev.currentTarget.innerHTML = `${icon(logPaused ? "play" : "pause")}`;
-  ev.currentTarget.title = logPaused ? "Reprendre" : "Pause";
+  ev.currentTarget.title = t(logPaused ? "page.log.resume" : "page.log.pause");
+  ev.currentTarget.setAttribute("aria-label", ev.currentTarget.title);
   if (!logPaused) renderLog();
 });
 $("logClear").addEventListener("click", () => {
@@ -792,6 +824,28 @@ $("logClear").addEventListener("click", () => {
 
 /* ================================================================ wiring */
 
+/**
+ * The page's language: its static texts, the EN | FR | ES switch in each header, and Home Assistant's locale for the
+ * card (which follows it). Run at load and on every change of language.
+ */
+function applyLang() {
+  applyStatic();
+  document.title = t("page.title"); // on the device, ESPHome's own <title>
+  document.querySelectorAll("[data-langs]").forEach((el) => (el.innerHTML = langSwitch()));
+  hass.language = pageLang();
+  hass.locale = { language: pageLang(), number_format: "language", time_format: "language" };
+}
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-lang]");
+  if (b) setLang(b.dataset.lang);
+});
+onLang(() => {
+  applyLang();
+  if (logPaused) $("logPause").title = t("page.log.resume");
+  renderLog();
+  update();
+});
+applyLang();
 document.querySelectorAll("[data-icon]").forEach((e) => (e.innerHTML = icon(e.dataset.icon) + e.innerHTML));
 
 function update() {

@@ -67,7 +67,7 @@ export const E = {
   updateTemps: "button/Update Temperature Sensors Now",
   haLink: "binary_sensor/Status", // the device's link to Home Assistant's API, not to this page
   online: "page/connected", // synthetic: this page's own link to the device (see _setLink)
-  flow: "sensor/Piscine - Débit remplissage",
+  flow: "sensor/Piscine - Débit remplissage", // i18n-ignore: the firmware's entity name, never renamed
   volume: "sensor/Piscine - Volume total remplissage",
   fillToday: "sensor/Fill Water Today",
   fillDays: "text_sensor/Fill Water Days",
@@ -167,6 +167,9 @@ export class EspHass extends EventTarget {
     this.connected = false;
     this.logs = [];
     this.themes = { darkMode: matchMedia("(prefers-color-scheme: dark)").matches };
+    // The card follows the HA user's language: here the page's (app.js sets these from its EN | FR | ES switch).
+    this.language = "en";
+    this.locale = { language: "en", number_format: "language", time_format: "language" };
     this.history = {}; // name_id -> [[t ms, value]]
     this._estimated = new Set(); // ids whose last_changed is a guess
     this.firmware = null; // the controller's firmware when this page loaded (Firmware's current_version)
@@ -326,7 +329,7 @@ export class EspHass extends EventTarget {
     this.connected = up;
     const t = new Date().toISOString();
     this.states[E.online] = { entity_id: E.online, state: up ? "on" : "off", last_changed: t, last_updated: t,
-      attributes: { friendly_name: "Liaison avec cette page" } };
+      attributes: { friendly_name: "Link with this page" } };
     this._changed();
   }
 

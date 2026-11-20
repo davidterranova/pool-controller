@@ -1,0 +1,473 @@
+{
+  "common": {
+    "mode": {
+      "auto": "Auto",
+      "manual": "Manual"
+    },
+    "speed": {
+      "Off": "Off",
+      "Low": "Low",
+      "Medium": "Medium",
+      "High": "High"
+    },
+    "stopped": "Stopped",
+    "never": "Never",
+    "cancel": "Cancel",
+    "apply": "Apply",
+    "pending": "Pending",
+    "open_in_ha": "Open in Home Assistant",
+    "refused": "Refused: {error}",
+    "ha_refused": "Command refused by Home Assistant",
+    "today": "today",
+    "today_cap": "Today",
+    "today_short": "today",
+    "yesterday": "yesterday",
+    "yesterday_cap": "Yesterday",
+    "ongoing": "{when}, ongoing",
+    "week_of": "week of {date}",
+    "ago": {
+      "now": "just now",
+      "min": "{n} min ago",
+      "h": "{n} h ago",
+      "d": "{n} d ago"
+    }
+  },
+  "card": {
+    "picker": {
+      "name": "Pool pump",
+      "description": "Tile and panel for the pool pump (Pool Controller)"
+    },
+    "override": {
+      "stuck": "Speed forced to {speed} for {duration}: the pump no longer follows its filtration plan."
+    },
+    "hint": {
+      "following": "The controller follows its plan: <b>{speed}</b> now, {next}.",
+      "next_at": "<b>{speed}</b> at {time}",
+      "stop_at_end": "stop at the end of the block",
+      "freeze": "Freeze protection: the controller imposes Low while the pool is below {temp} °C. Control resumes afterwards.",
+      "following_off_at": "The controller follows its plan: pump stopped, restarting at {time}.",
+      "following_off_sunrise": "The controller follows its plan: pump stopped, restarting tomorrow at sunrise.",
+      "choose": "Pick a speed: it applies right away and replaces the plan.",
+      "suspended": "The plan is suspended.",
+      "suspended_until": "The plan is suspended until {time}.",
+      "doing": "The controller runs <b>{speed}</b>.",
+      "doing_vs": "The controller runs <b>{speed}</b>, the plan would have run {planned}."
+    },
+    "temp": {
+      "span_days": {
+        "one": "{count} day",
+        "other": "{count} days"
+      },
+      "title": "Pool temperature",
+      "now": "<b>{temp} °C</b> now",
+      "loading_history": "Loading the history…",
+      "loading_stats": "Loading the statistics…",
+      "fz": "Freeze protection {temp} °C",
+      "fz_leg": "Freeze protection: Low forced below {temp} °C",
+      "fz_leg_below": "Freeze protection: Low forced below {temp} °C (below the scale)",
+      "below_fz": "below the freeze threshold",
+      "none_24h": "No temperature reading in the last 24 h.",
+      "tip_pool": "pool, pump running",
+      "tip_short": "pump running for less than {min} min",
+      "tip_pipe": "pipe, pump stopped",
+      "today_range": "<b>{lo} – {hi} °C</b> today, pump running",
+      "none_today": "No pool reading yet today",
+      "pipe_short": "Pump running for less than {min} min: {temp} °C is the pipe's temperature.",
+      "pipe_off": "Pump stopped: {temp} °C is the pipe's temperature.",
+      "last_pool": "Pool: {temp} °C at {time}.",
+      "last_pool_yday": "Pool: {temp} °C at {time} yesterday.",
+      "leg_pool": "Pool (pump running for {min} min)",
+      "leg_pipe": "Pipe, pump stopped",
+      "aria24": "Pool temperature over 24 h, from {lo} to {hi} °C",
+      "tip_mean": {
+        "day": "probe, daily mean, pipe included",
+        "week": "probe, weekly mean, pipe included"
+      },
+      "tip_hours": "{hours} h of filtration",
+      "no_reading": "No reading",
+      "none_yet": "No reading yet",
+      "span_12m": "12 months",
+      "sum_pool": "<b>{lo} – {hi} °C</b> over {span}, pump running",
+      "sum_mixed": "<b>{lo} – {hi} °C</b> over {span}",
+      "sum_mean": {
+        "day": "<b>{lo} – {hi} °C</b> over {span}, the probe's daily mean",
+        "week": "<b>{lo} – {hi} °C</b> over {span}, the probe's weekly mean"
+      },
+      "note_dash": {
+        "day": "Dashed: the days without the pool's min – max, the probe on average, pipe included (pump stopped, it reads the equipment pad).",
+        "week": "Dashed: the weeks without the pool's min – max, the probe on average, pipe included (pump stopped, it reads the equipment pad)."
+      },
+      "note_mean": "The probe on average, pipe included (pump stopped, it reads the equipment pad).",
+      "stats_err": "Home Assistant's statistics unavailable: only the last 7 days are known.",
+      "measured": {
+        "day": {
+          "one": "{count} day measured out of {n}.",
+          "other": "{count} days measured out of {n}."
+        },
+        "week": {
+          "one": "{count} week measured out of {n}.",
+          "other": "{count} weeks measured out of {n}."
+        }
+      },
+      "leg_rng": {
+        "day": "Daily min – max, pump running for {min} min",
+        "week": "Weekly min – max, pump running for {min} min"
+      },
+      "leg_mean": {
+        "day": "Probe, daily mean, pipe included",
+        "week": "Probe, weekly mean, pipe included"
+      },
+      "aria": "Pool temperature, {span}: {items}",
+      "aria_range": "{when} {lo} to {hi} °C",
+      "aria_mean": "{when} about {temp} °C (probe)",
+      "aria_none": "{when} no reading"
+    },
+    "fill": {
+      "alarm_since": "Fill running since {time} ({duration}): check the fill tap.",
+      "fill": "Filling for {duration}",
+      "fill_over": "Filling for more than {duration}",
+      "running": "Fill running for {duration}",
+      "running_over": "Fill running for more than {duration}",
+      "on": "Running for {duration}",
+      "on_over": "Running for more than {duration}",
+      "past_alarm": "{text}: past the alarm ({duration})",
+      "on_at": "Running since {time}",
+      "alarm_over": "Fill running for more than {duration}: check the fill tap.",
+      "acked_since": "Fill running since {time} ({duration}): alarm acknowledged, no more reminders until this fill ends.",
+      "acked_over": "Fill running for more than {duration}: alarm acknowledged, no more reminders until this fill ends.",
+      "ack": "Acknowledge",
+      "acked_toast": "Alarm acknowledged: no more reminders until this fill ends"
+    },
+    "settings": {
+      "filtration_section": "Filtration time · applies with “Apply”"
+    },
+    "title": "Pool pump",
+    "close": "Close",
+    "tab": {
+      "pump": "Control",
+      "settings": "Settings",
+      "controller": "Controller settings"
+    },
+    "sec": {
+      "plan": "Today's plan",
+      "probes": "Probes",
+      "filtration": "Filtration",
+      "filtration_freeze": "Filtration and freeze protection",
+      "pulses_freeze": "Pulses and freeze protection",
+      "days": "Last 7 days",
+      "position": "Position",
+      "firmware": "Firmware"
+    },
+    "pend_banner": "Filtration time changed: it only counts once applied, which recomputes today's plan.",
+    "chart_range": "Chart period",
+    "range": {
+      "24h": "24 h",
+      "7d": "7 d",
+      "30d": "30 d",
+      "90d": "90 d",
+      "1y": "1 yr",
+      "12m": "12 mo"
+    },
+    "read": {
+      "pool": "Pool",
+      "outdoor": "Outdoor",
+      "hours": "Filtration today",
+      "next": "Next change",
+      "nothing_today": "nothing more today"
+    },
+    "leg": {
+      "pulse": "{speed} pulse",
+      "forced": "Forced to {speed}"
+    },
+    "plan": {
+      "not_computed": "plan not computed"
+    },
+    "alert": {
+      "plan": "Today's plan not computed: the controller couldn't read the temperature or the sunrise. The pump may stay off.",
+      "off": "Controller offline for {duration}. The plan carries on on the ESP32, but no command will reach it.",
+      "freeze": "Freeze protection on (pool {temp} °C): the pump runs at Low whatever is asked."
+    },
+    "back_auto": "Back to Auto",
+    "back_auto_now": "Back to Auto now (otherwise at {time})",
+    "confirm": {
+      "stop": "Stop",
+      "stop_for": "Stop the pump for {duration}?",
+      "stop_nolimit": "Stop the pump with no time limit?"
+    },
+    "step": {
+      "sent": "Sent",
+      "applied": "Applied by the controller"
+    },
+    "ctl": {
+      "title": "Mode",
+      "aria": "Pump mode"
+    },
+    "speed": {
+      "title": "Forced speed"
+    },
+    "dur": {
+      "title": "Back to Auto",
+      "aria": "How long the speed stays forced",
+      "alert": "alert {min} min",
+      "back_at": "Automatic return to Auto at {time} (in {duration}).",
+      "none_running": "No automatic return: alert after {min} min, and the pump stays like this until someone goes back to Auto.",
+      "will_return": "The pump will go back to the plan by itself after {duration}.",
+      "none": "No timer: alert after {min} min, and the pump stays like this until someone goes back to Auto."
+    },
+    "phase": {
+      "freeze": "Freeze protection · {speed}",
+      "stuck": "Forced for {duration}"
+    },
+    "tile": {
+      "sending": "Sending to the controller…",
+      "stuck": "Forced to {speed} for {duration}",
+      "auto_at": "Auto at {time}",
+      "no_limit": "no limit"
+    },
+    "foot": {
+      "computed": "Plan computed at {time}",
+      "plan_only": "Plan alone: {speed}"
+    },
+    "cmd": {
+      "timeout": "The controller didn't answer. The pump hasn't changed.",
+      "auto_done": "Back to Auto: the pump follows its plan",
+      "until": "{what} until {time}",
+      "off_done": "Pump stopped",
+      "speed_done": "Pump at {speed}",
+      "done_auto": "{what}, Auto at {time}",
+      "already": "Already at {speed}",
+      "auto_at": "Back to Auto at {time}",
+      "no_auto": "No more automatic return"
+    },
+    "light": {
+      "live": "Controller · {ago}",
+      "mute_since": "Controller silent for {duration}",
+      "off": "Offline",
+      "off_since": "Offline for {duration}",
+      "tip_off": "Controller offline",
+      "tip_off_last": "Controller offline: last message at {time}",
+      "tip_alarm": "{fill}, alarm not acknowledged.",
+      "tip_last": "Last message from the controller at {time}, {ago}"
+    },
+    "row": {
+      "min": {
+        "label": "Minimum filtration duration",
+        "sub": "Floor, even in cold water"
+      },
+      "max": {
+        "label": "Maximum filtration duration",
+        "sub": "Ceiling, even in the hottest weather"
+      },
+      "offset": {
+        "label": "Filtration duration adjustment",
+        "sub": "Added to the computed duration"
+      },
+      "warm": {
+        "label": "Warmest-hour offset",
+        "sub": "Centre of the 2nd block relative to solar noon"
+      },
+      "apply": {
+        "label": "Apply the settings",
+        "sub": "Recomputes today's plan"
+      },
+      "boostDuration": {
+        "label": "Pulse duration"
+      },
+      "boostInterval": {
+        "label": "Interval between pulses",
+        "sub": "0 = no pulses"
+      },
+      "highEvery": {
+        "label": "One High pulse every",
+        "sub": "The others are Medium"
+      },
+      "freezeAt": {
+        "label": "Low forced below",
+        "sub": "When the water drops below this threshold, whatever is asked"
+      },
+      "hoursPlanned": {
+        "label": "Planned duration"
+      },
+      "hoursToday": {
+        "label": "Filtered today",
+        "pct": "{pct} % of the plan"
+      },
+      "b1s": {
+        "label": "Filtration block 1"
+      },
+      "b2s": {
+        "label": "Filtration block 2"
+      },
+      "planned": {
+        "label": "Plan's speed now"
+      },
+      "commanded": {
+        "label": "Commanded speed",
+        "forced": "Forced: {speed}",
+        "follows": "Follows the plan"
+      },
+      "nextAt": {
+        "label": "Next change"
+      },
+      "nextBoostStart": {
+        "label": "Next pulse"
+      },
+      "recomputed": {
+        "label": "Plan computed at"
+      },
+      "recompute": {
+        "label": "Recompute the plan now",
+        "button": "Recompute",
+        "ok": "Today's plan recomputed"
+      },
+      "water": {
+        "label": "Water (filter return)",
+        "off": "Pump stopped: the probe reads the pipe",
+        "on": "Pump running: the pool's water"
+      },
+      "pad": {
+        "label": "Equipment pad"
+      },
+      "outdoor": {
+        "label": "Outdoor"
+      },
+      "updateTemps": {
+        "label": "Re-read the temperature probes",
+        "button": "Re-read",
+        "ok": "Probes re-read"
+      }
+    },
+    "sect": {
+      "pulses": "Pulses · immediate",
+      "freeze": "Freeze protection · immediate"
+    },
+    "applied": "Settings applied: today's plan recomputed",
+    "nothing_today": "Nothing more today",
+    "fw": {
+      "not_make": "Built outside make: unknown commit",
+      "local_changes": "with local changes",
+      "commits_after": {
+        "one": "Commit {hash}, {count} commit after {tag}",
+        "other": "Commit {hash}, {count} commits after {tag}"
+      },
+      "released": "Released version",
+      "built_at": "Built on {date} at {time}",
+      "built_raw": "Built {when}",
+      "why": {
+        "override": "speed forced by hand",
+        "fill": "fill running",
+        "check": "the check didn't succeed (no network, or no version published yet)",
+        "install": "the install didn't succeed",
+        "waits": "the controller is waiting"
+      },
+      "hold_until": "speed forced by hand ({speed}, back to Auto at {time})",
+      "hold_noend": "speed forced by hand ({speed}, no end)",
+      "rebooting": "Controller restarting…",
+      "off": "Controller unreachable: versions unknown for now",
+      "installing_pct": "Installing: {pct} %",
+      "installing": "Installing…",
+      "checking": "Looking for a new version…",
+      "deferred": "Waiting: {why}",
+      "failed": "Failed: {why}",
+      "avail": "{version}: about 1 min, restart included",
+      "nothing": "Nothing to install",
+      "check": "Check",
+      "install": "Install",
+      "installed": "Installed version",
+      "latest": "Latest version",
+      "upd_avail": "Update available",
+      "up_to_date": "Up to date",
+      "notes": "Release notes",
+      "update": "Update",
+      "ask": "{hold}: the controller installs nothing meanwhile. It will install {version} as soon as it ends, then restart (about 30 s; the pump stops during the restart).",
+      "ask_ovr": "To install right away, go back to Auto first.",
+      "install_at_end": "Install at the end",
+      "deferred_v": "Install of {version} waiting: {why}. The controller will start it by itself afterwards.",
+      "deferred_nov": "Install waiting: {why}. The controller will start it by itself afterwards.",
+      "cancel_request": "Cancel the request",
+      "auto": "Automatic update",
+      "auto_sub": "Installs by itself a new version found by a scheduled check; “Check” only looks. Like any install, it waits for a forced speed or a fill to end.",
+      "interval": "Check frequency",
+      "interval_on_request": "Only on “Check”: nothing installs by itself",
+      "interval_auto": "Automatic update installs what it finds",
+      "opt": {
+        "on_request": "On request",
+        "days": {
+          "one": "{count} day",
+          "other": "{count} days"
+        }
+      },
+      "toast_avail": "Firmware {version} available",
+      "toast_ok": "Firmware up to date ({version})",
+      "req": "Install of {version} requested",
+      "req_ovr": "Install of {version} requested: the controller will start it once the forced speed ends",
+      "req_fill": "Install of {version} requested: the controller will start it once the fill ends",
+      "cancelled": "Install request cancelled"
+    },
+    "pos": {
+      "lat": "Latitude",
+      "lon": "Longitude",
+      "unset": "not set",
+      "tz": "Time zone",
+      "tz_posix": "POSIX string entered",
+      "tz_unset": "not set",
+      "note": "Rounded to 0.01° (about 1 km): enough for sunrise and sunset, which the controller's plan comes from, without locating the house.",
+      "use_ha": "Use Home Assistant's position and time zone",
+      "same": "Already Home Assistant's.",
+      "same_pos": "Position already Home Assistant's; its time zone ({zone}) is unknown to the card: set it on the controller's page.",
+      "ha": "Home Assistant: {lat} · {lon} · {zone}",
+      "ha_nozone": "Home Assistant: {lat} · {lon} · {zone} (time zone unknown to the card: position only)",
+      "ha_tz_unset": "time zone not set",
+      "use": "Use",
+      "sent_both": "Home Assistant's position and time zone sent: today's plan recomputed",
+      "sent_pos": "Home Assistant's position sent: today's plan recomputed"
+    },
+    "water": {
+      "title": "Fill water",
+      "today": "Filled today",
+      "month": "This month",
+      "flow": "Flow",
+      "no_device": "The controller keeps no fill history: its firmware is older.",
+      "stats_err": "Home Assistant's statistics unavailable.",
+      "no_stats": "No statistics for this meter yet: Home Assistant computes them every hour.",
+      "no_reading": "No reading",
+      "aria_none": "{when} no reading",
+      "sum": {
+        "30d": "<b>{total}</b> over 30 days · {avg} per day on average",
+        "90d": "<b>{total}</b> over 13 weeks · {avg} per week on average",
+        "12m": "<b>{total}</b> over 12 months · {avg} per month on average"
+      },
+      "leg": {
+        "30d": "Litres per day, fill meter",
+        "90d": "Litres per week, fill meter",
+        "12m": "Litres per month, fill meter"
+      },
+      "cur": {
+        "30d": "Today",
+        "90d": "This week",
+        "12m": "This month"
+      },
+      "aria": {
+        "30d": "Fill water over 30 days: {items}",
+        "90d": "Fill water over 13 weeks: {items}",
+        "12m": "Fill water over 12 months: {items}"
+      },
+      "peak": "Most: {value}, {when}",
+      "first": "First reading: {when}"
+    },
+    "days": {
+      "water": "Water",
+      "tip_today": "In progress; the mark shows the planned duration",
+      "tip_nodata": "No data: controller off or without the time that day",
+      "tip_noplan": "Day's plan not recorded",
+      "tip_plan": "Plan {planned} h; {gap}",
+      "plan_kept": "plan met",
+      "mean": {
+        "one": "Average {hours} h of filtration per day over {count} day.",
+        "other": "Average {hours} h of filtration per day over {count} days."
+      },
+      "none": "No complete day yet.",
+      "legend": "The mark shows the planned duration; in orange, a day that stayed under its plan. Water: the day's minimum and maximum, measured with the pump running. The controller records each day at midnight."
+    }
+  }
+}

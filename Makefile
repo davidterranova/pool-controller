@@ -24,7 +24,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build firmware-test flash status kill-port ota ip logs webui webui-test mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test clean
+.PHONY: validate build firmware-test flash status kill-port ota ip logs webui webui-test card i18n-check ha-files i18n-export i18n-import mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate: webui
@@ -184,9 +184,11 @@ mock-webui:
 mock-ui-check:
 	$(MOCK) --check $(MOCK_ARGS) /config/$(CONFIG)
 
-# Checks home-assistant/dashboard/ (the dashboard components and the scripts piscine-card calls) against
-# $(CONFIG): every controller entity id it names must exist, as a fresh install names it, and its
-# piscine-card must map every entity the card uses. Python in the ESPHome image, like the mock.
+# Checks home-assistant/dashboard/ (the dashboard components and the scripts piscine-card calls, each
+# language's file that make ha-files generates) and home-assistant/blueprints/ against $(CONFIG): every
+# controller entity id they name must exist, as a fresh install names it, the piscine-card must map every
+# entity the card uses, each language's scripts must have the ones its dashboard calls, and every template
+# must have a file in each language. Python in the ESPHome image, like the mock.
 ha-dashboard-check:
 	docker run --rm -v "$(CURDIR):/config" --entrypoint python3 $(ESPHOME_IMAGE) /config/tools/ha-dashboard-check.py /config/$(CONFIG) /config/home-assistant/dashboard
 
@@ -194,7 +196,8 @@ ha-dashboard-check:
 # embeds: web_server's js_include and css_include in $(CONFIG). Rebuilt only
 # when a source changes; validate, build (so ota and flash) and mock-ui
 # depend on it. esbuild runs in a node container, like ESPHome in its own.
-WEBUI_SRC := $(wildcard webui/*.js webui/*.html webui/*.css) home-assistant/piscine-card.js
+CARD_SRC := home-assistant/piscine-card.js home-assistant/i18n.js $(wildcard home-assistant/i18n/*.json)
+WEBUI_SRC := $(wildcard webui/*.js webui/*.html webui/*.css webui/i18n-page/*.json) $(CARD_SRC)
 ESBUILD := docker run --rm -v "$(CURDIR):/src" -w /src -e NPM_CONFIG_UPDATE_NOTIFIER=false node:22-alpine npx --yes esbuild@0.24.2
 
 webui: webui/dist/device.js webui/dist/device.css
@@ -205,13 +208,24 @@ webui/dist/device.js: $(WEBUI_SRC)
 webui/dist/device.css: webui/app.css
 	$(ESBUILD) webui/app.css --minify --log-level=warning --outfile=$@
 
+# The card as a release ships it (release.yml): home-assistant/piscine-card.js and its texts (i18n.js,
+# i18n/*.json) in one minified file, home-assistant/dist/piscine-card.js (gitignored), which HACS installs
+# as the release's piscine-card.js, under a one-line header: its version, licence and source.
+CARD_VERSION = $(shell sed -nE 's/^const VERSION = "([^"]+)";/\1/p' home-assistant/piscine-card.js)
+card: home-assistant/dist/piscine-card.js
+
+home-assistant/dist/piscine-card.js: $(CARD_SRC)
+	$(ESBUILD) home-assistant/piscine-card.js --bundle --minify --format=esm --legal-comments=none --log-level=warning \
+		"--banner:js=/*! piscine-card $(CARD_VERSION), the Pool Controller card for Home Assistant. MIT License. https://github.com/davidterranova/pool-controller */" --outfile=$@
+
 # piscine-card's preview (tools/card-preview/): the card as it is, against a stand-in
 # for Home Assistant, in named situations (scenarios.js), with no Home Assistant
 # nor controller. card-preview serves it at http://localhost:$(CARD_PREVIEW_PORT)/tools/card-preview/.
 # card-shots takes each situation's tile and panel at 390 and 760 px, light and
-# dark, into tools/card-preview/shots/ (SCENARIO=fill-alarm,normal for some);
-# card-preview-check loads them all on every tab and fails on an error, or on
-# « undefined » / « NaN » in the card. Both run Chromium in Playwright's image,
+# dark, in French, English and Spanish, into tools/card-preview/shots/
+# (SCENARIO=fill-alarm,normal for some; LANG=fr for one language);
+# card-preview-check loads them all on every tab, in each language, and fails on
+# an error, or on « undefined » / « NaN » / a dictionary key in the card. Both run Chromium in Playwright's image,
 # with playwright-core installed once into .card-preview/.
 CARD_PREVIEW_PORT ?= 8124
 PLAYWRIGHT_VERSION := 1.52.0
@@ -224,10 +238,11 @@ card-preview:
 	docker run --rm -it -p $(CARD_PREVIEW_PORT):8124 -v "$(CURDIR):/src:ro" -w /src --entrypoint python3 $(ESPHOME_IMAGE) -m http.server 8124
 
 card-shots:
-	$(PLAYWRIGHT) $(if $(SCENARIO),--only $(SCENARIO))
+	$(PLAYWRIGHT) $(if $(SCENARIO),--only $(SCENARIO)) $(if $(LANG),--lang $(LANG))
 
-card-preview-check:
-	$(PLAYWRIGHT) --check
+# CARD_BUNDLE=1: against the release's minified card (make card) instead of its source, as CI does.
+card-preview-check: $(if $(CARD_BUNDLE),card)
+	$(PLAYWRIGHT) --check $(if $(CARD_BUNDLE),--bundle) $(if $(LANG),--lang $(LANG))
 
 # Unit tests of the pages' pure modules (webui/test/: the setup's logic, the
 # time zone table; tools/tests/install-page.test.mjs: the install page's
@@ -235,5 +250,30 @@ card-preview-check:
 webui-test:
 	docker run --rm -v "$(CURDIR):/src" -w /src node:22-alpine node --test 'webui/test/*.test.mjs' 'tools/tests/*.test.mjs'
 
+# The interface's texts (docs/plans/i18n.md; the surfaces in tools/i18n/surfaces.mjs), in the same node image.
+#   i18n-check    every dictionary complete in every language and consistent with its sources, and the Home
+#                 Assistant files up to date with their templates (ha-files --check); fails on an error
+#   ha-files      the Home Assistant files (dashboard, scripts, blueprints) in every language, from each
+#                 home-assistant/**/*.tmpl.yaml and the texts in home-assistant/i18n-yaml/ (tools/i18n/ha-files.mjs)
+#   i18n-export   every text in English as one Markdown file, .i18n/translations.en.md, for any translation tool
+#   i18n-import   the translated file back into each surface's <TO>.json: make i18n-import TO=es FILE=~/Downloads/x.md
+#                 (DRY_RUN=1: only report). TO, not LANG: LANG is the shell's locale.
+I18N_NODE := docker run --rm -v "$(CURDIR):/src" -w /src node:22-alpine node
+
+i18n-check:
+	$(I18N_NODE) tools/i18n/check.mjs
+	$(I18N_NODE) tools/i18n/ha-files.mjs --check
+
+ha-files:
+	$(I18N_NODE) tools/i18n/ha-files.mjs
+
+i18n-export:
+	$(I18N_NODE) tools/i18n/export.mjs --out .i18n/translations.en.md
+
+i18n-import:
+	@test -n "$(TO)" && test -n "$(FILE)" || { echo "usage: make i18n-import TO=es FILE=path/to/translated.md [DRY_RUN=1]"; exit 2; }
+	@mkdir -p .i18n && cp "$(FILE)" .i18n/import.$(TO).md
+	$(I18N_NODE) tools/i18n/import.mjs --to $(TO) $(if $(DRY_RUN),--dry-run) .i18n/import.$(TO).md
+
 clean:
-	rm -rf .esphome webui/dist $(MIGRATE_DIR)
+	rm -rf .esphome webui/dist home-assistant/dist .i18n $(MIGRATE_DIR)

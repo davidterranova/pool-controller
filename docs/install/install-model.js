@@ -60,16 +60,19 @@ export async function loadFirmware(fetchFn, url) {
   }
 }
 
-/** One sentence for the live status region: what the page offers now. `tool` is ESP Web Tools: loading, ready, error. */
+/**
+ * What the live status region says now, as a code and its values: { code, vars }. The page shows it in its
+ * language as the text `status.<code>` (i18n/*.json). `tool` is ESP Web Tools: loading, ready, error.
+ */
 export function statusMessage(browser, fw, tool) {
-  if (fw.state === "loading") return "Recherche du firmware…";
-  if (fw.state === "none") return "Pas encore de firmware publié : l'installation n'est pas encore possible.";
-  if (fw.state === "error") return "Impossible de lire le firmware : vérifiez la connexion, puis réessayez.";
-  const fwText = `Firmware ${fw.version}`;
-  if (browser === "phone") return `${fwText}. Sur téléphone, on prépare ; on installe depuis un ordinateur.`;
-  if (browser === "not-allowed") return `${fwText}. Page ouverte sans HTTPS : l'installation n'est pas possible ici.`;
-  if (browser === "unsupported") return `${fwText}. Ce navigateur ne peut pas installer : ouvrez la page dans Chrome ou Edge, sur un ordinateur.`;
-  if (tool === "error") return `${fwText}. L'outil d'installation n'a pas pu être chargé.`;
-  if (tool === "loading") return `${fwText}. Chargement de l'outil d'installation…`;
-  return `${fwText}, prêt à installer.`;
+  if (fw.state === "loading") return { code: "searching", vars: {} };
+  if (fw.state === "none") return { code: "none", vars: {} };
+  if (fw.state === "error") return { code: "error", vars: {} };
+  const vars = { version: fw.version };
+  if (browser === "phone") return { code: "phone", vars };
+  if (browser === "not-allowed") return { code: "not_allowed", vars };
+  if (browser === "unsupported") return { code: "unsupported", vars };
+  if (tool === "error") return { code: "tool_error", vars };
+  if (tool === "loading") return { code: "tool_loading", vars };
+  return { code: "ready", vars };
 }
