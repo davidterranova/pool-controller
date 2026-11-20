@@ -1109,6 +1109,7 @@ class PoolSim:
         if temp is None or not self.settings.position_ok:
             return  # as evaluate_speed: no plan without a pool reading, a position and a timezone
         hours = min(max(temp / 2.0, self.active["min"]), self.active["max"]) + self.active["offset"]
+        hours = min(max(hours, 0.0), 24.0)  # the offset may be negative, as evaluate_speed
         midnight = int(datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
         sunrise, sunset = midnight + MOCK_SUNRISE, midnight + MOCK_SUNSET
         warmest = (sunrise + sunset) // 2 + int(self.active["warm"] * 3600)
