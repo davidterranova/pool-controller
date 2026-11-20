@@ -113,7 +113,7 @@
  * the day plan, Pilotage right under it, the temperature, then the readings in one row (layout « B », approved
  * on the mock-up on 2026-11-11; Pilotage moved under the plan on 2026-11-20). « Réglages » is two columns, cut after « Appliquer »: Plan du jour, Sondes and
  * « Filtration » on the left, « Impulsions et hors gel » and 7 derniers jours on the right; « Réglages
- * contrôleur » is Position beside Firmware.
+ * contrôleur » is Position beside Firmware, Redémarrer under Firmware.
  */
 // The texts, in every language, bundled into the card (i18n.js; docs/plans/i18n.md): nothing is fetched. The
 // release builds this file with them (make card), and the device's page bundles it the same way.
@@ -180,7 +180,7 @@ const DEFAULT_ENTITIES = {
   firmware: "update.pool_controller_firmware",
   checkUpdate: "button.pool_controller_check_for_update",
   cancelUpdate: "button.pool_controller_cancel_update",
-  restart: "button.pool_controller_restart", // « Réglages » › Redémarrer (device-settings.yaml, 1.12.0)
+  restart: "button.pool_controller_restart", // « Réglages contrôleur » › Redémarrer (device-settings.yaml, 1.12.0)
   autoUpdate: "switch.pool_controller_auto_update",
   updateInterval: "select.pool_controller_update_check_interval",
   updateStatus: "sensor.pool_controller_update_status",
@@ -658,7 +658,7 @@ ha-card.water-card.plain { background:var(--card); border:1px solid var(--ha-car
 .tl-leg i.k-cur { width:8px; height:11px; background:var(--acc); opacity:.55; border-radius:2px 2px 0 0; }
 
 /* tab « Réglages », read in this order: Plan du jour › Sondes › Filtration et hors gel › 7 derniers jours; tab
-   « Réglages contrôleur »: Position › Firmware. One column on a phone; two when wide (@container pcard below), the
+   « Réglages contrôleur »: Position › Firmware › Redémarrer. One column on a phone; two when wide (@container pcard below), the
    settings cut after « Appliquer »: their second part (.cont) continues the first on a phone, without a heading.
    Each column is a container, so its rows wrap at its own width. */
 .setpane, .ctlpane { display:flex; flex-direction:column; gap:22px; container-type:inline-size; }
@@ -824,14 +824,6 @@ const panelHtml = (t) => `
     <div class="sp-col">
       <section class="cont"><h4 class="sp-h">${t("card.sec.pulses_freeze")}</h4><div id="rows2"></div></section>
       <section><h4 class="sp-h">${t("card.sec.days")}</h4><div class="days" id="days"></div></section>
-      <section id="restartSec" hidden><h4 class="sp-h">${t("card.sec.restart")}</h4>
-        <div class="erow"><span class="ic" id="restartIc"></span><span class="name"><span>${t("card.restart.row")}</span><small>${t("card.restart.sub")}</small></span>
-          <button class="btn" id="restartBtn">${t("card.restart.button")}</button></div>
-        <div class="confirm" id="restartCf" role="alertdialog" aria-label="${t("card.restart.aria")}" hidden>
-          <span>${t("card.restart.confirm")}</span>
-          <button class="no" id="restartNo">${t("common.cancel")}</button>
-          <button class="yes" id="restartYes">${t("card.restart.yes")}</button>
-        </div></section>
     </div>
   </div>
   <div class="ctlpane" role="tabpanel">
@@ -841,6 +833,14 @@ const panelHtml = (t) => `
     </div>
     <div class="sp-col">
       <section id="fwSec" hidden><h4 class="sp-h">${t("card.sec.firmware")}</h4><div id="updRows"></div></section>
+      <section id="restartSec" hidden><h4 class="sp-h">${t("card.sec.restart")}</h4>
+        <div class="erow"><span class="ic" id="restartIc"></span><span class="name"><span>${t("card.restart.row")}</span><small>${t("card.restart.sub")}</small></span>
+          <button class="btn" id="restartBtn">${t("card.restart.button")}</button></div>
+        <div class="confirm" id="restartCf" role="alertdialog" aria-label="${t("card.restart.aria")}" hidden>
+          <span>${t("card.restart.confirm")}</span>
+          <button class="no" id="restartNo">${t("common.cancel")}</button>
+          <button class="yes" id="restartYes">${t("card.restart.yes")}</button>
+        </div></section>
     </div>
   </div>
   <div class="plan">
@@ -2049,7 +2049,7 @@ class PiscineCard extends HTMLElement {
       if (b && !b.disabled) this._posFromHa(b);
     });
   }
-  /** « Réglages » › Redémarrer: asks first (7 s to answer), then presses the controller's Restart. */
+  /** « Réglages contrôleur » › Redémarrer: asks first (7 s to answer), then presses the controller's Restart. */
   _wireRestart() {
     const btn = this._$("restartBtn"), cf = this._$("restartCf");
     const ask = (open) => {
@@ -2078,6 +2078,9 @@ class PiscineCard extends HTMLElement {
     for (const r of this._paneRows) if (r.sect) r.sect.hidden = this._paneRows.every((x) => x.sect !== r.sect || x.row.hidden);
     this._updateSettings();
     this._renderDays();
+  }
+  /** « Réglages contrôleur » › Redémarrer: on a firmware with the Restart button, usable while the controller is online. */
+  _renderRestart() {
     const restart = this._st("restart");
     this._$("restartSec").hidden = !restart;
     if (restart) {
@@ -2397,8 +2400,9 @@ class PiscineCard extends HTMLElement {
     const inOvr = this._inOvr(), online = this._online(), freeze = this._freeze(), stuck = this._stuck();
     const until = this._ovrUntil();
 
-    // « Réglages » and « Réglages contrôleur » can be turned off; the latter needs a firmware with a position or updates
-    const ctl = ["latitude", "longitude", "timezone", "firmware"].some((k) => this._st(k));
+    // « Réglages » and « Réglages contrôleur » can be turned off; the latter needs a firmware with a position, updates or
+    // the Restart button
+    const ctl = ["latitude", "longitude", "timezone", "firmware", "restart"].some((k) => this._st(k));
     const shown = { pump: true, settings: this._config.settings_tab, controller: this._config.settings_tab && ctl };
     if (!shown[this._tab]) this._tab = "pump";
     this._$("tabs").hidden = !shown.settings && !shown.controller;
@@ -2409,7 +2413,7 @@ class PiscineCard extends HTMLElement {
       b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1;
     });
     if (this._tab === "settings") this._renderSetPane();
-    if (this._tab === "controller") { this._renderPos(); this._renderUpdate(); }
+    if (this._tab === "controller") { this._renderPos(); this._renderUpdate(); this._renderRestart(); }
     this._$("waterBlk").hidden = !this._waterShown(); // « Contrôle »: the fill water, with a recorder and a meter
 
     this._$("ico").className = this._icoClass("ico big");
