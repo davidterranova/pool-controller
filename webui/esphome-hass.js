@@ -166,6 +166,10 @@ export class EspHass extends EventTarget {
     this.connected = false;
     this.logs = [];
     this.themes = { darkMode: matchMedia("(prefers-color-scheme: dark)").matches };
+    // The card follows the HA user's language. TEMPORARY: French, like the rest of the page, until I4
+    // (docs/plans/i18n.md) gives the page its language switch and sets these from it.
+    this.language = "fr";
+    this.locale = { language: "fr" };
     this.history = {}; // name_id -> [[t ms, value]]
     this._estimated = new Set(); // ids whose last_changed is a guess
     this.firmware = null; // the controller's firmware when this page loaded (Firmware's current_version)

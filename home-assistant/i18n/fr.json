@@ -1,14 +1,35 @@
 {
   "common": {
     "mode": {
-      "auto": "Auto"
+      "auto": "Auto",
+      "manual": "Manuel"
     },
-    "override": "Forcer",
     "speed": {
       "Off": "Arrêt",
       "Low": "Basse",
       "Medium": "Moyenne",
       "High": "Haute"
+    },
+    "stopped": "Arrêtée",
+    "never": "Jamais",
+    "cancel": "Annuler",
+    "apply": "Appliquer",
+    "pending": "En attente",
+    "open_in_ha": "Ouvrir dans Home Assistant",
+    "refused": "Refusé : {error}",
+    "ha_refused": "Commande refusée par Home Assistant",
+    "today": "aujourd'hui",
+    "today_cap": "Aujourd'hui",
+    "today_short": "auj.",
+    "yesterday": "hier",
+    "yesterday_cap": "Hier",
+    "ongoing": "{when}, en cours",
+    "week_of": "semaine du {date}",
+    "ago": {
+      "now": "à l'instant",
+      "min": "il y a {n} min",
+      "h": "il y a {n} h",
+      "d": "il y a {n} j"
     }
   },
   "card": {
@@ -20,19 +41,433 @@
       "stuck": "Vitesse forcée sur {speed} depuis {duration} : la pompe ne suit plus son plan de filtration."
     },
     "hint": {
-      "following": "Le contrôleur suit son plan : <b>{speed}</b> maintenant, {next}."
+      "following": "Le contrôleur suit son plan : <b>{speed}</b> maintenant, {next}.",
+      "next_at": "<b>{speed}</b> à {time}",
+      "stop_at_end": "arrêt en fin de bloc",
+      "freeze": "Hors gel : le contrôleur impose Basse tant que le bassin est sous {temp} °C. Le pilotage reprendra ensuite.",
+      "following_off_at": "Le contrôleur suit son plan : pompe arrêtée, reprise à {time}.",
+      "following_off_sunrise": "Le contrôleur suit son plan : pompe arrêtée, reprise demain au lever du soleil.",
+      "choose": "Choisissez une vitesse : elle s'applique tout de suite et remplace le plan.",
+      "suspended": "Le plan est suspendu.",
+      "suspended_until": "Le plan est suspendu jusqu'à {time}.",
+      "doing": "Le contrôleur fait <b>{speed}</b>.",
+      "doing_vs": "Le contrôleur fait <b>{speed}</b>, le plan aurait fait {planned}."
     },
     "temp": {
       "span_days": {
         "one": "{count} jour",
         "other": "{count} jours"
-      }
+      },
+      "title": "Température du bassin",
+      "now": "<b>{temp} °C</b> maintenant",
+      "loading_history": "Chargement de l'historique…",
+      "loading_stats": "Chargement des statistiques…",
+      "fz": "Hors gel {temp} °C",
+      "fz_leg": "Hors gel : Basse forcée sous {temp} °C",
+      "fz_leg_below": "Hors gel : Basse forcée sous {temp} °C (sous l'échelle)",
+      "below_fz": "sous le seuil hors gel",
+      "none_24h": "Pas de mesure de la température ces dernières 24 h.",
+      "tip_pool": "bassin, pompe en marche",
+      "tip_short": "pompe en marche depuis moins de {min} min",
+      "tip_pipe": "tuyau, pompe arrêtée",
+      "today_range": "<b>{lo} – {hi} °C</b> aujourd'hui, pompe en marche",
+      "none_today": "Pas encore de mesure du bassin aujourd'hui",
+      "pipe_short": "Pompe en marche depuis moins de {min} min : {temp} °C est la température du tuyau.",
+      "pipe_off": "Pompe arrêtée : {temp} °C est la température du tuyau.",
+      "last_pool": "Bassin : {temp} °C à {time}.",
+      "last_pool_yday": "Bassin : {temp} °C à {time} hier.",
+      "leg_pool": "Bassin (pompe en marche depuis {min} min)",
+      "leg_pipe": "Tuyau, pompe arrêtée",
+      "aria24": "Température du bassin sur 24 h, de {lo} à {hi} °C",
+      "tip_mean": {
+        "day": "sonde, moyenne du jour, tuyau compris",
+        "week": "sonde, moyenne de la semaine, tuyau compris"
+      },
+      "tip_hours": "{hours} h de filtration",
+      "no_reading": "Pas de mesure",
+      "none_yet": "Pas encore de mesure",
+      "span_12m": "12 mois",
+      "sum_pool": "<b>{lo} – {hi} °C</b> sur {span}, pompe en marche",
+      "sum_mixed": "<b>{lo} – {hi} °C</b> sur {span}",
+      "sum_mean": {
+        "day": "<b>{lo} – {hi} °C</b> sur {span}, moyenne du jour de la sonde",
+        "week": "<b>{lo} – {hi} °C</b> sur {span}, moyenne de la semaine de la sonde"
+      },
+      "note_dash": {
+        "day": "Pointillés : les jours sans min – max du bassin, la sonde en moyenne, tuyau compris (pompe arrêtée, elle lit le local technique).",
+        "week": "Pointillés : les semaines sans min – max du bassin, la sonde en moyenne, tuyau compris (pompe arrêtée, elle lit le local technique)."
+      },
+      "note_mean": "La sonde en moyenne, tuyau compris (pompe arrêtée, elle lit le local technique).",
+      "stats_err": "Statistiques de Home Assistant indisponibles : seuls les 7 derniers jours sont connus.",
+      "measured": {
+        "day": {
+          "one": "{count} jour mesuré sur {n}.",
+          "other": "{count} jours mesurés sur {n}."
+        },
+        "week": {
+          "one": "{count} semaine mesurée sur {n}.",
+          "other": "{count} semaines mesurées sur {n}."
+        }
+      },
+      "leg_rng": {
+        "day": "Min – max du jour, pompe en marche depuis {min} min",
+        "week": "Min – max de la semaine, pompe en marche depuis {min} min"
+      },
+      "leg_mean": {
+        "day": "Sonde, moyenne du jour, tuyau compris",
+        "week": "Sonde, moyenne de la semaine, tuyau compris"
+      },
+      "aria": "Température du bassin, {span} : {items}",
+      "aria_range": "{when} {lo} à {hi} °C",
+      "aria_mean": "{when} environ {temp} °C (sonde)",
+      "aria_none": "{when} pas de mesure"
     },
     "fill": {
-      "alarm_since": "Remplissage en cours depuis {time} ({duration}) : vérifiez le robinet de remplissage."
+      "alarm_since": "Remplissage en cours depuis {time} ({duration}) : vérifiez le robinet de remplissage.",
+      "fill": "Remplissage depuis {duration}",
+      "fill_over": "Remplissage depuis plus de {duration}",
+      "running": "Remplissage en cours depuis {duration}",
+      "running_over": "Remplissage en cours depuis plus de {duration}",
+      "on": "En cours depuis {duration}",
+      "on_over": "En cours depuis plus de {duration}",
+      "past_alarm": "{text} : au-delà de l'alarme ({duration})",
+      "on_at": "En cours depuis {time}",
+      "alarm_over": "Remplissage en cours depuis plus de {duration} : vérifiez le robinet de remplissage.",
+      "acked_since": "Remplissage en cours depuis {time} ({duration}) : alarme acquittée, plus de rappel jusqu'à la fin de ce remplissage.",
+      "acked_over": "Remplissage en cours depuis plus de {duration} : alarme acquittée, plus de rappel jusqu'à la fin de ce remplissage.",
+      "ack": "Acquitter",
+      "acked_toast": "Alarme acquittée : plus de rappel jusqu'à la fin de ce remplissage"
     },
     "settings": {
       "filtration_section": "Durée de filtration · Effectif en cliquant « Appliquer »"
+    },
+    "title": "Pompe piscine",
+    "close": "Fermer",
+    "tab": {
+      "pump": "Contrôle",
+      "settings": "Réglages",
+      "controller": "Réglages contrôleur"
+    },
+    "sec": {
+      "plan": "Plan du jour",
+      "probes": "Sondes",
+      "filtration": "Filtration",
+      "filtration_freeze": "Filtration et hors gel",
+      "pulses_freeze": "Impulsions et hors gel",
+      "days": "7 derniers jours",
+      "position": "Position",
+      "firmware": "Firmware"
+    },
+    "pend_banner": "Durée de filtration modifiée : elle ne compte qu'une fois appliquée, ce qui recalcule le plan du jour.",
+    "chart_range": "Période du graphique",
+    "range": {
+      "24h": "24 h",
+      "7d": "7 j",
+      "30d": "30 j",
+      "90d": "90 j",
+      "1y": "1 an",
+      "12m": "12 mois"
+    },
+    "read": {
+      "pool": "Bassin",
+      "outdoor": "Extérieur",
+      "hours": "Filtration aujourd'hui",
+      "next": "Prochain changement",
+      "nothing_today": "plus rien aujourd'hui"
+    },
+    "leg": {
+      "pulse": "Impulsion {speed}",
+      "forced": "Forcée en {speed}"
+    },
+    "plan": {
+      "not_computed": "plan non calculé"
+    },
+    "alert": {
+      "plan": "Plan du jour non calculé : le contrôleur n'a pas pu lire la température ou le lever du soleil. La pompe peut rester arrêtée.",
+      "off": "Contrôleur hors ligne depuis {duration}. Le plan continue sur l'ESP32, mais aucune commande ne lui parviendra.",
+      "freeze": "Hors gel actif (bassin {temp} °C) : la pompe tourne en Basse quoi qu'on lui demande."
+    },
+    "back_auto": "Revenir en Auto",
+    "back_auto_now": "Revenir en Auto maintenant (sinon à {time})",
+    "confirm": {
+      "stop": "Arrêter",
+      "stop_for": "Arrêter la pompe pendant {duration} ?",
+      "stop_nolimit": "Arrêter la pompe sans limite de durée ?"
+    },
+    "step": {
+      "sent": "Envoyé",
+      "applied": "Appliqué par le contrôleur"
+    },
+    "ctl": {
+      "title": "Pilotage",
+      "aria": "Pilotage de la pompe"
+    },
+    "speed": {
+      "title": "Vitesse forcée"
+    },
+    "dur": {
+      "title": "Retour en Auto",
+      "aria": "Durée du forçage",
+      "alert": "alerte {min} min",
+      "back_at": "Retour automatique en Auto à {time} (dans {duration}).",
+      "none_running": "Aucun retour automatique : alerte après {min} min, et la pompe reste ainsi jusqu'à ce que quelqu'un repasse en Auto.",
+      "will_return": "La pompe reviendra d'elle-même au plan après {duration}.",
+      "none": "Sans minuteur : alerte après {min} min, et la pompe reste ainsi jusqu'à ce que quelqu'un repasse en Auto."
+    },
+    "phase": {
+      "freeze": "Hors gel · {speed}",
+      "stuck": "Forcée depuis {duration}"
+    },
+    "tile": {
+      "sending": "Envoi au contrôleur…",
+      "stuck": "Forcée en {speed} depuis {duration}",
+      "auto_at": "Auto à {time}",
+      "no_limit": "sans limite"
+    },
+    "foot": {
+      "computed": "Plan calculé à {time}",
+      "plan_only": "Plan seul : {speed}"
+    },
+    "cmd": {
+      "timeout": "Le contrôleur n'a pas répondu. La pompe n'a pas changé.",
+      "auto_done": "Retour en Auto : la pompe suit son plan",
+      "until": "{what} jusqu'à {time}",
+      "off_done": "Pompe arrêtée",
+      "speed_done": "Pompe en {speed}",
+      "done_auto": "{what}, Auto à {time}",
+      "already": "Déjà en {speed}",
+      "auto_at": "Retour en Auto à {time}",
+      "no_auto": "Plus de retour automatique"
+    },
+    "light": {
+      "live": "Contrôleur · {ago}",
+      "mute_since": "Contrôleur muet depuis {duration}",
+      "off": "Hors ligne",
+      "off_since": "Hors ligne depuis {duration}",
+      "tip_off": "Contrôleur hors ligne",
+      "tip_off_last": "Contrôleur hors ligne : dernier message à {time}",
+      "tip_alarm": "{fill}, alarme non acquittée.",
+      "tip_last": "Dernier message du contrôleur à {time}, {ago}"
+    },
+    "row": {
+      "min": {
+        "label": "Filtration minimale",
+        "sub": "Plancher, même par eau froide"
+      },
+      "max": {
+        "label": "Filtration maximale",
+        "sub": "Plafond, même en pleine chaleur"
+      },
+      "offset": {
+        "label": "Ajustement de durée",
+        "sub": "Ajouté à la durée calculée"
+      },
+      "warm": {
+        "label": "Décalage du pic de chaleur",
+        "sub": "Centre du 2ᵉ bloc par rapport au midi solaire"
+      },
+      "apply": {
+        "label": "Appliquer les réglages",
+        "sub": "Recalcule le plan du jour"
+      },
+      "boostDuration": {
+        "label": "Durée d'une impulsion"
+      },
+      "boostInterval": {
+        "label": "Intervalle entre impulsions",
+        "sub": "0 = pas d'impulsion"
+      },
+      "highEvery": {
+        "label": "Une impulsion Haute toutes les",
+        "sub": "Les autres sont en Moyenne"
+      },
+      "freezeAt": {
+        "label": "Basse forcée sous",
+        "sub": "Quand l'eau descend sous ce seuil, quoi qu'on demande"
+      },
+      "hoursPlanned": {
+        "label": "Durée planifiée"
+      },
+      "hoursToday": {
+        "label": "Filtrée aujourd'hui",
+        "pct": "{pct} % du plan"
+      },
+      "b1s": {
+        "label": "Bloc 1"
+      },
+      "b2s": {
+        "label": "Bloc 2"
+      },
+      "planned": {
+        "label": "Vitesse du plan maintenant"
+      },
+      "commanded": {
+        "label": "Vitesse commandée",
+        "forced": "Forcée : {speed}",
+        "follows": "Suit le plan"
+      },
+      "nextAt": {
+        "label": "Prochain changement"
+      },
+      "nextBoostStart": {
+        "label": "Prochaine impulsion"
+      },
+      "recomputed": {
+        "label": "Plan calculé à"
+      },
+      "recompute": {
+        "label": "Recalculer le plan maintenant",
+        "button": "Recalculer",
+        "ok": "Plan du jour recalculé"
+      },
+      "water": {
+        "label": "Eau (retour filtre)",
+        "off": "Pompe arrêtée : la sonde lit le tuyau",
+        "on": "Pompe en marche : l'eau du bassin"
+      },
+      "pad": {
+        "label": "Local technique"
+      },
+      "outdoor": {
+        "label": "Extérieur"
+      },
+      "updateTemps": {
+        "label": "Relire les sondes de température",
+        "button": "Relire",
+        "ok": "Sondes relues"
+      }
+    },
+    "sect": {
+      "pulses": "Impulsions · immédiat",
+      "freeze": "Hors gel · immédiat"
+    },
+    "applied": "Réglages appliqués : plan du jour recalculé",
+    "nothing_today": "Plus rien aujourd'hui",
+    "fw": {
+      "not_make": "Compilé hors de make : on ne sait pas de quel commit",
+      "local_changes": "avec des modifications locales",
+      "commits_after": {
+        "one": "Commit {hash}, {count} commit après {tag}",
+        "other": "Commit {hash}, {count} commits après {tag}"
+      },
+      "released": "Version publiée",
+      "built_at": "Compilé le {date} à {time}",
+      "built_raw": "Compilé {when}",
+      "why": {
+        "override": "vitesse forcée en cours",
+        "fill": "remplissage en cours",
+        "check": "la vérification n'a pas abouti (pas de réseau, ou aucune version publiée pour l'instant)",
+        "install": "l'installation n'a pas abouti",
+        "waits": "le contrôleur attend"
+      },
+      "hold_until": "vitesse forcée en cours ({speed}, retour en Auto à {time})",
+      "hold_noend": "vitesse forcée en cours ({speed}, sans fin)",
+      "rebooting": "Redémarrage du contrôleur…",
+      "off": "Contrôleur injoignable : versions inconnues pour l'instant",
+      "installing_pct": "Installation : {pct} %",
+      "installing": "Installation…",
+      "checking": "Recherche d'une nouvelle version…",
+      "deferred": "En attente : {why}",
+      "failed": "Échec : {why}",
+      "avail": "{version} : environ 1 min, redémarrage compris",
+      "nothing": "Rien à installer",
+      "check": "Vérifier",
+      "install": "Installer",
+      "installed": "Version installée",
+      "latest": "Dernière version",
+      "upd_avail": "Mise à jour disponible",
+      "up_to_date": "À jour",
+      "notes": "Notes de version",
+      "update": "Mise à jour",
+      "ask": "{hold} : le contrôleur n'installe rien pendant ce temps. Il installera {version} dès la fin, puis redémarre (environ 30 s ; la pompe s'arrête le temps du redémarrage).",
+      "ask_ovr": "Pour installer tout de suite, revenez d'abord en Auto.",
+      "install_at_end": "Installer à la fin",
+      "deferred_v": "Installation de {version} en attente : {why}. Le contrôleur la lancera de lui-même ensuite.",
+      "deferred_nov": "Installation en attente : {why}. Le contrôleur la lancera de lui-même ensuite.",
+      "cancel_request": "Annuler la demande",
+      "auto": "Mise à jour automatique",
+      "auto_sub": "Installe seule une nouvelle version trouvée par une vérification programmée ; « Vérifier » ne fait que chercher. Comme toute installation, elle attend la fin d'une vitesse forcée ou d'un remplissage.",
+      "interval": "Fréquence de vérification",
+      "interval_on_request": "Seulement sur « Vérifier » : rien ne s'installe seul",
+      "interval_auto": "La mise à jour automatique installe ce qu'elle trouve",
+      "opt": {
+        "on_request": "À la demande",
+        "days": {
+          "one": "{count} j",
+          "other": "{count} j"
+        }
+      },
+      "toast_avail": "Firmware {version} disponible",
+      "toast_ok": "Firmware à jour ({version})",
+      "req": "Installation de {version} demandée",
+      "req_ovr": "Installation de {version} demandée : le contrôleur la lancera à la fin de la vitesse forcée",
+      "req_fill": "Installation de {version} demandée : le contrôleur la lancera à la fin du remplissage",
+      "cancelled": "Demande d'installation annulée"
+    },
+    "pos": {
+      "lat": "Latitude",
+      "lon": "Longitude",
+      "unset": "non définie",
+      "tz": "Fuseau horaire",
+      "tz_posix": "chaîne POSIX saisie",
+      "tz_unset": "non défini",
+      "note": "Arrondies à 0,01° (environ 1 km) : assez pour le lever et le coucher du soleil, d'où le contrôleur tire son plan, sans situer la maison.",
+      "use_ha": "Utiliser la position et le fuseau de Home Assistant",
+      "same": "Déjà ceux de Home Assistant.",
+      "same_pos": "Position déjà celle de Home Assistant ; son fuseau ({zone}) est inconnu de la carte : réglez-le sur la page du contrôleur.",
+      "ha": "Home Assistant : {lat} · {lon} · {zone}",
+      "ha_nozone": "Home Assistant : {lat} · {lon} · {zone} (fuseau inconnu de la carte : la position seule)",
+      "ha_tz_unset": "fuseau non défini",
+      "use": "Utiliser",
+      "sent_both": "Position et fuseau de Home Assistant envoyés : plan du jour recalculé",
+      "sent_pos": "Position de Home Assistant envoyée : plan du jour recalculé"
+    },
+    "water": {
+      "title": "Eau de remplissage",
+      "today": "Rempli aujourd'hui",
+      "month": "Ce mois-ci",
+      "flow": "Débit",
+      "no_device": "Le contrôleur ne garde pas d'historique de remplissage : son firmware est antérieur.",
+      "stats_err": "Statistiques de Home Assistant indisponibles.",
+      "no_stats": "Pas encore de statistiques pour ce compteur : Home Assistant les calcule chaque heure.",
+      "no_reading": "Pas de relevé",
+      "aria_none": "{when} pas de relevé",
+      "sum": {
+        "30d": "<b>{total}</b> sur 30 jours · {avg} par jour en moyenne",
+        "90d": "<b>{total}</b> sur 13 semaines · {avg} par semaine en moyenne",
+        "12m": "<b>{total}</b> sur 12 mois · {avg} par mois en moyenne"
+      },
+      "leg": {
+        "30d": "Litres par jour, compteur du remplissage",
+        "90d": "Litres par semaine, compteur du remplissage",
+        "12m": "Litres par mois, compteur du remplissage"
+      },
+      "cur": {
+        "30d": "Aujourd'hui",
+        "90d": "Semaine en cours",
+        "12m": "Mois en cours"
+      },
+      "aria": {
+        "30d": "Eau de remplissage sur 30 jours : {items}",
+        "90d": "Eau de remplissage sur 13 semaines : {items}",
+        "12m": "Eau de remplissage sur 12 mois : {items}"
+      },
+      "peak": "Le plus : {value}, {when}",
+      "first": "Premier relevé : {when}"
+    },
+    "days": {
+      "water": "Eau",
+      "tip_today": "En cours ; le trait marque la durée planifiée",
+      "tip_nodata": "Pas de données : contrôleur éteint ou sans heure ce jour-là",
+      "tip_noplan": "Plan du jour non enregistré",
+      "tip_plan": "Plan {planned} h ; {gap}",
+      "plan_kept": "plan tenu",
+      "mean": {
+        "one": "Moyenne {hours} h de filtration par jour sur {count} jour.",
+        "other": "Moyenne {hours} h de filtration par jour sur {count} jours."
+      },
+      "none": "Aucune journée complète pour l'instant.",
+      "legend": "Le trait marque la durée planifiée ; en orange, une journée restée sous son plan. Eau : minimum et maximum du jour, mesurés pompe en marche. Le contrôleur enregistre chaque journée à minuit."
     }
   }
 }

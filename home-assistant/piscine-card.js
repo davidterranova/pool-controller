@@ -15,7 +15,8 @@
  *   controller_light: false                            # optional: no light for the controller (tile, header)
  *   controller_health: { warn: 3, alert: 15, beat: 4 }  # optional: its minutes before amber, before red; seconds between beats
  *   more_path: /config/…  # optional: where the light leads instead of the controller's device page
- *   language: es          # optional: en, fr or es, instead of the Home Assistant user's language
+ *   language: es          # optional: en, fr or es, instead of the Home Assistant user's language (its texts:
+ *                         # home-assistant/i18n/<lang>.json; numbers and times follow the user's profile)
  *   # temperatures: deprecated since 1.8.0, accepted and ignored (the probes are in « Réglages » › Sondes)
  *
  * The card never writes the controller's Manual Override select itself:
@@ -120,6 +121,11 @@ import en from "./i18n/en.json" with { type: "json" };
 import fr from "./i18n/fr.json" with { type: "json" };
 import es from "./i18n/es.json" with { type: "json" };
 const DICTS = { en, fr, es };
+/**
+ * The language and formats of the card being drawn (PiscineCard._use()), for the helpers outside the class: each card
+ * sets them before it draws, so two cards in two languages on one dashboard each draw in their own.
+ */
+let T = makeT(DICTS, "en"), F = makeFmt("en");
 
 const VERSION = "1.11.0";
 
@@ -192,8 +198,25 @@ const DEFAULT_ENTITIES = {
   sForce: "script.piscine_forcer_vitesse",
   sAuto: "script.piscine_retour_auto",
 };
-const SPEEDS = { Off: "Arrêt", Low: "Low", Medium: "Medium", High: "High" };
-const DURATIONS = [["30 min", 30], ["1 h", 60], ["2 h", 120], ["Jamais", 0]];
+/** The pump's speeds, as the controller names them (codes); their words are the dictionaries' common.speed.*. */
+const SPEEDS = { Off: true, Low: true, Medium: true, High: true };
+const speedTxt = (v) => (SPEEDS[v] ? T(`common.speed.${v}`) : v);
+/**
+ * An older firmware's Update Status (before 1.11.0, in French) -> its code. Remove once no supported firmware sends
+ * them (docs/plans/i18n.md, I7).
+ */
+const LEGACY_STATUS = {
+  "non vérifié": "unchecked", "vérification": "checking", "à jour": "up_to_date", "disponible": "available", // i18n-ignore: an old firmware's words
+  "installation": "installing", "en attente (mode manuel)": "pending:override", "en attente (remplissage)": "pending:fill",
+  "erreur (vérification)": "error:check", "erreur (installation)": "error:install", // i18n-ignore: an old firmware's words
+};
+/** Update Check Interval's option (a code: on_request, 6h, 24h, 7d) in words; an older firmware's own option as is. */
+const intervalTxt = (o) => {
+  const m = /^(\d+)([hd])$/.exec(o);
+  return o === "on_request" ? T("card.fw.opt.on_request") : !m ? o : m[2] === "h" ? `${m[1]} h` : T("card.fw.opt.days", { count: +m[1] });
+};
+/** Manual Override Timeout's choices, in minutes (0 = never). */
+const DURATIONS = [30, 60, 120, 0];
 const FREEZE_DEFAULT_C = 3; // firmware: Freeze Protection Temperature's initial value, until the number is known
 const FREEZE_NEAR_C = 4;    // temperature graph: the threshold joins the scale when the water comes this close
 const STUCK_MIN = 30;     // firmware: Manual Override Active after this long off Auto
@@ -201,72 +224,69 @@ const CMD_TIMEOUT = 15000;
 const H_MS = 3600000, M_MS = 60000;
 const POOL_AFTER_MIN = 10; // firmware: a reading counts as the pool after this long pumping (Pool Water Min/Max Today)
 const T_STEP_MIN = 5;      // 24 h curve: one point per 5 min, the sensor's own pace
-const T_RANGES = { "24h": "24 h", "7d": "7 j", "30d": "30 j", "90d": "90 j", "1y": "1 an" };
+const T_RANGES = ["24h", "7d", "30d", "90d", "1y"]; // their labels: card.range.*
 const T_N = { "7d": 7, "30d": 30, "90d": 90, "1y": 53 }; // bars: a day each, 1 an a week each (53 Mondays)
-const T_SPAN = { "30d": "30 jours", "90d": "90 jours", "1y": "12 mois" };
+const T_STATS = new Set(["30d", "90d", "1y"]); // the ranges drawn from HA's statistics
 const PROBE_GLITCH_C = 12; // a day the probe spans more than this had a bad reading (0 °C, 110 °C): its mean is dropped
 /** The controller's light (`controller_health`): minutes before amber, before red; seconds between two heartbeats. */
 const HEALTH = { warn: 3, alert: 15, beat: 4 };
 /** Never keys: the sun and the two scripts are Home Assistant's, not the controller's. */
 const NOT_CONTROLLER = new Set(["sun", "sForce", "sAuto"]);
-const WD = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
-const MO = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
-const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
-const W_RANGES = { "30d": "30 j", "90d": "90 j", "12m": "12 mois" };
+const W_RANGES = ["30d", "90d", "12m"]; // their labels: card.range.*
 const W_PERIOD = { "30d": "day", "90d": "week", "12m": "month" };
 /**
  * variant: settings and the panel's « Réglages » › « Filtration et hors gel » — the device page's, in its order and
- * words. `icon` when the entity has none. Not Manual Override Timeout: « Contrôle » › Manuel › « Retour en Auto » sets
- * it, with the override it applies to. In the wide panel the rows split after « Appliquer » (APPLY_CUT).
+ * words. A row's words are card.row.<key>.label and, with `sub`, .sub; a section's, `sect` (a key). `icon` when the
+ * entity has none. Not Manual Override Timeout: « Contrôle » › Manuel › « Retour en Auto » sets it, with the override
+ * it applies to. In the wide panel the rows split after « Appliquer » (APPLY_CUT).
  */
 const SETTINGS = [
-  { sect: "Durée de filtration · s'applique avec «\u00a0Appliquer\u00a0»" },
-  { key: "min", label: "Filtration minimale", sub: "Plancher, même par eau froide", icon: "timer-sand" },
-  { key: "max", label: "Filtration maximale", sub: "Plafond, même en pleine chaleur", icon: "timer-sand" },
-  { key: "offset", label: "Ajustement de durée", sub: "Ajouté à la durée calculée", icon: "timer-plus" },
-  { key: "warm", label: "Décalage du pic de chaleur", sub: "Centre du 2ᵉ bloc par rapport au midi solaire", icon: "sun-clock" },
-  { key: "apply", label: "Appliquer les réglages", sub: "Recalcule le plan du jour", icon: "check-bold", button: "Appliquer" },
-  { sect: "Impulsions · immédiat" },
-  { key: "boostDuration", label: "Durée d'une impulsion", icon: "flash" },
-  { key: "boostInterval", label: "Intervalle entre impulsions", sub: "0 = pas d'impulsion", icon: "flash-outline" },
-  { key: "highEvery", label: "Une impulsion High toutes les", sub: "Les autres sont en Medium", icon: "flash-triangle" },
-  { sect: "Hors gel · immédiat" },
-  { key: "freezeAt", label: "Low forcé sous", sub: "Quand l'eau descend sous ce seuil, quoi qu'on demande", icon: "snowflake-thermometer" },
+  { sect: "card.settings.filtration_section" },
+  { key: "min", sub: true, icon: "timer-sand" },
+  { key: "max", sub: true, icon: "timer-sand" },
+  { key: "offset", sub: true, icon: "timer-plus" },
+  { key: "warm", sub: true, icon: "sun-clock" },
+  { key: "apply", sub: true, icon: "check-bold", button: "common.apply" },
+  { sect: "card.sect.pulses" },
+  { key: "boostDuration", icon: "flash" },
+  { key: "boostInterval", sub: true, icon: "flash-outline" },
+  { key: "highEvery", sub: true, icon: "flash-triangle" },
+  { sect: "card.sect.freeze" },
+  { key: "freezeAt", sub: true, icon: "snowflake-thermometer" },
 ];
 const APPLY_CUT = SETTINGS.findIndex((d) => d.key === "apply") + 1;
-const APPLIED = "Réglages appliqués : plan du jour recalculé";
 
 /**
- * Panel, tab « Réglages »: Plan du jour, the device page's rows (webui/app.js) in its words. A row whose entity is
- * missing is hidden. `val`/`sub` take the card.
+ * Panel, tab « Réglages »: Plan du jour, the device page's rows (webui/app.js) in its words: card.row.<key>.label, and
+ * for a button .button and .ok (its toast). A row whose entity is missing is hidden. `val`/`sub` take the card.
  */
-const span = (c, a, b) => (hhmm(c._s(a)) !== null && c._s(a) !== c._s(b) ? `${c._s(a)} → ${c._s(b)}` : "—"); // start == end: none
+const span = (c, a, b) => (hhmm(c._s(a)) !== null && c._s(a) !== c._s(b) ? `${clock(c._s(a))} → ${clock(c._s(b))}` : "—"); // start == end: none
 const degC = (k) => (c) => `${fmt1(c._n(k))} °C`;
 const PLAN_ROWS = [
-  { key: "hoursPlanned", label: "Durée planifiée", icon: "timer-outline", val: (c) => `${fmt1(c._n("hoursPlanned"))} h` },
-  { key: "hoursToday", label: "Filtrée aujourd'hui", icon: "timer-check-outline", val: (c) => `${fmt1(c._n("hoursToday"))} h`,
-    sub: (c) => (c._n("hoursPlanned") > 0 ? `${Math.round((c._n("hoursToday") / c._n("hoursPlanned")) * 100)} % du plan` : "") },
-  { key: "b1s", label: "Bloc 1", icon: "clock-start", val: (c) => span(c, "b1s", "b1e") },
-  { key: "b2s", label: "Bloc 2", icon: "clock-end", val: (c) => span(c, "b2s", "b2e") },
-  { key: "planned", label: "Vitesse du plan maintenant", icon: "pump", val: (c) => SPEEDS[c._planned()] || c._planned() },
-  { key: "commanded", label: "Vitesse commandée", icon: "pump", val: (c) => SPEEDS[c._commanded()] || c._commanded(),
-    sub: (c) => (c._inOvr() ? `Override manuel : ${SPEEDS[c._override()]}` : "Suit le plan") },
-  { key: "nextAt", label: "Prochain changement", icon: "clock-fast",
-    val: (c) => (hhmm(c._s("nextAt")) !== null ? `${c._s("nextAt")} → ${SPEEDS[c._s("nextTo")] || c._s("nextTo")}` : "Plus rien aujourd'hui") },
-  { key: "nextBoostStart", label: "Prochaine impulsion", icon: "flash", val: (c) => span(c, "nextBoostStart", "nextBoostEnd") },
-  { key: "recomputed", label: "Plan calculé à", icon: "calendar-clock", val: (c) => stamp(c._s("recomputed")) },
-  { key: "recompute", label: "Recalculer le plan maintenant", icon: "refresh", button: "Recalculer", ok: "Plan du jour recalculé" },
+  { key: "hoursPlanned", icon: "timer-outline", val: (c) => `${fmt1(c._n("hoursPlanned"))} h` },
+  { key: "hoursToday", icon: "timer-check-outline", val: (c) => `${fmt1(c._n("hoursToday"))} h`,
+    sub: (c) => (c._n("hoursPlanned") > 0 ? c._t("card.row.hoursToday.pct", { pct: Math.round((c._n("hoursToday") / c._n("hoursPlanned")) * 100) }) : "") },
+  { key: "b1s", icon: "clock-start", val: (c) => span(c, "b1s", "b1e") },
+  { key: "b2s", icon: "clock-end", val: (c) => span(c, "b2s", "b2e") },
+  { key: "planned", icon: "pump", val: (c) => speedTxt(c._planned()) },
+  { key: "commanded", icon: "pump", val: (c) => speedTxt(c._commanded()),
+    sub: (c) => (c._inOvr() ? c._t("card.row.commanded.forced", { speed: speedTxt(c._override()) }) : c._t("card.row.commanded.follows")) },
+  { key: "nextAt", icon: "clock-fast",
+    val: (c) => (hhmm(c._s("nextAt")) !== null ? `${clock(c._s("nextAt"))} → ${speedTxt(c._s("nextTo"))}` : c._t("card.nothing_today")) },
+  { key: "nextBoostStart", icon: "flash", val: (c) => span(c, "nextBoostStart", "nextBoostEnd") },
+  { key: "recomputed", icon: "calendar-clock", val: (c) => stamp(c._s("recomputed")) },
+  { key: "recompute", icon: "refresh", button: true },
 ];
 /**
  * Panel, tab « Réglages » › Sondes: the probes, as the device page's Capteurs internes › Capteurs. `more`: a tap opens
  * Home Assistant's more-info for that sensor, with its history.
  */
 const PROBE_ROWS = [
-  { key: "water", label: "Eau (retour filtre)", icon: "thermometer-water", val: degC("water"), more: true,
-    sub: (c) => (c._commanded() === "Off" ? "Pompe arrêtée : la sonde lit le tuyau" : "Pompe en marche : l'eau du bassin") },
-  { key: "pad", label: "Local technique", icon: "home-thermometer-outline", val: degC("pad"), more: true },
-  { key: "outdoor", label: "Extérieur", icon: "weather-partly-cloudy", val: degC("outdoor"), more: true },
-  { key: "updateTemps", label: "Relire les sondes de température", icon: "thermometer", button: "Relire", ok: "Sondes relues" },
+  { key: "water", icon: "thermometer-water", val: degC("water"), more: true,
+    sub: (c) => c._t(c._commanded() === "Off" ? "card.row.water.off" : "card.row.water.on") },
+  { key: "pad", icon: "home-thermometer-outline", val: degC("pad"), more: true },
+  { key: "outdoor", icon: "weather-partly-cloudy", val: degC("outdoor"), more: true },
+  { key: "updateTemps", icon: "thermometer", button: true },
 ];
 
 const ICONS = {
@@ -280,17 +300,28 @@ const ICONS = {
 };
 const svg = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
 
-const fmt1 = (n) => (Number.isFinite(n) ? n.toFixed(1).replace(".", ",") : "–");
+/** Numbers in the card's language (HA's number format): one decimal, « 25,9 » in French; no grouping, as before. */
+const fmtN = (n, dec) => F.number(n, { minimumFractionDigits: dec, maximumFractionDigits: dec, useGrouping: false });
+const fmt1 = (n) => (Number.isFinite(n) ? fmtN(n, 1) : "–");
 const pad = (n) => String(n).padStart(2, "0");
-const fmtT = (d) => (d instanceof Date && !isNaN(d) ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : "–");
+/** A time of day in the card's language and HA's time format: « 19:04 », « 07:04 PM ». */
+const fmtT = (d) => (d instanceof Date && !isNaN(d) ? F.time(d) : "–");
+/** The controller's « HH:MM » (a block, the next change) the same way. */
+const clock = (s) => { const m = hhmm(s); if (m === null) return s; const d = new Date(); d.setHours(Math.floor(m / 60), m % 60, 0, 0); return fmtT(d); };
+/** « 17 nov. », « Nov 17 »; with the weekday, « lun. 17 nov. ». */
+const dayMonth = (d) => F.date(d, { day: "numeric", month: "short" });
+const wdDayMonth = (d) => F.date(d, { weekday: "short", day: "numeric", month: "short" });
+/** « 17/11 », « 11/17 ». */
+const ddmm = (d) => F.date(d, { day: "2-digit", month: "2-digit" });
 const fmtD = (min) => {
   const m = Math.max(0, Math.round(min)), h = Math.floor(m / 60), r = m % 60;
   return h ? (r ? `${h} h ${pad(r)}` : `${h} h`) : `${r} min`;
 };
 /** Minutes ago -> « à l'instant », « il y a 3 min », « il y a 2 h », « il y a 4 j ». */
-const agoTxt = (m) => (!(m >= 1) ? "à l'instant" : m < 90 ? `il y a ${Math.round(m)} min` : m < 36 * 60 ? `il y a ${Math.round(m / 60)} h` : `il y a ${Math.round(m / 1440)} j`);
+const agoTxt = (m) => (!(m >= 1) ? T("common.ago.now") : m < 90 ? T("common.ago.min", { n: Math.round(m) })
+  : m < 36 * 60 ? T("common.ago.h", { n: Math.round(m / 60) }) : T("common.ago.d", { n: Math.round(m / 1440) }));
 /** A time in ms -> "HH:MM" today, else "DD/MM HH:MM". */
-const stampMs = (t) => { const d = new Date(t); return dayKey(d) === dayKey(new Date()) ? fmtT(d) : `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${fmtT(d)}`; };
+const stampMs = (t) => { const d = new Date(t); return dayKey(d) === dayKey(new Date()) ? fmtT(d) : `${ddmm(d)} ${fmtT(d)}`; };
 /** "HH:MM" text sensor -> minutes of day, or null for "--:--" / unavailable. */
 const hhmm = (s) => {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || "").trim());
@@ -303,20 +334,21 @@ const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDa
 const dayAgo = (ago) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ago); return d; };
 const num = (s) => { const v = parseFloat(s); return Number.isFinite(v) ? v : NaN; };
 /** Litres: « 940 L », « 9 538 L », then m³ from 10 000 L. */
-const fmtL = (v) => (!Number.isFinite(v) ? "–" : v >= 10000 ? `${(v / 1000).toFixed(1).replace(".", ",")} m³`
-  : `${Math.round(v).toLocaleString("fr-FR").replace(/\s/g, "\u00a0")} L`);
+const fmtL = (v) => (!Number.isFinite(v) ? "–" : v >= 10000 ? `${fmtN(v / 1000, 1)} m³`
+  : `${F.number(Math.round(v), { maximumFractionDigits: 0 }).replace(/\s/g, "\u00a0")} L`);
 /** Axis label: « 500 L », « 1,5 m³ ». */
-const axL = (v) => (v >= 1000 ? `${String(+(v / 1000).toFixed(2)).replace(".", ",")} m³` : `${Math.round(v)} L`);
+const axL = (v) => (v >= 1000 ? `${F.number(v / 1000, { maximumFractionDigits: 2, useGrouping: false })} m³` : `${Math.round(v)} L`);
 /** The device's "YYYY-MM-DD HH:MM:SS" -> "HH:MM" today, else "DD/MM HH:MM". */
 const stamp = (s) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || ""));
   if (!m) return s || "—";
-  return dayKey(new Date()) === `${m[1]}-${m[2]}-${m[3]}` ? `${m[4]}:${m[5]}` : `${m[3]}/${m[2]} ${m[4]}:${m[5]}`;
+  const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+  return dayKey(new Date()) === `${m[1]}-${m[2]}-${m[3]}` ? fmtT(d) : `${ddmm(d)} ${fmtT(d)}`;
 };
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 const r2 = (v) => Math.round(v * 100) / 100; // the controller keeps its position to 0.01° (about 1 km)
-const deg = (v) => (Number.isFinite(v) ? `${v.toFixed(2).replace(".", ",")}°` : "non définie");
+const deg = (v) => (Number.isFinite(v) ? `${fmtN(v, 2)}°` : T("card.pos.unset"));
 const isSet = (s) => s !== undefined && s !== "" && s !== "unknown" && s !== "unavailable";
 /** Daily History "2026-11-13: 6.42 h 25.9/26.6 °C, 2026-11-12: 6.70 h" -> { "2026-11-13": {hours, lo, hi}, … }. */
 const parseDays = (text) => Object.fromEntries([...String(text || "").matchAll(
@@ -328,11 +360,11 @@ const SHORT_TOLERANCE_H = 0.25;
 const dayShort = (r) => Number.isFinite(r.hours) && Number.isFinite(r.planned) && r.hours < r.planned - SHORT_TOLERANCE_H;
 /** A row of « 7 derniers jours »'s tooltip: today's, a closed day's against its plan, or a day without data. */
 const dayTitle = (r) => {
-  if (r.today) return "En cours ; le trait marque la durée planifiée";
-  if (!Number.isFinite(r.hours)) return "Pas de données : contrôleur éteint ou sans heure ce jour-là";
-  if (!Number.isFinite(r.planned)) return "Plan du jour non enregistré";
+  if (r.today) return T("card.days.tip_today");
+  if (!Number.isFinite(r.hours)) return T("card.days.tip_nodata");
+  if (!Number.isFinite(r.planned)) return T("card.days.tip_noplan");
   const gap = r.hours - r.planned;
-  return `Plan ${fmt1(r.planned)} h ; ${Math.abs(gap) < 0.05 ? "plan tenu" : `${gap > 0 ? "+" : "−"}${fmt1(Math.abs(gap))} h`}`;
+  return T("card.days.tip_plan", { planned: fmt1(r.planned), gap: Math.abs(gap) < 0.05 ? T("card.days.plan_kept") : `${gap > 0 ? "+" : "−"}${fmt1(Math.abs(gap))} h` });
 };
 
 const STYLE = `
@@ -619,6 +651,7 @@ ha-card.water-card.plain { background:var(--card); border:1px solid var(--ha-car
 .setpane .cont { margin-top:-22px; }
 .setpane .cont > .sp-h { display:none; }
 .setpane .cont .esect:first-child { margin-top:12px; }
+.sp-h .wide { display:none; } /* « Filtration » in the wide panel, where « … et hors gel » has its own column */
 .erow .val { margin-left:auto; text-align:right; white-space:nowrap; }
 .erow .val.bad { color:var(--danger); font-weight:500; }
 .days { display:flex; flex-direction:column; gap:4px; }
@@ -725,158 +758,159 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
   .setpane .cont > .sp-h { display:flex; }
   .setpane .cont .esect:first-child { margin-top:4px; }
   .sp-h .narrow { display:none; }
+  .sp-h .wide { display:inline; }
 }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; } }
 `;
 
-/** The fill water: in the panel's « Contrôle », after Pilotage, and alone as `variant: water`. */
-const WATER_PANE = `
+/**
+ * The card's HTML, in the language `t` speaks (the card rebuilds when it changes). The fill water: in the panel's
+ * « Contrôle », after Pilotage, and alone as `variant: water`.
+ */
+const waterPane = (t) => `
     <div class="readings">
-      <div class="reading"><span class="l">Rempli aujourd'hui</span><span class="v num" id="wToday"></span></div>
-      <div class="reading"><span class="l">Ce mois-ci</span><span class="v num" id="wMonth"></span></div>
-      <div class="reading" id="wFlowBox"><span class="l">Débit</span><span class="v num" id="wFlow"></span></div>
+      <div class="reading"><span class="l">${t("card.water.today")}</span><span class="v num" id="wToday"></span></div>
+      <div class="reading"><span class="l">${t("card.water.month")}</span><span class="v num" id="wMonth"></span></div>
+      <div class="reading" id="wFlowBox"><span class="l">${t("card.water.flow")}</span><span class="v num" id="wFlow"></span></div>
     </div>
     <p class="run num" id="wRun" hidden></p>
     <div class="temp-h">
-      <p class="lbl">Eau de remplissage</p>
-      <div class="seg mini" role="radiogroup" aria-label="Période du graphique" id="wRange">
-        ${Object.entries(W_RANGES).map(([r, l]) => `<button role="radio" data-r="${r}">${l}</button>`).join("")}
+      <p class="lbl">${t("card.water.title")}</p>
+      <div class="seg mini" role="radiogroup" aria-label="${t("card.chart_range")}" id="wRange">
+        ${W_RANGES.map((r) => `<button role="radio" data-r="${r}">${t(`card.range.${r}`)}</button>`).join("")}
       </div>
     </div>
     <p class="temp-sum num" id="wSum"></p>
-    <div class="chart" id="wChart" tabindex="0" role="img" aria-label="Eau de remplissage"><svg id="wSvg" aria-hidden="true"></svg><div class="ttip" id="wTip" hidden></div><div class="empty" id="wEmpty" hidden></div></div>
+    <div class="chart" id="wChart" tabindex="0" role="img" aria-label="${t("card.water.title")}"><svg id="wSvg" aria-hidden="true"></svg><div class="ttip" id="wTip" hidden></div><div class="empty" id="wEmpty" hidden></div></div>
     <div class="tl-leg" id="wLeg"></div>`;
 
-const PANEL_HTML = `
+const panelHtml = (t) => `
 <div class="panel">
   <div class="sh-head">
     <span class="ico big" id="ico">${svg("pump")}</span>
-    <div class="t"><h3>Pompe piscine</h3>
+    <div class="t"><h3>${t("card.title")}</h3>
       <div class="st-row"><span class="status" id="status"></span><button class="clink" id="ctlLink" hidden><span class="led" id="ctlLed"></span><span id="ctlTxt"></span></button></div></div>
-    <button class="x" id="close" aria-label="Fermer">${svg("close")}</button>
+    <button class="x" id="close" aria-label="${t("card.close")}">${svg("close")}</button>
   </div>
   <div class="tabs" role="tablist" id="tabs" hidden>
-    <button role="tab" data-tab="pump" aria-selected="true">Contrôle</button>
-    <button role="tab" data-tab="settings" aria-selected="false">Réglages</button>
-    <button role="tab" data-tab="controller" aria-selected="false">Réglages contrôleur</button>
+    <button role="tab" data-tab="pump" aria-selected="true">${t("card.tab.pump")}</button>
+    <button role="tab" data-tab="settings" aria-selected="false">${t("card.tab.settings")}</button>
+    <button role="tab" data-tab="controller" aria-selected="false">${t("card.tab.controller")}</button>
   </div>
   <div class="setpane" role="tabpanel">
     <div class="sp-col">
-      <section><h4 class="sp-h">Plan du jour</h4><div id="planRows"></div></section>
-      <section><h4 class="sp-h">Sondes</h4><div id="probeRows"></div></section>
-      <section><h4 class="sp-h"><span>Filtration<span class="narrow"> et hors gel</span></span><span class="chip" id="pendChip" hidden>En attente</span></h4>
-        <div class="banner" id="pendBanner" hidden>${svg("alert")}<span>Durée de filtration modifiée : elle ne compte qu'une fois appliquée, ce qui recalcule le plan du jour.</span><button class="btn" id="applyNow">Appliquer</button></div>
+      <section><h4 class="sp-h">${t("card.sec.plan")}</h4><div id="planRows"></div></section>
+      <section><h4 class="sp-h">${t("card.sec.probes")}</h4><div id="probeRows"></div></section>
+      <section><h4 class="sp-h"><span><span class="narrow">${t("card.sec.filtration_freeze")}</span><span class="wide">${t("card.sec.filtration")}</span></span><span class="chip" id="pendChip" hidden>${t("common.pending")}</span></h4>
+        <div class="banner" id="pendBanner" hidden>${svg("alert")}<span>${t("card.pend_banner")}</span><button class="btn" id="applyNow">${t("common.apply")}</button></div>
         <div id="rows"></div></section>
     </div>
     <div class="sp-col">
-      <section class="cont"><h4 class="sp-h">Impulsions et hors gel</h4><div id="rows2"></div></section>
-      <section><h4 class="sp-h">7 derniers jours</h4><div class="days" id="days"></div></section>
+      <section class="cont"><h4 class="sp-h">${t("card.sec.pulses_freeze")}</h4><div id="rows2"></div></section>
+      <section><h4 class="sp-h">${t("card.sec.days")}</h4><div class="days" id="days"></div></section>
     </div>
   </div>
   <div class="ctlpane" role="tabpanel">
     <div class="sp-col">
-      <section id="posSec" hidden><h4 class="sp-h">Position</h4><div id="posRows"></div>
-        <p class="posnote">Arrondies à 0,01° (environ 1 km) : assez pour le lever et le coucher du soleil, d'où le contrôleur tire son plan, sans situer la maison.</p></section>
+      <section id="posSec" hidden><h4 class="sp-h">${t("card.sec.position")}</h4><div id="posRows"></div>
+        <p class="posnote">${t("card.pos.note")}</p></section>
     </div>
     <div class="sp-col">
-      <section id="fwSec" hidden><h4 class="sp-h">Firmware</h4><div id="updRows"></div></section>
+      <section id="fwSec" hidden><h4 class="sp-h">${t("card.sec.firmware")}</h4><div id="updRows"></div></section>
     </div>
   </div>
   <div class="plan">
-    <div class="plan-h"><p class="lbl">Plan du jour</p><span class="num" id="planSum"></span></div>
+    <div class="plan-h"><p class="lbl">${t("card.sec.plan")}</p><span class="num" id="planSum"></span></div>
     <div class="tl" id="tl"></div>
     <div class="tl-scale num"><span>0 h</span><span>6 h</span><span>12 h</span><span>18 h</span><span>24 h</span></div>
-    <div class="tl-leg"><span><i style="background:var(--acc-soft)"></i>Low</span><span><i style="background:var(--acc);opacity:.45"></i>Impulsion Medium</span><span><i style="background:var(--acc);opacity:.8"></i>High</span><span id="legOvr" class="leg-ovr"></span></div>
+    <div class="tl-leg"><span><i style="background:var(--acc-soft)"></i>${t("common.speed.Low")}</span><span><i style="background:var(--acc);opacity:.45"></i>${t("card.leg.pulse", { speed: t("common.speed.Medium") })}</span><span><i style="background:var(--acc);opacity:.8"></i>${t("common.speed.High")}</span><span id="legOvr" class="leg-ovr"></span></div>
   </div>
   <div class="temp">
     <div class="temp-h">
-      <p class="lbl">Température du bassin</p>
-      <div class="seg mini" role="radiogroup" aria-label="Période du graphique" id="tRange">
-        ${Object.entries(T_RANGES).map(([r, l]) => `<button role="radio" data-r="${r}">${l}</button>`).join("")}
+      <p class="lbl">${t("card.temp.title")}</p>
+      <div class="seg mini" role="radiogroup" aria-label="${t("card.chart_range")}" id="tRange">
+        ${T_RANGES.map((r) => `<button role="radio" data-r="${r}">${t(`card.range.${r}`)}</button>`).join("")}
       </div>
     </div>
     <p class="temp-sum num" id="tSum"></p>
-    <div class="chart" id="tChart" tabindex="0" role="img" aria-label="Température du bassin"><svg id="tSvg" aria-hidden="true"></svg><div class="ttip" id="tTip" hidden></div><div class="empty" id="tEmpty" hidden></div></div>
+    <div class="chart" id="tChart" tabindex="0" role="img" aria-label="${t("card.temp.title")}"><svg id="tSvg" aria-hidden="true"></svg><div class="ttip" id="tTip" hidden></div><div class="empty" id="tEmpty" hidden></div></div>
     <div class="tl-leg" id="tLeg"></div>
   </div>
   <div class="col col-state">
   <div class="readings">
-    <div class="reading"><span class="l">Bassin</span><span class="v num" id="water"></span></div>
-    <div class="reading"><span class="l">Extérieur</span><span class="v num" id="outdoor"></span></div>
-    <div class="reading"><span class="l">Filtration aujourd'hui</span><span class="v num" id="hours"></span><span class="bar"><i id="hoursBar"></i></span></div>
-    <div class="reading"><span class="l">Prochain changement</span><span class="v num" id="next"></span></div>
+    <div class="reading"><span class="l">${t("card.read.pool")}</span><span class="v num" id="water"></span></div>
+    <div class="reading"><span class="l">${t("card.read.outdoor")}</span><span class="v num" id="outdoor"></span></div>
+    <div class="reading"><span class="l">${t("card.read.hours")}</span><span class="v num" id="hours"></span><span class="bar"><i id="hoursBar"></i></span></div>
+    <div class="reading"><span class="l">${t("card.read.next")}</span><span class="v num" id="next"></span></div>
   </div>
   <div class="alert" id="offAlert" hidden>${svg("alert")}<span id="offTxt"></span></div>
   <div class="alert cool" id="freezeAlert" hidden>${svg("snow")}<span id="freezeTxt"></span></div>
-  <div class="alert amber" id="planAlert" hidden>${svg("alert")}<span>Plan du jour non calculé : le contrôleur n'a pas pu lire la température ou le lever du soleil. La pompe peut rester arrêtée.</span></div>
-  <div class="alert" id="stuckAlert" hidden>${svg("alert")}<span id="stuckTxt"></span><div class="act"><button id="stuckBtn">Revenir en Auto</button></div></div>
-  <div class="alert amber" id="fillAlert" hidden>${svg("alert")}<span id="fillTxt"></span><div class="act" id="fillAct"><button id="fillAckBtn">Acquitter</button></div></div>
+  <div class="alert amber" id="planAlert" hidden>${svg("alert")}<span>${t("card.alert.plan")}</span></div>
+  <div class="alert" id="stuckAlert" hidden>${svg("alert")}<span id="stuckTxt"></span><div class="act"><button id="stuckBtn">${t("card.back_auto")}</button></div></div>
+  <div class="alert amber" id="fillAlert" hidden>${svg("alert")}<span id="fillTxt"></span><div class="act" id="fillAct"><button id="fillAckBtn">${t("card.fill.ack")}</button></div></div>
   <div class="power">
-    <button class="pbtn" id="autoBtn" hidden>${svg("auto")}<span id="autoBtnTxt">Revenir en Auto</span></button>
+    <button class="pbtn" id="autoBtn" hidden>${svg("auto")}<span id="autoBtnTxt">${t("card.back_auto")}</span></button>
     <div class="confirm" id="confirm" hidden>
       <span id="confirmTxt"></span>
-      <button class="no" id="cfNo">Annuler</button>
-      <button class="yes" id="cfYes">Arrêter</button>
+      <button class="no" id="cfNo">${t("common.cancel")}</button>
+      <button class="yes" id="cfYes">${t("card.confirm.stop")}</button>
     </div>
     <div class="pend" id="pend" hidden aria-live="polite">
       <div class="row"><b id="pendLabel"></b><span class="num" id="pendTime"></span></div>
       <div class="steps">
-        <div class="step" id="st0"><i></i>Envoyé</div>
-        <div class="step" id="st1"><i></i>Appliqué par le contrôleur</div>
+        <div class="step" id="st0"><i></i>${t("card.step.sent")}</div>
+        <div class="step" id="st1"><i></i>${t("card.step.applied")}</div>
       </div>
     </div>
   </div>
   </div>
   <div class="col col-set">
   <div class="ctl">
-    <p class="lbl">Pilotage</p>
-    <div class="seg" role="radiogroup" aria-label="Pilotage de la pompe" id="modeSeg" style="--n:2">
-      <button role="radio" data-mode="auto">Auto</button>
-      <button role="radio" data-mode="manual">Manuel</button>
+    <p class="lbl">${t("card.ctl.title")}</p>
+    <div class="seg" role="radiogroup" aria-label="${t("card.ctl.aria")}" id="modeSeg" style="--n:2">
+      <button role="radio" data-mode="auto">${t("common.mode.auto")}</button>
+      <button role="radio" data-mode="manual">${t("common.mode.manual")}</button>
     </div>
     <p class="hint" id="modeHint"></p>
   </div>
   <div class="manual" id="manualBlock" hidden>
     <div>
-      <p class="lbl">Vitesse forcée</p>
-      <div class="seg" role="radiogroup" aria-label="Vitesse forcée" id="speedSeg" style="--n:4">
-        <button role="radio" class="stop" data-speed="Off">Arrêt</button>
-        <button role="radio" data-speed="Low">Low</button>
-        <button role="radio" data-speed="Medium">Medium</button>
-        <button role="radio" data-speed="High">High</button>
+      <p class="lbl">${t("card.speed.title")}</p>
+      <div class="seg" role="radiogroup" aria-label="${t("card.speed.title")}" id="speedSeg" style="--n:4">
+        ${Object.keys(SPEEDS).map((v) => `<button role="radio"${v === "Off" ? ' class="stop"' : ""} data-speed="${v}">${t(`common.speed.${v}`)}</button>`).join("")}
       </div>
     </div>
     <div>
-      <p class="lbl">Retour en Auto</p>
-      <div class="seg" role="radiogroup" aria-label="Durée de l'override" id="durSeg" style="--n:4">
-        ${DURATIONS.map(([opt, m]) => `<button role="radio" data-dur="${opt}">${opt}${m ? "" : "<small>alerte 30 min</small>"}</button>`).join("")}
+      <p class="lbl">${t("card.dur.title")}</p>
+      <div class="seg" role="radiogroup" aria-label="${t("card.dur.aria")}" id="durSeg" style="--n:4">
+        ${DURATIONS.map((m) => `<button role="radio" data-dur="${m}">${m ? fmtD(m) : t("common.never")}${m ? "" : `<small>${t("card.dur.alert", { min: STUCK_MIN })}</small>`}</button>`).join("")}
       </div>
       <p class="hint" id="durHint"></p>
     </div>
   </div>
   </div>
-  <div class="water" id="waterBlk" hidden>${WATER_PANE}</div>
+  <div class="water" id="waterBlk" hidden>${waterPane(t)}</div>
   <div class="foot"><span class="num" id="sync"></span><span class="num" id="plannedTxt"></span></div>
   <div class="toast" id="toast" role="status"></div>
 </div>`;
 
-const SETTINGS_HTML = `
+const settingsHtml = (t) => `
 <ha-card class="set-card" id="setCard">
-  <h2 class="set-h"><span class="hic" id="setIcon"></span><span id="setTitle"></span><span class="chip" id="pendChip" hidden>En attente</span></h2>
+  <h2 class="set-h"><span class="hic" id="setIcon"></span><span id="setTitle"></span><span class="chip" id="pendChip" hidden>${t("common.pending")}</span></h2>
   <div class="set">
-    <div class="banner" id="pendBanner" hidden>${svg("alert")}<span>Durée de filtration modifiée : elle ne compte qu'une fois appliquée, ce qui recalcule le plan du jour.</span><button class="btn" id="applyNow">Appliquer</button></div>
+    <div class="banner" id="pendBanner" hidden>${svg("alert")}<span>${t("card.pend_banner")}</span><button class="btn" id="applyNow">${t("common.apply")}</button></div>
     <div id="rows"></div>
   </div>
   <div class="toast" id="toast" role="status"></div>
 </ha-card>`;
 
-const WATER_HTML = `
-<ha-card class="water-card" id="waterCard"><div class="water">${WATER_PANE}</div><div class="toast" id="toast" role="status"></div></ha-card>`;
+const waterHtml = (t) => `
+<ha-card class="water-card" id="waterCard"><div class="water">${waterPane(t)}</div><div class="toast" id="toast" role="status"></div></ha-card>`;
 
-const TILE_HTML = `
+const tileHtml = (t) => `
 <ha-card class="tile" id="tile" role="button" tabindex="0" aria-haspopup="dialog">
   <span class="ico" id="ico">${svg("pump")}</span>
-  <span class="txt"><span class="p">Pompe piscine</span><span class="s" id="sec"></span></span>
+  <span class="txt"><span class="p">${t("card.title")}</span><span class="s" id="sec"></span></span>
   <span class="val num" id="val"></span>
   <span class="led" id="led" role="img" hidden></span>
   <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.chevron}"/></svg>
@@ -892,7 +926,7 @@ class PiscineCard extends HTMLElement {
       language = null;
     }
     this._config = { variant, layout: config.layout || "horizontal", popup_hash: config.popup_hash || "#piscine", more_path: config.more_path || null,
-      recorder: config.recorder !== false, title: config.title ?? "Réglages", icons: config.icons || null,
+      recorder: config.recorder !== false, title: config.title, icons: config.icons || null, // title: card.tab.settings when not set
       settings_tab: config.settings_tab !== false, // `temperatures` (before 1.8.0): accepted, ignored
       controller_light: config.controller_light !== false, health: { ...HEALTH, ...(config.controller_health || {}) }, language };
     this._localeKey = null;
@@ -930,7 +964,8 @@ class PiscineCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    this._setLocale(hass);
+    if (this._setLocale(hass) && this._built) this._rebuild(); // the user changed their language: the card follows
+    this._use();
     if (!this._built) this._build();
     this.toggleAttribute("dark", !!(hass.themes && hass.themes.darkMode));
     this._update();
@@ -953,6 +988,13 @@ class PiscineCard extends HTMLElement {
     this._t = makeT(DICTS, L.lang);
     this._fmt = makeFmt(L.locale, L);
     return true;
+  }
+  /** This card's language for the helpers outside the class (T, F), before it draws. */
+  _use() { T = this._t; F = this._fmt; }
+  /** Draws everything again, in a new language: the HTML and every cache of what was drawn. */
+  _rebuild() {
+    Object.assign(this, { _built: false, _setRows: [], _paneRows: [], _sects: [], _posDrawn: "", _tDrawn: "", _wDrawn: "", _daysDrawn: "" });
+    this._upd.drawn = "";
   }
 
   getCardSize() {
@@ -1061,7 +1103,7 @@ class PiscineCard extends HTMLElement {
     return this._hass.callService(domain, service, data).catch((err) => {
       console.error("piscine-card:", err);
       this._local = null;
-      this._toast("Commande refusée par Home Assistant", true);
+      this._toast(this._t("common.ha_refused"), true);
       this._update();
     });
   }
@@ -1122,10 +1164,10 @@ class PiscineCard extends HTMLElement {
     const t = String(text || "").trim();
     if (!t || t === "unknown" || t === "unavailable") return null;
     const m = /^(?:(v\d[\w.]*?)(?:-(\d+)-g([0-9a-f]{7,40}))?|([0-9a-f]{7,40}))(-dirty)?$/.exec(t);
-    if (!m) return { label: t, sub: "Compilé hors de make : on ne sait pas de quel commit", dirty: false };
-    const [, tag, n, hash, bare, dirty] = m, local = dirty ? " · avec des modifications locales" : "";
+    if (!m) return { label: t, sub: T("card.fw.not_make"), dirty: false };
+    const [, tag, n, hash, bare, dirty] = m, local = dirty ? ` · ${T("card.fw.local_changes")}` : "";
     if (bare) return { label: bare.slice(0, 7), sub: `Commit ${bare.slice(0, 7)}${local}`, dirty: !!dirty };
-    return { label: n ? `${tag} +${n}` : tag, sub: (hash ? `Commit ${hash.slice(0, 7)}, ${n} commit${+n > 1 ? "s" : ""} après ${tag}` : "Version publiée") + local, dirty: !!dirty };
+    return { label: n ? `${tag} +${n}` : tag, sub: (hash ? T("card.fw.commits_after", { hash: hash.slice(0, 7), count: +n, tag }) : T("card.fw.released")) + local, dirty: !!dirty };
   }
   /**
    * ESPHome's version and build time -> {version, built}, from ESPHome Version (« 2026.7.2 (config hash 0x528082c4,
@@ -1137,27 +1179,35 @@ class PiscineCard extends HTMLElement {
     if (!m || m[1] === "unknown" || m[1] === "unavailable") return null;
     const when = m[2] && (/\bbuilt\s+(.+)$/.exec(m[2])?.[1] ?? m[2]); // after « config hash …, built »
     const t = when ? new Date(Date.parse(when.replace(/^(\d{4}-\d{2}-\d{2}) /, "$1T").replace(/ ?([+-]\d{2}):?(\d{2})$/, "$1:$2"))) : null;
-    const built = t && !isNaN(t) ? `Compilé le ${pad(t.getDate())}/${pad(t.getMonth() + 1)}/${t.getFullYear()} à ${fmtT(t)}` : when ? `Compilé ${when}` : "";
+    const built = t && !isNaN(t) ? T("card.fw.built_at", { date: F.date(t, { day: "2-digit", month: "2-digit", year: "numeric" }), time: fmtT(t) })
+      : when ? T("card.fw.built_raw", { when }) : "";
     return { version: m[1], built };
   }
   /**
-   * Update Status, the firmware's updates and their gate (WP6): « non vérifié », « vérification », « à jour »,
-   * « disponible », « en attente (mode manuel) », « en attente (remplissage) », « installation », « erreur
-   * (vérification) », « erreur (installation) » (English forms too: « deferred: manual override », « failed: … »)
-   * -> {kind, why}: kind is deferred, failed, installing, checking or "" (nothing to add to the update entity);
-   * why, in the card's words. Also for the device's page.
+   * Update Status, the firmware's updates and their gate (WP6), as codes (docs/plans/i18n.md, « Firmware code
+   * contract »): unchecked, checking, up_to_date, available, installing, pending:override, pending:fill, error:check,
+   * error:install. An older firmware's French states go through LEGACY_STATUS; other forms (« deferred: manual
+   * override », « failed: … ») through the patterns below. -> {kind, why}: kind is deferred, failed, installing,
+   * checking or "" (nothing to add to the update entity); why, in the card's words. Also for the device's page.
    */
   static parseUpdateStatus(text) {
-    const t = String(text || "").trim();
+    let t = String(text || "").trim();
     if (!isSet(t) || t === "--") return { kind: "", why: "" };
+    t = LEGACY_STATUS[t] || t;
+    const [code, arg = ""] = t.split(":");
+    const KINDS = { checking: "checking", installing: "installing", pending: "deferred", error: "failed" };
+    if (/^[a-z_]+(:[a-z_]+)?$/.test(t) && (KINDS[code] !== undefined || ["unchecked", "up_to_date", "available"].includes(code))) {
+      const kind = KINDS[code] || "", why = { override: "override", fill: "fill", check: "check", install: "install" }[arg];
+      return { kind, why: kind && why ? T(`card.fw.why.${why}`) : "" };
+    }
     const m = /^([^:(]+?)\s*(?:[:(]\s*(.*?)\)?)?$/.exec(t) || [t, t], head = m[1], rest = m[2] || "";
-    const kind = /^(deferred|held|waiting|pending|en attente|différée?)/i.test(head) ? "deferred"
-      : /^(failed|error|échec|erreur)/i.test(head) ? "failed"
-      : /^(installing|downloading|writing|installation|téléchargement)/i.test(head) ? "installing"
-      : /^(checking|vérification)/i.test(head) ? "checking" : "";
-    const why = /override|manuel/i.test(rest) ? "override en cours" : /fill|rempl/i.test(rest) ? "remplissage en cours"
-      : kind === "failed" && /v[ée]rif|check/i.test(rest) ? "la vérification n'a pas abouti (pas de réseau, ou aucune version publiée pour l'instant)"
-      : kind === "failed" && /install/i.test(rest) ? "l'installation n'a pas abouti" : rest;
+    const kind = /^(deferred|held|waiting|pending)/i.test(head) ? "deferred"
+      : /^(failed|error)/i.test(head) ? "failed"
+      : /^(installing|downloading|writing)/i.test(head) ? "installing"
+      : /^checking/i.test(head) ? "checking" : "";
+    const why = /override|manual/i.test(rest) ? T("card.fw.why.override") : /fill/i.test(rest) ? T("card.fw.why.fill")
+      : kind === "failed" && /check/i.test(rest) ? T("card.fw.why.check")
+      : kind === "failed" && /install/i.test(rest) ? T("card.fw.why.install") : rest;
     return { kind, why: kind ? why : "" };
   }
   /** IANA zone (« Europe/Paris ») -> its POSIX TZ string (TZ_POSIX), or null for a name tzdata doesn't have. */
@@ -1172,10 +1222,11 @@ class PiscineCard extends HTMLElement {
   _hold() {
     if (this._inOvr()) {
       const until = this._ovrUntil();
-      return { long: `override manuel en cours (${SPEEDS[this._override()]}${until ? `, retour en Auto à ${fmtT(until)}` : ", sans fin"})`, ovr: true };
+      const speed = speedTxt(this._override());
+      return { long: until ? this._t("card.fw.hold_until", { speed, time: fmtT(until) }) : this._t("card.fw.hold_noend", { speed }), ovr: true };
     }
     const run = this._st("fillRunning"); // as the firmware's gate; before it (1.9.0), a non-zero flow
-    return (run ? run.state === "on" : this._n("flow") > 0) ? { long: "remplissage en cours", ovr: false } : null;
+    return (run ? run.state === "on" : this._n("flow") > 0) ? { long: this._t("card.fw.why.fill"), ovr: false } : null;
   }
   /** The update entity as « Réglages contrôleur » › Firmware shows it; null without one (a firmware before WP6). */
   _updModel() {
@@ -1195,38 +1246,39 @@ class PiscineCard extends HTMLElement {
   /** « Réglages contrôleur » › Firmware on the update entity, as HTML (mock-up 2026-11-18): one string per state, drawn when it changes. */
   _updHtml(m) {
     // `more`: the row opens Home Assistant's own dialog for the update entity (release notes, « Ignorer »)
-    const row = (icon, label, sub, right, cls = "", more = false) => `<div class="erow${more ? ' more" data-act="more" role="button" tabindex="0" title="Ouvrir dans Home Assistant' : ""}">`
+    const t = this._t;
+    const row = (icon, label, sub, right, cls = "", more = false) => `<div class="erow${more ? ` more" data-act="more" role="button" tabindex="0" title="${t("common.open_in_ha")}` : ""}">`
       + `<span class="ic">${this._icon(icon)}</span><span class="name"><span>${label}</span>`
       + `${sub ? `<small class="${cls}">${sub}</small>` : ""}</span>${right}${more ? `<span class="chev">${svg("chevron")}</span>` : ""}</div>`;
     const val = (v, cls = "") => `<span class="val num${cls}">${esc(v)}</span>`;
     const st = m.status, deferred = st.kind === "deferred" && !m.busy, latest = esc(m.latest || "");
-    const status = m.rebooting ? "Redémarrage du contrôleur…"
-      : m.off ? "Contrôleur injoignable : versions inconnues pour l'instant"
-      : m.busy ? (m.pct !== null ? `Installation : ${m.pct} %` : "Installation…")
-      : m.checking ? "Recherche d'une nouvelle version…"
-      : deferred ? `En attente : ${esc(st.why || "le contrôleur attend")}`
-      : st.kind === "failed" ? `Échec : ${esc(st.why || "l'installation n'a pas abouti")}`
-      : m.avail ? `${latest} : environ 1 min, redémarrage compris` : "Rien à installer";
+    const waits = t("card.fw.why.waits");
+    const status = m.rebooting ? t("card.fw.rebooting")
+      : m.off ? t("card.fw.off")
+      : m.busy ? (m.pct !== null ? t("card.fw.installing_pct", { pct: m.pct }) : t("card.fw.installing"))
+      : m.checking ? t("card.fw.checking")
+      : deferred ? t("card.fw.deferred", { why: esc(st.why || waits) })
+      : st.kind === "failed" ? t("card.fw.failed", { why: esc(st.why || t("card.fw.why.install")) })
+      : m.avail ? t("card.fw.avail", { version: latest }) : t("card.fw.nothing");
     const idle = !m.off && m.online && !m.busy;
-    const btns = (m.canCheck ? `<button class="btn tonal" data-act="check"${idle && !m.checking ? "" : " disabled"}>Vérifier</button>` : "")
-      + (m.avail ? `<button class="btn" data-act="install"${idle && !deferred && !m.ask ? "" : " disabled"}>${deferred ? "En attente" : "Installer"}</button>` : "");
+    const btns = (m.canCheck ? `<button class="btn tonal" data-act="check"${idle && !m.checking ? "" : " disabled"}>${t("card.fw.check")}</button>` : "")
+      + (m.avail ? `<button class="btn" data-act="install"${idle && !deferred && !m.ask ? "" : " disabled"}>${deferred ? t("common.pending") : t("card.fw.install")}</button>` : "");
     const auto = m.auto, iv = m.interval, opts = (iv && iv.attributes.options) || [];
-    return row("tag-outline", "Version installée", m.esphome ? esc(`ESPHome ${m.esphome.version}${m.esphome.built ? ` · ${m.esphome.built.charAt(0).toLowerCase()}${m.esphome.built.slice(1)}` : ""}`) : "", val(m.installed), "", !m.off)
-      + (m.latest ? row("cloud-sync-outline", "Dernière version", (m.avail ? "Mise à jour disponible" : "À jour")
-        + (/^https?:\/\//.test(m.notes || "") ? ` · <a href="${esc(m.notes)}" target="_blank" rel="noopener">Notes de version</a>` : ""), val(m.latest, m.avail ? " acc" : ""), m.avail ? "fw-up" : "fw-ok", true) : "")
-      + row("download", "Mise à jour", status, btns ? `<span class="btns">${btns}</span>` : "", st.kind === "failed" && !m.busy && !m.off ? "bad" : "")
+    const onRequest = iv && (iv.state === "on_request" || /demande/i.test(iv.state)); // the code, or an older firmware's option
+    return row("tag-outline", t("card.fw.installed"), m.esphome ? esc(`ESPHome ${m.esphome.version}${m.esphome.built ? ` · ${m.esphome.built.charAt(0).toLowerCase()}${m.esphome.built.slice(1)}` : ""}`) : "", val(m.installed), "", !m.off)
+      + (m.latest ? row("cloud-sync-outline", t("card.fw.latest"), (m.avail ? t("card.fw.upd_avail") : t("card.fw.up_to_date"))
+        + (/^https?:\/\//.test(m.notes || "") ? ` · <a href="${esc(m.notes)}" target="_blank" rel="noopener">${t("card.fw.notes")}</a>` : ""), val(m.latest, m.avail ? " acc" : ""), m.avail ? "fw-up" : "fw-ok", true) : "")
+      + row("download", t("card.fw.update"), status, btns ? `<span class="btns">${btns}</span>` : "", st.kind === "failed" && !m.busy && !m.off ? "bad" : "")
       + (m.busy && m.pct !== null ? `<div class="prog"><i style="width:${m.pct}%"></i></div>` : m.busy || m.rebooting || m.checking ? `<div class="prog ind"><i></i></div>` : "")
-      + (m.ask && m.hold && m.avail ? `<div class="banner">${svg("alert")}<span>${esc(cap(m.hold.long))} : le contrôleur n'installe rien pendant ce temps. Il installera ${latest} dès la fin, `
-        + `puis redémarre (environ 30 s ; la pompe s'arrête le temps du redémarrage).${m.hold.ovr ? " Pour installer tout de suite, revenez d'abord en Auto." : ""}</span>`
-        + `<div class="acts"><button class="btn tonal" data-act="ask-no">Annuler</button><button class="btn" data-act="ask-yes">Installer à la fin</button></div></div>` : "")
-      + (deferred ? `<div class="banner">${svg("timer")}<span>Installation${latest ? ` de ${latest}` : ""} en attente : ${esc(m.hold ? m.hold.long : st.why || "le contrôleur attend")}. `
-        + "Le contrôleur la lancera de lui-même ensuite.</span>"
-        + (m.canCancel ? `<div class="acts"><button class="btn tonal" data-act="cancel"${m.online ? "" : " disabled"}>Annuler la demande</button></div>` : "") + "</div>" : "")
-      + (auto ? row("autorenew", "Mise à jour automatique", "Installe seule une nouvelle version trouvée par une vérification programmée ; « Vérifier » ne fait que chercher. Comme toute installation, elle attend la fin d'un override manuel ou d'un remplissage.",
-        `<input type="checkbox" class="tgl" data-act="auto" aria-label="Mise à jour automatique"${auto.state === "on" ? " checked" : ""}${isSet(auto.state) ? "" : " disabled"}>`) : "")
-      + (iv ? row("timer-outline", "Fréquence de vérification", /demande/i.test(iv.state) ? "Seulement sur « Vérifier » : rien ne s'installe seul" : isSet(iv.state) ? "La mise à jour automatique installe ce qu'elle trouve" : "",
-        `<select class="esel" data-act="interval" aria-label="Fréquence de vérification"${isSet(iv.state) ? "" : " disabled"}>${opts.includes(iv.state) ? "" : "<option selected></option>"}`
-        + opts.map((o) => `<option${o === iv.state ? " selected" : ""}>${esc(o)}</option>`).join("") + "</select>") : "");
+      + (m.ask && m.hold && m.avail ? `<div class="banner">${svg("alert")}<span>${t("card.fw.ask", { hold: esc(cap(m.hold.long)), version: latest })}${m.hold.ovr ? ` ${t("card.fw.ask_ovr")}` : ""}</span>`
+        + `<div class="acts"><button class="btn tonal" data-act="ask-no">${t("common.cancel")}</button><button class="btn" data-act="ask-yes">${t("card.fw.install_at_end")}</button></div></div>` : "")
+      + (deferred ? `<div class="banner">${svg("timer")}<span>${t(latest ? "card.fw.deferred_v" : "card.fw.deferred_nov", { version: latest, why: esc(m.hold ? m.hold.long : st.why || waits) })}</span>`
+        + (m.canCancel ? `<div class="acts"><button class="btn tonal" data-act="cancel"${m.online ? "" : " disabled"}>${t("card.fw.cancel_request")}</button></div>` : "") + "</div>" : "")
+      + (auto ? row("autorenew", t("card.fw.auto"), t("card.fw.auto_sub"),
+        `<input type="checkbox" class="tgl" data-act="auto" aria-label="${t("card.fw.auto")}"${auto.state === "on" ? " checked" : ""}${isSet(auto.state) ? "" : " disabled"}>`) : "")
+      + (iv ? row("timer-outline", t("card.fw.interval"), onRequest ? t("card.fw.interval_on_request") : isSet(iv.state) ? t("card.fw.interval_auto") : "",
+        `<select class="esel" data-act="interval" aria-label="${t("card.fw.interval")}"${isSet(iv.state) ? "" : " disabled"}>${opts.includes(iv.state) ? "" : "<option selected></option>"}`
+        + opts.map((o) => `<option value="${esc(o)}"${o === iv.state ? " selected" : ""}>${esc(intervalTxt(o))}</option>`).join("") + "</select>") : "");
   }
   /** Draws « Réglages contrôleur » › Firmware when the update entity exists; says how a « Vérifier » ended. */
   _renderUpdate() {
@@ -1241,7 +1293,7 @@ class PiscineCard extends HTMLElement {
     if (U.checkUntil && (m.updated > U.checkFrom || settled || Date.now() >= U.checkUntil || m.off)) {
       U.checkUntil = 0; m.checking = false;
       if (m.status.kind === "failed") this._toast(cap(m.status.why), true);
-      else if (!m.off) this._toast(m.avail ? `Firmware ${m.latest} disponible` : `Firmware à jour (${m.installed})`);
+      else if (!m.off) this._toast(m.avail ? this._t("card.fw.toast_avail", { version: m.latest }) : this._t("card.fw.toast_ok", { version: m.installed }));
     }
     if (U.ask && (!m.hold || !m.avail || m.busy)) U.ask = m.ask = false; // nothing holds it any more: « Installer » is enough
     const html = this._updHtml(m);
@@ -1255,7 +1307,7 @@ class PiscineCard extends HTMLElement {
     const install = () => {
       const m = this._updModel();
       send("update", "install", { entity_id: this._e.firmware },
-        m.hold ? `Installation de ${m.latest} demandée : le contrôleur la lancera à la fin ${m.hold.ovr ? "de l'override" : "du remplissage"}` : `Installation de ${m.latest} demandée`);
+        this._t(m.hold ? (m.hold.ovr ? "card.fw.req_ovr" : "card.fw.req_fill") : "card.fw.req", { version: m.latest }));
     };
     const more = (ev) => !ev.target.closest("a") && ev.target.closest('[data-act="more"]') && this._moreInfo("firmware");
     host.addEventListener("keydown", (ev) => { if ((ev.key === "Enter" || ev.key === " ") && more(ev)) ev.preventDefault(); });
@@ -1271,7 +1323,7 @@ class PiscineCard extends HTMLElement {
       } else if (act === "install") { if (this._hold()) { U.ask = true; this._update(); } else install(); }
       else if (act === "ask-no") { U.ask = false; this._update(); }
       else if (act === "ask-yes") { U.ask = false; install(); this._update(); }
-      else if (act === "cancel") send("button", "press", { entity_id: this._e.cancelUpdate }, "Demande d'installation annulée");
+      else if (act === "cancel") send("button", "press", { entity_id: this._e.cancelUpdate }, this._t("card.fw.cancelled"));
     });
     host.addEventListener("change", (ev) => {
       const t = ev.target;
@@ -1294,14 +1346,15 @@ class PiscineCard extends HTMLElement {
     const lat = this._n("latitude"), lon = this._n("longitude"), tz = this._s("timezone"), name = this._s("timezoneName"), h = this._haPos();
     const near = (a, b) => Number.isFinite(a) && Math.abs(a - b) < 0.005;
     const same = h && near(lat, h.lat) && near(lon, h.lon) && (!h.posix || (tz === h.posix && name === h.iana));
+    const t = this._t;
     const row = (key, icon, label, value, sub = "") => (this._st(key) ? `<div class="erow"><span class="ic">${this._icon(icon)}</span><span class="name"><span>${label}</span>`
       + `${sub ? `<small>${sub}</small>` : ""}</span><span class="val num">${esc(value)}</span></div>` : "");
-    const html = row("latitude", "map-marker", "Latitude", deg(lat)) + row("longitude", "map-marker", "Longitude", deg(lon))
-      + row("timezone", "earth", "Fuseau horaire", isSet(name) ? name : isSet(tz) ? "chaîne POSIX saisie" : "non défini", isSet(tz) ? `POSIX <span class="mono">${esc(tz)}</span>` : "")
-      + (h ? `<div class="erow"><span class="ic">${this._icon("home-assistant")}</span><span class="name"><span>Utiliser la position et le fuseau de Home Assistant</span><small>${same
-        ? (h.posix ? "Déjà ceux de Home Assistant." : esc(`Position déjà celle de Home Assistant ; son fuseau (${h.iana}) est inconnu de la carte : réglez-le sur la page du contrôleur.`))
-        : esc(`Home Assistant : ${deg(h.lat)} · ${deg(h.lon)} · ${h.iana || "fuseau non défini"}${h.posix ? "" : " (fuseau inconnu de la carte : la position seule)"}`)}</small></span>`
-        + `<button class="btn" data-act="pos-ha"${same || !this._online() ? " disabled" : ""}>Utiliser</button></div>` : "");
+    const html = row("latitude", "map-marker", t("card.pos.lat"), deg(lat)) + row("longitude", "map-marker", t("card.pos.lon"), deg(lon))
+      + row("timezone", "earth", t("card.pos.tz"), isSet(name) ? name : isSet(tz) ? t("card.pos.tz_posix") : t("card.pos.tz_unset"), isSet(tz) ? `POSIX <span class="mono">${esc(tz)}</span>` : "")
+      + (h ? `<div class="erow"><span class="ic">${this._icon("home-assistant")}</span><span class="name"><span>${t("card.pos.use_ha")}</span><small>${same
+        ? (h.posix ? t("card.pos.same") : esc(t("card.pos.same_pos", { zone: h.iana })))
+        : esc(t(h.posix ? "card.pos.ha" : "card.pos.ha_nozone", { lat: deg(h.lat), lon: deg(h.lon), zone: h.iana || t("card.pos.ha_tz_unset") }))}</small></span>`
+        + `<button class="btn" data-act="pos-ha"${same || !this._online() ? " disabled" : ""}>${t("card.pos.use")}</button></div>` : "");
     if (html !== this._posDrawn) { this._posDrawn = html; this._$("posRows").innerHTML = html; }
   }
   /** Writes hass.config's position, and its zone when TZ_POSIX has it: Timezone (POSIX, applied) and Timezone Name together. */
@@ -1312,15 +1365,15 @@ class PiscineCard extends HTMLElement {
       .filter(([key]) => this._st(key));
     btn.classList.add("busy");
     Promise.all(writes.map(([key, domain, value]) => this._hass.callService(domain, "set_value", { entity_id: this._e[key], value })))
-      .then(() => this._toast(`${h.posix ? "Position et fuseau de Home Assistant envoyés" : "Position de Home Assistant envoyée"} : plan du jour recalculé`), (err) => this._refused(err))
+      .then(() => this._toast(this._t(h.posix ? "card.pos.sent_both" : "card.pos.sent_pos")), (err) => this._refused(err))
       .finally(() => { btn.classList.remove("busy"); this._posDrawn = ""; this._update(); });
   }
 
-  /** « Hors ligne depuis 6 min », « Contrôleur muet depuis 5 min », else `live`. */
-  _lightText(L, live = `Contrôleur · ${agoTxt(L.quiet)}`, mute = "Contrôleur muet") {
-    if (L.off !== null) return Number.isFinite(L.off) ? `Hors ligne depuis ${fmtD(L.off)}` : "Hors ligne";
+  /** « Hors ligne depuis 6 min », « Contrôleur muet depuis 5 min », else « Contrôleur · il y a 2 min ». */
+  _lightText(L) {
+    if (L.off !== null) return Number.isFinite(L.off) ? this._t("card.light.off_since", { duration: fmtD(L.off) }) : this._t("card.light.off");
     if (L.h === "alarm") return this._fillText(L.fill);
-    return L.h === "live" ? live : `${mute} depuis ${fmtD(L.quiet)}`;
+    return L.h === "live" ? this._t("card.light.live", { ago: agoTxt(L.quiet) }) : this._t("card.light.mute_since", { duration: fmtD(L.quiet) });
   }
   /** The light on the tile and in the panel's header. A message newer than the last one drawn: one heartbeat. */
   _renderLight() {
@@ -1329,9 +1382,9 @@ class PiscineCard extends HTMLElement {
     if (this._$("led")) this._$("led").hidden = !on;
     if (!on) return;
     const L = this._light();
-    const tip = L.off !== null ? `Contrôleur hors ligne${L.seen ? ` : dernier message à ${stampMs(L.seen)}` : ""}`
-      : (L.h === "alarm" ? `${this._fillText(L.fill, "Remplissage en cours")}, alarme non acquittée. ` : "")
-        + `Dernier message du contrôleur à ${stampMs(L.seen)}, ${agoTxt(L.quiet)}`;
+    const tip = L.off !== null ? (L.seen ? this._t("card.light.tip_off_last", { time: stampMs(L.seen) }) : this._t("card.light.tip_off"))
+      : (L.h === "alarm" ? `${this._t("card.light.tip_alarm", { fill: this._fillText(L.fill, "running") })} ` : "")
+        + this._t("card.light.tip_last", { time: stampMs(L.seen), ago: agoTxt(L.quiet) });
     for (const el of leds) {
       // a redraw must not cut a heartbeat short; the alarm's own pulse replaces it
       const cls = `led ${L.h}${el.classList.contains("ping") && L.h !== "alarm" ? " ping" : ""}`;
@@ -1379,10 +1432,9 @@ class PiscineCard extends HTMLElement {
     const since = Number.isFinite(t) && Date.now() - t >= (after - 1) * M_MS ? new Date(t) : null;
     return { since, min: since ? (Date.now() - t) / M_MS : after, acked: this._s("fillAcked") === "on" };
   }
-  /** « Remplissage depuis 1 h 12 », « … depuis plus de 1 h ». */
-  _fillText(f, what = "Remplissage") { return `${what} depuis ${f.since ? "" : "plus de "}${fmtD(f.min)}`; }
+  /** « Remplissage depuis 1 h 12 », « … depuis plus de 1 h »; `kind` fill, running (« Remplissage en cours… ») or on (« En cours… »). */
+  _fillText(f, kind = "fill") { return this._t(`card.fill.${kind}${f.since ? "" : "_over"}`, { duration: fmtD(f.min) }); }
   _timeoutMin() { const m = this._n("timeout"); return Number.isFinite(m) ? Math.round(m) : 60; }
-  _durChoice() { const m = this._timeoutMin(); const d = DURATIONS.find(([, v]) => v === m); return d ? d : [fmtD(m), m]; }
   _commanded() { const s = this._s("commanded"); return SPEEDS[s] ? s : "Off"; }
   _planned() { const s = this._s("planned"); return SPEEDS[s] ? s : "Off"; }
 
@@ -1402,22 +1454,23 @@ class PiscineCard extends HTMLElement {
       }
       if (age > CMD_TIMEOUT) {
         this._local = null;
-        this._toast("Le contrôleur n'a pas répondu. La pompe n'a pas changé.", true);
+        this._toast(this._t("card.cmd.timeout"), true);
         return null;
       }
       return { label: L.label, stage: L.echoed ? 1 : 0, t0: L.t0, fail: !this._online() && age > 2000 };
     }
-    if (scriptBusy) return { label: this._s("sAuto") === "on" ? "Retour en Auto" : "Vitesse forcée", stage: 1, t0: Date.now(), fail: false };
+    if (scriptBusy) return { label: this._t(this._s("sAuto") === "on" ? "card.dur.title" : "card.speed.title"), stage: 1, t0: Date.now(), fail: false };
     return null;
   }
 
   _phase() {
-    if (!this._online()) return { label: "Hors ligne", cls: this._light().h === "lost" ? "danger" : "amber" };
-    if (this._freeze()) return { label: "Hors gel · Low", cls: "cool" };
-    if (this._stuck()) return { label: `Override depuis ${fmtD(this._ovrAgeMin())}`, cls: "danger" };
-    if (this._inOvr()) return { label: `Manuel · ${SPEEDS[this._override()]}`, cls: "amber" };
+    const t = this._t;
+    if (!this._online()) return { label: t("card.light.off"), cls: this._light().h === "lost" ? "danger" : "amber" };
+    if (this._freeze()) return { label: t("card.phase.freeze", { speed: speedTxt("Low") }), cls: "cool" };
+    if (this._stuck()) return { label: t("card.phase.stuck", { duration: fmtD(this._ovrAgeMin()) }), cls: "danger" };
+    if (this._inOvr()) return { label: `${t("common.mode.manual")} · ${speedTxt(this._override())}`, cls: "amber" };
     const c = this._commanded();
-    return c === "Off" ? { label: "Auto · Arrêtée", cls: "idle" } : { label: `Auto · ${SPEEDS[c]}`, cls: "acc" };
+    return c === "Off" ? { label: `${t("common.mode.auto")} · ${t("common.stopped")}`, cls: "idle" } : { label: `${t("common.mode.auto")} · ${speedTxt(c)}`, cls: "acc" };
   }
   _icoClass(base) {
     const ph = this._phase(), running = this._commanded() !== "Off" && this._online();
@@ -1483,7 +1536,7 @@ class PiscineCard extends HTMLElement {
     if (!box) return;
     const rec = this._config.recorder, range = rec ? this._range : "7d"; // without the recorder: Daily History's 7 days
     this.shadowRoot.querySelectorAll("#tRange button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.r === range)));
-    if (T_SPAN[range]) this._loadStats();
+    if (T_STATS.has(range)) this._loadStats();
     const W = box.clientWidth, H = box.clientHeight;
     if (!W) return; // not laid out: the pop-up is closed
     const now = Date.now();
@@ -1497,9 +1550,10 @@ class PiscineCard extends HTMLElement {
       empty.hidden = false; empty.textContent = msg; svg.innerHTML = ""; tip.hidden = true;
       sum.innerHTML = summary; leg.innerHTML = ""; box.setAttribute("aria-label", msg);
     };
-    const nowTxt = `<b>${fmt1(this._n("water"))} °C</b> maintenant`;
-    if (range === "24h" && !this._wHist) return showEmpty("Chargement de l'historique…", nowTxt);
-    if (T_SPAN[range] && !this._stats) return showEmpty("Chargement des statistiques…", nowTxt);
+    const t = this._t;
+    const nowTxt = t("card.temp.now", { temp: fmt1(this._n("water")) });
+    if (range === "24h" && !this._wHist) return showEmpty(t("card.temp.loading_history"), nowTxt);
+    if (T_STATS.has(range) && !this._stats) return showEmpty(t("card.temp.loading_stats"), nowTxt);
     empty.hidden = true;
 
     const L = 8, R = W - 34, TOP = 10, BOT = H - 20;
@@ -1523,18 +1577,18 @@ class PiscineCard extends HTMLElement {
         // label inside the zone, under the line: the curve only goes there when freeze protection is on
         const yf = y(fz), ly = bot - yf >= 14 ? yf + 11 : yf - 4;
         g += `<rect class="fz-zone" x="${L}" y="${yf}" width="${R - L}" height="${Math.max(0, bot - yf)}"/>`
-          + `<line class="fz" x1="${L}" x2="${R}" y1="${yf}" y2="${yf}"/><text class="fz-t" x="${L + 4}" y="${ly}">Hors gel ${fmt1(fz)} °C</text>`;
+          + `<line class="fz" x1="${L}" x2="${R}" y1="${yf}" y2="${yf}"/><text class="fz-t" x="${L + 4}" y="${ly}">${t("card.temp.fz", { temp: fmt1(fz) })}</text>`;
       } else if (Number.isFinite(fz)) g += `<text class="fz-t" x="${R + 5}" y="${H - 6}">↓${fmt1(fz)}°</text>`;
       const legend = Number.isFinite(fz)
-        ? `<span><i class="k-fz"></i>Hors gel : Low forcé sous ${fmt1(fz)} °C${near ? "" : " (sous l'échelle)"}</span>` : "";
+        ? `<span><i class="k-fz"></i>${t(near ? "card.temp.fz_leg" : "card.temp.fz_leg_below", { temp: fmt1(fz) })}</span>` : "";
       return { y, grid: g, legend };
     };
-    const belowFz = (v) => (Number.isFinite(fz) && v < fz ? " · sous le seuil hors gel" : "");
+    const belowFz = (v) => (Number.isFinite(fz) && v < fz ? ` · ${t("card.temp.below_fz")}` : "");
     let g = "", hovX = null;
 
     if (range === "24h") {
       const pts = this._tempSeries(now), vals = pts.filter((p) => Number.isFinite(p.v)).map((p) => p.v);
-      if (!vals.length) return showEmpty("Pas de mesure de la température ces dernières 24 h.", nowTxt);
+      if (!vals.length) return showEmpty(t("card.temp.none_24h"), nowTxt);
       const from = now - 24 * H_MS, x = (t) => L + ((t - from) / (24 * H_MS)) * (R - L), mid = midnight(now);
       const sc = yScale(vals, TOP, BOT);
       g += sc.grid;
@@ -1571,42 +1625,43 @@ class PiscineCard extends HTMLElement {
         tip.innerHTML = "<b></b><span><i></i><span></span></span>";
         tip.querySelector("b").textContent = `${fmt1(hov.v)} °C`;
         tip.querySelector("i").className = hov.ok ? "" : "no";
-        tip.querySelector("span span").textContent = `${hov.t < mid ? "hier " : ""}${fmtT(new Date(hov.t))} · ${
-          hov.ok ? "bassin, pompe en marche" : hov.on ? `pompe en marche depuis moins de ${POOL_AFTER_MIN} min` : "tuyau, pompe arrêtée"}${belowFz(hov.v)}`;
+        tip.querySelector("span span").textContent = `${hov.t < mid ? `${t("common.yesterday")} ` : ""}${fmtT(new Date(hov.t))} · ${
+          hov.ok ? t("card.temp.tip_pool") : hov.on ? t("card.temp.tip_short", { min: POOL_AFTER_MIN }) : t("card.temp.tip_pipe")}${belowFz(hov.v)}`;
         hovX = x(hov.t);
       }
       const dot = hov || last;
       g += `<circle class="pt ${dot.ok ? "ok" : "no"}" cx="${x(dot.t)}" cy="${sc.y(dot.v)}" r="4"/>`;
       // today's pool min/max as the firmware keeps them; pump stopped, the last real pool reading too
       const lo = this._n("waterMin"), hi = this._n("waterMax");
-      let s = Number.isFinite(lo) && Number.isFinite(hi) ? `<b>${fmt1(lo)} – ${fmt1(hi)} °C</b> aujourd'hui, pompe en marche`
-        : "Pas encore de mesure du bassin aujourd'hui";
+      let s = Number.isFinite(lo) && Number.isFinite(hi) ? t("card.temp.today_range", { lo: fmt1(lo), hi: fmt1(hi) }) : t("card.temp.none_today");
       if (!last.ok) {
         const lastOk = [...known].reverse().find((p) => p.ok);
-        s += `<span>Pompe ${last.on ? `en marche depuis moins de ${POOL_AFTER_MIN} min` : "arrêtée"} : ${fmt1(last.v)} °C est la température du tuyau.${
-          lastOk ? ` Bassin : ${fmt1(lastOk.v)} °C à ${fmtT(new Date(lastOk.t))}${lastOk.t < mid ? " hier" : ""}.` : ""}</span>`;
+        s += `<span>${last.on ? t("card.temp.pipe_short", { min: POOL_AFTER_MIN, temp: fmt1(last.v) }) : t("card.temp.pipe_off", { temp: fmt1(last.v) })}${
+          lastOk ? ` ${t(lastOk.t < mid ? "card.temp.last_pool_yday" : "card.temp.last_pool", { temp: fmt1(lastOk.v), time: fmtT(new Date(lastOk.t)) })}` : ""}</span>`;
       }
       sum.innerHTML = s;
-      leg.innerHTML = `<span><i class="k-pool"></i>Bassin (pompe en marche depuis ${POOL_AFTER_MIN} min)</span><span><i class="k-pipe"></i>Tuyau, pompe arrêtée</span><span><i class="k-band"></i>Filtration</span>${sc.legend}`;
-      box.setAttribute("aria-label", `Température du bassin sur 24 h, de ${fmt1(Math.min(...vals))} à ${fmt1(Math.max(...vals))} °C`);
+      leg.innerHTML = `<span><i class="k-pool"></i>${t("card.temp.leg_pool", { min: POOL_AFTER_MIN })}</span><span><i class="k-pipe"></i>${t("card.temp.leg_pipe")}</span><span><i class="k-band"></i>${t("card.sec.filtration")}</span>${sc.legend}`;
+      box.setAttribute("aria-label", t("card.temp.aria24", { lo: fmt1(Math.min(...vals)), hi: fmt1(Math.max(...vals)) }));
     } else {
       // 7 / 30 / 90 j: a bar a day; 1 an: a bar a week. The pool's min–max where it is known; elsewhere (before Min/Max
       // Today had statistics) the probe's mean, dashed: the pipe is in it, as on the 24 h curve.
       const wk = range === "1y", days = wk ? this._tempWeeks() : this._tempDays(T_N[range]), n = days.length;
       const cw = (R - L) / n, cx = (i) => L + cw * (i + 0.5);
       const bw = Math.max(1.5, Math.min(12, cw - (cw > 6 ? 3 : 1))), rx = Math.min(4, bw / 2); // 30 bars on a phone: ~7 px, 3 apart; 90: ~2 px, 1 apart
-      const isNow = (d) => (wk ? d.cur : d.ago === 0), unit = wk ? "de la semaine" : "du jour";
+      const isNow = (d) => (wk ? d.cur : d.ago === 0), per = wk ? "week" : "day";
       const pool = days.filter((d) => d.known), mean = days.filter((d) => !d.known && Number.isFinite(d.mean));
       const vals = [...pool.flatMap((d) => [d.lo, d.hi]), ...mean.map((d) => d.mean)];
       const sc = yScale(vals.length ? vals : [Number.isFinite(this._n("water")) ? this._n("water") : 20], TOP + 6, BOT - 6);
       g += sc.grid;
       const label = (d, i) => {
-        if (wk) { const m = d.date.getMonth(); return i < 2 || m % 2 || days[i - 1].date.getMonth() === m ? "" : MO[m]; } // every other month's first Monday
-        if (d.ago === 0) return n > 30 ? "" : "auj."; // 90 j: the freeze tag sits there
-        return n <= 7 ? WD[d.date.getDay()] : d.ago % (n > 30 ? 14 : 7) ? "" : `${d.date.getDate()} ${MO[d.date.getMonth()]}`;
+        if (wk) { const m = d.date.getMonth(); return i < 2 || m % 2 || days[i - 1].date.getMonth() === m ? "" : F.date(d.date, { month: "short" }); } // every other month's first Monday
+        if (d.ago === 0) return n > 30 ? "" : t("common.today_short"); // 90 j: the freeze tag sits there
+        return n <= 7 ? F.date(d.date, { weekday: "short" }) : d.ago % (n > 30 ? 14 : 7) ? "" : dayMonth(d.date);
       };
-      const long = (d) => (wk ? `semaine du ${d.date.getDate()} ${MO[d.date.getMonth()]}${d.cur ? ", en cours" : ""}`
-        : `${d.ago === 0 ? "aujourd'hui" : WD[d.date.getDay()]} ${d.date.getDate()} ${MO[d.date.getMonth()]}`);
+      const long = (d) => {
+        if (wk) { const w = t("common.week_of", { date: dayMonth(d.date) }); return d.cur ? t("common.ongoing", { when: w }) : w; }
+        return d.ago === 0 ? `${t("common.today")} ${dayMonth(d.date)}` : wdDayMonth(d.date);
+      };
       let run = []; // the probe's mean: joined only between neighbours, a lone day a dot
       const flush = () => {
         if (run.length > 1) g += `<path class="pipe" d="${run.map(([x, y], k) => `${k ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join("")}"/>`;
@@ -1631,22 +1686,23 @@ class PiscineCard extends HTMLElement {
       if (hd) {
         if (!hd.known && Number.isFinite(hd.mean)) g += `<circle class="pt no" cx="${cx(this._tHover)}" cy="${sc.y(hd.mean)}" r="3.5"/>`;
         tip.innerHTML = "<b></b><span></span>";
-        tip.querySelector("b").textContent = hd.known ? `${fmt1(hd.lo)} – ${fmt1(hd.hi)} °C` : Number.isFinite(hd.mean) ? `≈ ${fmt1(hd.mean)} °C` : "Pas de mesure";
-        tip.querySelector("span").textContent = long(hd) + (hd.known ? (Number.isFinite(hd.hours) ? ` · ${fmt1(hd.hours)} h de filtration` : "") + belowFz(hd.lo)
-          : Number.isFinite(hd.mean) ? ` · sonde, moyenne ${unit}, tuyau compris` : "");
+        tip.querySelector("b").textContent = hd.known ? `${fmt1(hd.lo)} – ${fmt1(hd.hi)} °C` : Number.isFinite(hd.mean) ? `≈ ${fmt1(hd.mean)} °C` : t("card.temp.no_reading");
+        tip.querySelector("span").textContent = long(hd) + (hd.known ? (Number.isFinite(hd.hours) ? ` · ${t("card.temp.tip_hours", { hours: fmt1(hd.hours) })}` : "") + belowFz(hd.lo)
+          : Number.isFinite(hd.mean) ? ` · ${t(`card.temp.tip_mean.${per}`)}` : "");
         hovX = cx(this._tHover);
       }
-      const k = pool.length + mean.length, span = wk ? "12 mois" : `${n} jours`;
-      let s = !k ? "Pas encore de mesure"
-        : `<b>${fmt1(Math.min(...vals))} – ${fmt1(Math.max(...vals))} °C</b> sur ${span}${mean.length ? (pool.length ? "" : `, moyenne ${unit} de la sonde`) : ", pompe en marche"}`;
-      if (mean.length) s += `<span>${pool.length ? `Pointillés : ${wk ? "les semaines" : "les jours"} sans min – max du bassin, la sonde en moyenne` : "La sonde en moyenne"}, tuyau compris (pompe arrêtée, elle lit le local technique).</span>`;
-      if (T_SPAN[range] && this._statsErr) s += "<span>Statistiques de Home Assistant indisponibles : seuls les 7 derniers jours sont connus.</span>";
-      else if (n > 7 && k < n) s += `<span>${k} ${wk ? "semaine" : "jour"}${k > 1 ? "s" : ""} mesuré${wk ? "e" : ""}${k > 1 ? "s" : ""} sur ${n}.</span>`;
+      const k = pool.length + mean.length, span = wk ? t("card.temp.span_12m") : t("card.temp.span_days", { count: n });
+      const lohi = k ? { lo: fmt1(Math.min(...vals)), hi: fmt1(Math.max(...vals)), span } : null;
+      let s = !k ? t("card.temp.none_yet")
+        : mean.length ? (pool.length ? t("card.temp.sum_mixed", lohi) : t(`card.temp.sum_mean.${per}`, lohi)) : t("card.temp.sum_pool", lohi);
+      if (mean.length) s += `<span>${pool.length ? t(`card.temp.note_dash.${per}`) : t("card.temp.note_mean")}</span>`;
+      if (T_STATS.has(range) && this._statsErr) s += `<span>${t("card.temp.stats_err")}</span>`;
+      else if (n > 7 && k < n) s += `<span>${t(`card.temp.measured.${per}`, { count: k, n })}</span>`;
       sum.innerHTML = s;
-      leg.innerHTML = (pool.length || !mean.length ? `<span><i class="k-rng"></i>Min – max ${unit}, pompe en marche depuis ${POOL_AFTER_MIN} min</span>` : "")
-        + (mean.length ? `<span><i class="k-pipe"></i>Sonde, moyenne ${unit}, tuyau compris</span>` : "") + sc.legend;
-      box.setAttribute("aria-label", `Température du bassin, ${span} : ${days.map((d) => `${long(d)} ${d.known ? `${fmt1(d.lo)} à ${fmt1(d.hi)} °C`
-        : Number.isFinite(d.mean) ? `environ ${fmt1(d.mean)} °C (sonde)` : "pas de mesure"}`).join(", ")}`);
+      leg.innerHTML = (pool.length || !mean.length ? `<span><i class="k-rng"></i>${t(`card.temp.leg_rng.${per}`, { min: POOL_AFTER_MIN })}</span>` : "")
+        + (mean.length ? `<span><i class="k-pipe"></i>${t(`card.temp.leg_mean.${per}`)}</span>` : "") + sc.legend;
+      box.setAttribute("aria-label", t("card.temp.aria", { span, items: days.map((d) => (d.known ? t("card.temp.aria_range", { when: long(d), lo: fmt1(d.lo), hi: fmt1(d.hi) })
+        : Number.isFinite(d.mean) ? t("card.temp.aria_mean", { when: long(d), temp: fmt1(d.mean) }) : t("card.temp.aria_none", { when: long(d) }))).join(", ") }));
     }
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
     svg.innerHTML = g;
@@ -1760,8 +1816,8 @@ class PiscineCard extends HTMLElement {
     const run = this._st("fillRunning"), fa = this._fillAlarm(), wr = this._$("wRun");
     wr.hidden = !run || run.state !== "on";
     if (!wr.hidden) {
-      const txt = fa ? `${this._fillText(fa, "En cours")} : au-delà de l'alarme (${fmtD(this._n("fillAlarmAfter", 0))})`
-        : `En cours depuis ${fmtT(new Date(Date.parse(run.last_changed)))}`;
+      const txt = fa ? this._t("card.fill.past_alarm", { text: this._fillText(fa, "on"), duration: fmtD(this._n("fillAlarmAfter", 0)) })
+        : this._t("card.fill.on_at", { time: fmtT(new Date(Date.parse(run.last_changed))) });
       if (wr.textContent !== txt) wr.textContent = txt;
       wr.classList.toggle("warn", !!fa);
     }
@@ -1774,10 +1830,10 @@ class PiscineCard extends HTMLElement {
     const svg = this._$("wSvg"), tip = this._$("wTip"), empty = this._$("wEmpty"), sum = this._$("wSum"), leg = this._$("wLeg");
     const showEmpty = (msg) => { empty.hidden = false; empty.textContent = msg; svg.innerHTML = ""; tip.hidden = true; sum.innerHTML = ""; leg.innerHTML = ""; box.setAttribute("aria-label", msg); };
     const b = this._waterBuckets(range);
-    if (!b) return showEmpty(this._config.recorder ? "Chargement des statistiques…" : "Le contrôleur ne garde pas d'historique de remplissage : son firmware est antérieur.");
+    const t = this._t;
+    if (!b) return showEmpty(t(this._config.recorder ? "card.temp.loading_stats" : "card.water.no_device"));
     const known = b.filter((x) => Number.isFinite(x.value));
-    if (!known.length) return showEmpty(this._wErr[range] ? "Statistiques de Home Assistant indisponibles."
-      : "Pas encore de statistiques pour ce compteur : Home Assistant les calcule chaque heure.");
+    if (!known.length) return showEmpty(t(this._wErr[range] ? "card.water.stats_err" : "card.water.no_stats"));
     empty.hidden = true;
 
     const L = 8, R = W - 40, TOP = 14, BOT = H - 20, n = b.length;
@@ -1794,15 +1850,15 @@ class PiscineCard extends HTMLElement {
     const date = (x) => new Date(x.t);
     const label = (x, i) => {
       const k = n - 1 - i, t = date(x);
-      if (range === "30d") return k === 0 ? "auj." : k % 7 ? "" : `${t.getDate()} ${MO[t.getMonth()]}`;
-      if (range === "90d") return k % 3 ? "" : `${t.getDate()} ${MO[t.getMonth()]}`;
-      return cw >= 30 || k % 2 === 0 ? MO[t.getMonth()] : "";
+      if (range === "30d") return k === 0 ? T("common.today_short") : k % 7 ? "" : dayMonth(t);
+      if (range === "90d") return k % 3 ? "" : dayMonth(t);
+      return cw >= 30 || k % 2 === 0 ? F.date(t, { month: "short" }) : "";
     };
     const long = (x) => {
-      const t = date(x);
-      if (range === "30d") return x.cur ? "aujourd'hui" : `${WD[t.getDay()]} ${t.getDate()} ${MO[t.getMonth()]}`;
-      if (range === "90d") return `semaine du ${t.getDate()} ${MO[t.getMonth()]}${x.cur ? ", en cours" : ""}`;
-      return `${MONTHS[t.getMonth()]} ${t.getFullYear()}${x.cur ? ", en cours" : ""}`;
+      const d = date(x);
+      if (range === "30d") return x.cur ? T("common.today") : wdDayMonth(d);
+      const w = range === "90d" ? T("common.week_of", { date: dayMonth(d) }) : F.date(d, { month: "long", year: "numeric" });
+      return x.cur ? T("common.ongoing", { when: w }) : w;
     };
     const peak = known.reduce((a, x) => (x.value > a.value ? x : a));
     b.forEach((x, i) => {
@@ -1817,20 +1873,19 @@ class PiscineCard extends HTMLElement {
     const hb = this._wHover !== null ? b[this._wHover] : null;
     if (hb) {
       tip.innerHTML = "<b></b><span></span>";
-      tip.querySelector("b").textContent = Number.isFinite(hb.value) ? fmtL(hb.value) : "Pas de relevé";
+      tip.querySelector("b").textContent = Number.isFinite(hb.value) ? fmtL(hb.value) : t("card.water.no_reading");
       tip.querySelector("span").textContent = long(hb);
       hovX = cx(this._wHover);
     }
-    const per = { "30d": ["30 jours", "jour", "Aujourd'hui"], "90d": ["13 semaines", "semaine", "Semaine en cours"], "12m": ["12 mois", "mois", "Mois en cours"] }[range];
     const total = known.reduce((a, x) => a + x.value, 0), closed = known.filter((x) => !x.cur), base = closed.length ? closed : known;
-    let s = `<b>${fmtL(total)}</b> sur ${per[0]} · ${fmtL(base.reduce((a, x) => a + x.value, 0) / base.length)} par ${per[1]} en moyenne`;
-    const end = (t) => (t.endsWith(".") ? t : `${t}.`); // « 15 nov. » already ends the sentence
-    if (peak.value > 0) s += `<span>Le plus : ${fmtL(peak.value)}, ${end(long(peak))}</span>`;
+    let s = t(`card.water.sum.${range}`, { total: fmtL(total), avg: fmtL(base.reduce((a, x) => a + x.value, 0) / base.length) });
+    const end = (txt) => (txt.endsWith(".") ? txt : `${txt}.`); // « 15 nov. » already ends the sentence
+    if (peak.value > 0) s += `<span>${end(t("card.water.peak", { value: fmtL(peak.value), when: long(peak) }))}</span>`;
     const first = b.findIndex((x) => Number.isFinite(x.value));
-    if (first > 0) s += `<span>Premier relevé : ${end(long(b[first]))}</span>`;
+    if (first > 0) s += `<span>${end(t("card.water.first", { when: long(b[first]) }))}</span>`;
     sum.innerHTML = s;
-    leg.innerHTML = `<span><i class="k-bar"></i>Litres par ${per[1]}, compteur du remplissage</span><span><i class="k-cur"></i>${per[2]}</span>`;
-    box.setAttribute("aria-label", `Eau de remplissage sur ${per[0]} : ${b.map((x) => `${long(x)} ${Number.isFinite(x.value) ? fmtL(x.value) : "pas de relevé"}`).join(", ")}`);
+    leg.innerHTML = `<span><i class="k-bar"></i>${t(`card.water.leg.${range}`)}</span><span><i class="k-cur"></i>${t(`card.water.cur.${range}`)}</span>`;
+    box.setAttribute("aria-label", t(`card.water.aria.${range}`, { items: b.map((x) => (Number.isFinite(x.value) ? `${long(x)} ${fmtL(x.value)}` : t("card.water.aria_none", { when: long(x) }))).join(", ") }));
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
     svg.innerHTML = g;
     tip.hidden = hovX === null;
@@ -1848,17 +1903,18 @@ class PiscineCard extends HTMLElement {
   _numTxt(key, v) {
     if (!isSet(v) || !Number.isFinite(+v)) return "—";
     const step = String(this._attr(key, "step") ?? 1), dec = step.includes(".") ? step.split(".")[1].length : 0;
-    return `${(+v).toFixed(dec).replace(".", ",")} ${this._attr(key, "unit_of_measurement") || ""}`.trim();
+    return `${fmtN(+v, dec)} ${this._attr(key, "unit_of_measurement") || ""}`.trim();
   }
   _wireSettings() {
     if (!customElements.get("ha-card")) this._$("setCard").classList.add("plain"); // the device's page: no HA around
     const head = this.shadowRoot.querySelector(".set-h");
-    head.hidden = !this._config.title;
-    this._$("setTitle").textContent = this._config.title;
+    const title = this._config.title ?? this._t("card.tab.settings");
+    head.hidden = !title;
+    this._$("setTitle").textContent = title;
     this._$("setIcon").innerHTML = this._icon("tune-vertical");
     this._wireSettingRows();
   }
-  _refused(err) { console.error("piscine-card:", err); this._toast(`Refusé : ${(err && err.message) || err}`, true); }
+  _refused(err) { console.error("piscine-card:", err); this._toast(this._t("common.refused", { error: (err && err.message) || err }), true); }
   /** Presses a button entity, the button busy meanwhile, then says `ok`. */
   _press(btn, key, ok) {
     btn.classList.add("busy");
@@ -1871,7 +1927,7 @@ class PiscineCard extends HTMLElement {
    */
   _wireSettingRows() {
     const refused = (err) => this._refused(err);
-    const apply = (btn) => this._press(btn, "apply", APPLIED);
+    const apply = (btn) => this._press(btn, "apply", this._t("card.applied"));
     this._$("applyNow").addEventListener("click", (ev) => apply(ev.currentTarget));
     const first = this._$("rows"), rest = this._$("rows2") || first;
     let sect = null;
@@ -1879,19 +1935,20 @@ class PiscineCard extends HTMLElement {
     SETTINGS.forEach((def, i) => {
       const host = i < APPLY_CUT ? first : rest;
       if (def.sect) {
-        const el = document.createElement("div"); el.className = "esect"; el.textContent = def.sect; host.appendChild(el);
+        const el = document.createElement("div"); el.className = "esect"; el.textContent = this._t(def.sect); host.appendChild(el);
         this._sects.push(sect = { el, rows: [] });
         return;
       }
       const row = document.createElement("div"); row.className = "erow";
       row.innerHTML = `<span class="ic"></span><span class="name"><span></span>${def.sub ? "<small></small>" : ""}</span>`
         + (def.button ? `<button class="btn"></button>` : `<span class="ctl"><input type="range"><span class="v num"></span></span>`);
-      row.querySelector(".name span").textContent = def.label;
-      if (def.sub) row.querySelector("small").textContent = def.sub;
+      const label = this._t(`card.row.${def.key}.label`);
+      row.querySelector(".name span").textContent = label;
+      if (def.sub) row.querySelector("small").textContent = this._t(`card.row.${def.key}.sub`);
       const r = { def, row, input: row.querySelector("input"), out: row.querySelector(".v"), btn: row.querySelector("button"), editing: 0, icon: null };
-      if (r.btn) { r.btn.textContent = def.button; r.btn.addEventListener("click", () => apply(r.btn)); }
+      if (r.btn) { r.btn.textContent = this._t(def.button); r.btn.addEventListener("click", () => apply(r.btn)); }
       else {
-        r.input.setAttribute("aria-label", def.label);
+        r.input.setAttribute("aria-label", label);
         // the slider wins over pushed states while it is moved, then until the controller's echo
         r.input.addEventListener("input", () => { r.editing = Date.now() + 60000; r.out.textContent = this._numTxt(def.key, r.input.value); row.classList.add("dirty"); });
         r.input.addEventListener("change", () => {
@@ -1930,16 +1987,19 @@ class PiscineCard extends HTMLElement {
     for (const [host, defs] of [[this._$("planRows"), PLAN_ROWS], [this._$("probeRows"), PROBE_ROWS]]) {
       let sect = null;
       for (const def of defs) {
-        if (def.sect) { sect = document.createElement("div"); sect.className = "esect"; sect.textContent = def.sect; host.appendChild(sect); continue; }
+        if (def.sect) { sect = document.createElement("div"); sect.className = "esect"; sect.textContent = this._t(def.sect); host.appendChild(sect); continue; }
         const row = document.createElement("div"); row.className = def.more ? "erow more" : "erow";
         row.innerHTML = `<span class="ic"></span><span class="name"><span></span><small></small></span>`
           + (def.button ? `<button class="btn"></button>` : `<span class="val num"></span>`)
           + (def.more ? `<span class="chev">${svg("chevron")}</span>` : "");
-        row.querySelector(".name span").textContent = def.label;
+        row.querySelector(".name span").textContent = this._t(`card.row.${def.key}.label`);
         const r = { def, row, sect, val: row.querySelector(".val"), sub: row.querySelector("small"), btn: row.querySelector("button"), icon: null };
-        if (r.btn) { r.btn.textContent = def.button; r.btn.addEventListener("click", () => this._press(r.btn, def.key, def.ok)); }
+        if (r.btn) {
+          r.btn.textContent = this._t(`card.row.${def.key}.button`);
+          r.btn.addEventListener("click", () => this._press(r.btn, def.key, this._t(`card.row.${def.key}.ok`)));
+        }
         if (def.more) {
-          Object.assign(row, { tabIndex: 0, title: "Ouvrir dans Home Assistant" }); row.setAttribute("role", "button");
+          Object.assign(row, { tabIndex: 0, title: this._t("common.open_in_ha") }); row.setAttribute("role", "button");
           row.addEventListener("click", () => this._moreInfo(def.key));
           row.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); this._moreInfo(def.key); } });
         }
@@ -1982,16 +2042,17 @@ class PiscineCard extends HTMLElement {
     if (key === this._daysDrawn) return;
     this._daysDrawn = key;
     const closed = parseDays(this._s("history")), plans = parseDays(this._s("planHistory"));
-    const rows = [{ label: "Aujourd'hui", hours: this._n("hoursToday"), planned: this._n("hoursPlanned"), lo: this._n("waterMin"), hi: this._n("waterMax"), today: true }];
+    const t = this._t;
+    const rows = [{ label: t("common.today_cap"), hours: this._n("hoursToday"), planned: this._n("hoursPlanned"), lo: this._n("waterMin"), hi: this._n("waterMax"), today: true }];
     for (let i = 1; i <= 7; i++) {
       const d = dayAgo(i);
-      rows.push({ label: i === 1 ? "Hier" : `${WD[d.getDay()]} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`, ...closed[dayKey(d)], planned: plans[dayKey(d)]?.hours });
+      rows.push({ label: i === 1 ? t("common.yesterday_cap") : `${F.date(d, { weekday: "short" })} ${ddmm(d)}`, ...closed[dayKey(d)], planned: plans[dayKey(d)]?.hours });
     }
     const scale = Math.max(1, ...rows.flatMap((r) => [r.hours, r.planned]).filter(Number.isFinite));
     const pct = (v) => `${Math.min(100, (v / scale) * 100).toFixed(1)}%`;
     const water = (r) => (Number.isFinite(r.lo) && Number.isFinite(r.hi) ? `${fmt1(r.lo)}–${fmt1(r.hi)}°` : "—");
     const past = rows.filter((r) => !r.today && Number.isFinite(r.hours));
-    host.innerHTML = `<div class="day head"><span></span><span>Filtration</span><span></span><span class="w">Eau</span></div>`
+    host.innerHTML = `<div class="day head"><span></span><span>${t("card.sec.filtration")}</span><span></span><span class="w">${t("card.days.water")}</span></div>`
       + rows.map((r) => {
         const known = Number.isFinite(r.hours), short = !r.today && dayShort(r);
         return `<div class="day${r.today ? " today" : ""}${known ? "" : " missing"}${short ? " short" : ""}" title="${dayTitle(r)}">`
@@ -2000,15 +2061,16 @@ class PiscineCard extends HTMLElement {
           + `<span class="v num">${known ? `${fmt1(r.hours)} h` : "—"}</span><span class="w num">${known ? water(r) : ""}</span></div>`;
       }).join("")
       + `<p class="dfoot">${past.length
-        ? `Moyenne ${fmt1(past.reduce((a, r) => a + r.hours, 0) / past.length)} h de filtration par jour sur ${past.length} jour${past.length > 1 ? "s" : ""}.`
-        : "Aucune journée complète pour l'instant."} Le trait marque la durée planifiée ; en orange, une journée restée sous son plan. Eau : minimum et maximum du jour, mesurés pompe en marche. Le contrôleur enregistre chaque journée à minuit.</p>`;
+        ? t("card.days.mean", { hours: fmt1(past.reduce((a, r) => a + r.hours, 0) / past.length), count: past.length })
+        : t("card.days.none")} ${t("card.days.legend")}</p>`;
   }
 
   /* ---------- build ---------- */
   _build() {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    this._use();
     const v = this._config.variant;
-    this.shadowRoot.innerHTML = `<style>${STYLE}</style>${{ panel: PANEL_HTML, settings: SETTINGS_HTML, water: WATER_HTML, tile: TILE_HTML }[v]}`;
+    this.shadowRoot.innerHTML = `<style>${STYLE}</style>${{ panel: panelHtml, settings: settingsHtml, water: waterHtml, tile: tileHtml }[v](this._t)}`;
     this._built = true;
     if (v === "panel") this._wirePanel(); else if (v === "settings") this._wireSettings(); else if (v === "water") this._wireWater(); else this._wireTile();
   }
@@ -2058,14 +2120,14 @@ class PiscineCard extends HTMLElement {
     const backToAuto = () => {
       if (this._pending() || !this._inOvr()) return;
       this._manual = false;
-      this._local = { value: "Auto", label: "Retour en Auto", done: "Retour en Auto : la pompe suit son plan", t0: Date.now(), echoed: false };
+      this._local = { value: "Auto", label: this._t("card.dur.title"), done: this._t("card.cmd.auto_done"), t0: Date.now(), echoed: false };
       this._call("script", "turn_on", { entity_id: this._e.sAuto });
       this._update();
     };
     this._$("autoBtn").addEventListener("click", backToAuto);
     this._$("stuckBtn").addEventListener("click", backToAuto);
     this._$("fillAckBtn").addEventListener("click", (e) =>
-      this._press(e.currentTarget, "fillAck", "Alarme acquittée : plus de rappel jusqu'à la fin de ce remplissage"));
+      this._press(e.currentTarget, "fillAck", this._t("card.fill.acked_toast")));
 
     this.shadowRoot.querySelectorAll("#modeSeg button").forEach((b) => b.addEventListener("click", () => {
       if (this._pending()) return;
@@ -2074,12 +2136,14 @@ class PiscineCard extends HTMLElement {
     }));
 
     const force = (v) => {
-      const [, min] = this._durChoice();
-      const until = min ? ` jusqu'à ${fmtT(new Date(Date.now() + min * 60000))}` : "";
+      this._use();
+      const t = this._t, min = this._timeoutMin(), time = min ? fmtT(new Date(Date.now() + min * 60000)) : null;
+      const what = v === "Off" ? speedTxt("Off") : `${t("common.mode.manual")} ${speedTxt(v)}`;
+      const done = v === "Off" ? t("card.cmd.off_done") : t("card.cmd.speed_done", { speed: speedTxt(v) });
       this._local = {
         value: v, t0: Date.now(), echoed: false,
-        label: v === "Off" ? `Arrêt${until}` : `Manuel ${SPEEDS[v]}${until}`,
-        done: v === "Off" ? `Pompe arrêtée${until ? ", Auto à " + until.slice(10) : ""}` : `Pompe en ${SPEEDS[v]}${until ? ", Auto à " + until.slice(10) : ""}`,
+        label: time ? t("card.cmd.until", { what, time }) : what,
+        done: time ? t("card.cmd.done_auto", { what: done, time }) : done,
       };
       this._call("script", this._e.sForce.replace(/^script\./, ""), { vitesse: v });
       this._update();
@@ -2087,7 +2151,7 @@ class PiscineCard extends HTMLElement {
     this.shadowRoot.querySelectorAll("#speedSeg button").forEach((b) => b.addEventListener("click", () => {
       const v = b.dataset.speed;
       if (this._pending() || this._freeze()) return;
-      if (v === this._override()) { this._toast(`Déjà en ${SPEEDS[v]}`); return; }
+      if (v === this._override()) { this._toast(this._t("card.cmd.already", { speed: speedTxt(v) })); return; }
       if (v === "Off") {
         this._confirm = true; this._update(); this._$("cfYes").focus();
         clearTimeout(this._cfTimer);
@@ -2101,11 +2165,12 @@ class PiscineCard extends HTMLElement {
 
     this.shadowRoot.querySelectorAll("#durSeg button").forEach((b) => b.addEventListener("click", async () => {
       if (this._pending()) return;
-      const m = (DURATIONS.find(([o]) => o === b.dataset.dur) || [])[1];
-      if (m === undefined || m === this._timeoutMin()) return;
+      const m = +b.dataset.dur;
+      if (!DURATIONS.includes(m) || m === this._timeoutMin()) return;
       // The firmware restamps its clock on this write, so during an override the new duration counts from now.
       await this._call("number", "set_value", { entity_id: this._e.timeout, value: m });
-      if (this._inOvr()) this._toast(m ? `Retour en Auto à ${fmtT(new Date(Date.now() + m * 60000))}` : "Plus de retour automatique");
+      this._use();
+      if (this._inOvr()) this._toast(m ? this._t("card.cmd.auto_at", { time: fmtT(new Date(Date.now() + m * 60000)) }) : this._t("card.cmd.no_auto"));
       this._update();
     }));
 
@@ -2188,6 +2253,7 @@ class PiscineCard extends HTMLElement {
   /* ---------- update ---------- */
   _update() {
     if (!this._built || !this._hass) return;
+    this._use();
     const v = this._config.variant;
     if (v === "panel") { this._loadHistory(); this._trackLive(); this._updatePanel(); }
     else if (v === "settings") this._updateSettings();
@@ -2198,15 +2264,19 @@ class PiscineCard extends HTMLElement {
   _tileSecondary() {
     const P = this._pending();
     const hrs = `${fmt1(this._n("hoursToday"))} h / ${fmt1(this._n("hoursPlanned"))} h`;
-    if (P) return ["Envoi au contrôleur…", "s"];
+    const t = this._t;
+    if (P) return [t("card.tile.sending"), "s"];
     if (!this._online()) { const L = this._light(); return [this._lightText(L), L.h === "lost" ? "s bad" : "s warn"]; }
     const fill = this._fillAlarm();
     if (fill && !fill.acked) return [this._fillText(fill), "s warn"];
-    if (this._freeze()) return [`Hors gel · Low · ${hrs}`, "s"];
-    if (this._stuck()) return [`Override ${SPEEDS[this._override()]} depuis ${fmtD(this._ovrAgeMin())}`, "s bad"];
-    if (this._inOvr()) { const u = this._ovrUntil(); return [`Manuel ${SPEEDS[this._override()]} · ${u ? "Auto à " + fmtT(u) : "sans limite"}`, "s warn"]; }
+    if (this._freeze()) return [`${t("card.phase.freeze", { speed: speedTxt("Low") })} · ${hrs}`, "s"];
+    if (this._stuck()) return [t("card.tile.stuck", { speed: speedTxt(this._override()), duration: fmtD(this._ovrAgeMin()) }), "s bad"];
+    if (this._inOvr()) {
+      const u = this._ovrUntil();
+      return [`${t("common.mode.manual")} ${speedTxt(this._override())} · ${u ? t("card.tile.auto_at", { time: fmtT(u) }) : t("card.tile.no_limit")}`, "s warn"];
+    }
     const c = this._commanded();
-    return [`Auto · ${c === "Off" ? "Arrêtée" : SPEEDS[c]} · ${hrs}`, "s"];
+    return [`${t("common.mode.auto")} · ${c === "Off" ? t("common.stopped") : speedTxt(c)} · ${hrs}`, "s"];
   }
   _updateTile() {
     const ico = this._$("ico");
@@ -2260,8 +2330,9 @@ class PiscineCard extends HTMLElement {
       o.style.left = pct(startM); o.style.width = pct(Math.max(0, endM - startM)); tl.appendChild(o); seen.add(this._override());
     }
     const n = document.createElement("i"); n.className = "now"; n.style.left = pct(nowM); tl.appendChild(n);
-    const sum = blocks.map(([s, e]) => `${pad(Math.floor(s / 60))}:${pad(s % 60)}–${pad(Math.floor(e / 60))}:${pad(e % 60)}`).join(" · ");
-    this._$("planSum").textContent = `${fmt1(this._n("hoursPlanned"))} h${sum ? " · " + sum : " · plan non calculé"}`;
+    const hm = (m) => clock(`${pad(Math.floor(m / 60))}:${pad(m % 60)}`);
+    const sum = blocks.map(([s, e]) => `${hm(s)}–${hm(e)}`).join(" · ");
+    this._$("planSum").textContent = `${fmt1(this._n("hoursPlanned"))} h · ${sum || this._t("card.plan.not_computed")}`;
     return seen;
   }
 
@@ -2297,41 +2368,42 @@ class PiscineCard extends HTMLElement {
     this._$("hours").innerHTML = `${fmt1(hT)}<small>h / ${fmt1(hP)} h</small>`;
     this._$("hoursBar").style.width = `${hP > 0 ? Math.min(100, (hT / hP) * 100) : 0}%`;
     const nextAt = this._s("nextAt"), nextTo = this._s("nextTo");
-    this._$("next").innerHTML = hhmm(nextAt) !== null ? `${nextAt}<small>→ ${SPEEDS[nextTo] || nextTo || "?"}</small>` : `—<small>plus rien aujourd'hui</small>`;
+    const t = this._t;
+    this._$("next").innerHTML = hhmm(nextAt) !== null ? `${clock(nextAt)}<small>→ ${speedTxt(nextTo) || "?"}</small>` : `—<small>${t("card.read.nothing_today")}</small>`;
 
     // alerts
     this._$("offAlert").hidden = online;
     this._$("offAlert").className = this._light().h === "lost" ? "alert" : "alert amber";
     const onl = this._st("online");
-    this._$("offTxt").textContent = `Contrôleur hors ligne depuis ${onl ? fmtD((Date.now() - Date.parse(onl.last_changed)) / 60000) : "?"}. Le plan continue sur l'ESP32, mais aucune commande ne lui parviendra.`;
+    this._$("offTxt").textContent = t("card.alert.off", { duration: onl ? fmtD((Date.now() - Date.parse(onl.last_changed)) / 60000) : "?" });
     this._$("freezeAlert").hidden = !freeze;
-    this._$("freezeTxt").textContent = `Hors gel actif (bassin ${fmt1(this._n("water"))} °C) : la pompe tourne en Low quoi qu'on lui demande.`;
+    this._$("freezeTxt").textContent = t("card.alert.freeze", { temp: fmt1(this._n("water")) });
     this._$("planAlert").hidden = this._s("notComputed") !== "on";
     this._$("stuckAlert").hidden = !stuck || !online;
-    this._$("stuckTxt").textContent = `Override ${SPEEDS[this._override()]} depuis ${fmtD(this._ovrAgeMin())} : la pompe ne suit plus son plan de filtration.`;
+    this._$("stuckTxt").textContent = t("card.override.stuck", { speed: speedTxt(this._override()), duration: fmtD(this._ovrAgeMin()) });
     this._$("stuckBtn").disabled = !!P;
     const fill = this._fillAlarm();
     this._$("fillAlert").hidden = !fill || !online;
     if (fill) {
-      const txt = `Remplissage en cours depuis ${fill.since ? `${fmtT(fill.since)} (${fmtD(fill.min)})` : `plus de ${fmtD(fill.min)}`}`
-        + (fill.acked ? " : alarme acquittée, plus de rappel jusqu'à la fin de ce remplissage." : " : vérifiez le robinet de remplissage.");
+      const txt = fill.since ? t(fill.acked ? "card.fill.acked_since" : "card.fill.alarm_since", { time: fmtT(fill.since), duration: fmtD(fill.min) })
+        : t(fill.acked ? "card.fill.acked_over" : "card.fill.alarm_over", { duration: fmtD(fill.min) });
       if (this._$("fillTxt").textContent !== txt) this._$("fillTxt").textContent = txt;
       this._$("fillAct").hidden = fill.acked || !this._st("fillAck");
     }
 
     const seen = this._drawTimeline();
     this._$("legOvr").innerHTML = ["Off", "Low", "Medium", "High"].filter((v) => seen.has(v))
-      .map((v) => `<span><i class="${v}"></i>Override ${SPEEDS[v]}</span>`).join("");
+      .map((v) => `<span><i class="${v}"></i>${t("card.leg.forced", { speed: speedTxt(v) })}</span>`).join("");
 
     // big button / confirmation / tracker
     const ab = this._$("autoBtn");
     ab.hidden = !inOvr || this._confirm;
     ab.disabled = !!P;
-    this._$("autoBtnTxt").textContent = until ? `Revenir en Auto maintenant (sinon à ${fmtT(until)})` : "Revenir en Auto";
+    this._$("autoBtnTxt").textContent = until ? t("card.back_auto_now", { time: fmtT(until) }) : t("card.back_auto");
     this._$("confirm").hidden = !this._confirm;
     if (this._confirm) {
-      const [, min] = this._durChoice();
-      this._$("confirmTxt").textContent = min ? `Arrêter la pompe pendant ${fmtD(min)} ?` : "Arrêter la pompe sans limite de durée ?";
+      const min = this._timeoutMin();
+      this._$("confirmTxt").textContent = min ? t("card.confirm.stop_for", { duration: fmtD(min) }) : t("card.confirm.stop_nolimit");
     }
     this._$("pend").hidden = !P;
     if (P) {
@@ -2350,14 +2422,15 @@ class PiscineCard extends HTMLElement {
       b.disabled = !!P;
     });
     const planned = this._planned(), cmd = this._commanded();
-    const nextTxt = hhmm(nextAt) !== null ? `<b>${SPEEDS[nextTo] || nextTo}</b> à ${nextAt}` : "arrêt en fin de bloc";
+    const nextTxt = hhmm(nextAt) !== null ? t("card.hint.next_at", { speed: speedTxt(nextTo), time: clock(nextAt) }) : t("card.hint.stop_at_end");
     let hint;
-    if (freeze) hint = `Hors gel : le contrôleur impose Low tant que le bassin est sous ${fmt1(this._freezeC())} °C. Le pilotage reprendra ensuite.`;
+    if (freeze) hint = t("card.hint.freeze", { temp: fmt1(this._freezeC()) });
     else if (effMode === "auto") hint = planned === "Off"
-      ? `Le contrôleur suit son plan : pompe arrêtée, reprise ${hhmm(nextAt) !== null ? "à " + nextAt : "demain au lever du soleil"}.`
-      : `Le contrôleur suit son plan : <b>${SPEEDS[planned]}</b> maintenant, ${nextTxt}.`;
-    else if (!inOvr) hint = "Choisissez une vitesse : elle s'applique tout de suite et remplace le plan.";
-    else hint = `Le plan est suspendu${until ? ` jusqu'à ${fmtT(until)}` : ""}. Le contrôleur fait <b>${SPEEDS[cmd]}</b>${planned !== cmd ? `, le plan aurait fait ${SPEEDS[planned]}` : ""}.`;
+      ? (hhmm(nextAt) !== null ? t("card.hint.following_off_at", { time: clock(nextAt) }) : t("card.hint.following_off_sunrise"))
+      : t("card.hint.following", { speed: speedTxt(planned), next: nextTxt });
+    else if (!inOvr) hint = t("card.hint.choose");
+    else hint = `${until ? t("card.hint.suspended_until", { time: fmtT(until) }) : t("card.hint.suspended")} ${
+      planned !== cmd ? t("card.hint.doing_vs", { speed: speedTxt(cmd), planned: speedTxt(planned) }) : t("card.hint.doing", { speed: speedTxt(cmd) })}`;
     this._$("modeHint").innerHTML = hint;
 
     // manual block
@@ -2367,19 +2440,17 @@ class PiscineCard extends HTMLElement {
       b.classList.toggle("going", !!L && L.value === b.dataset.speed && L.value !== this._override());
       b.disabled = !!P || freeze;
     });
-    const [durOpt, durMin] = this._durChoice();
-    this.shadowRoot.querySelectorAll("#durSeg button").forEach((b) => { b.setAttribute("aria-checked", String(b.dataset.dur === durOpt)); b.disabled = !!P; });
+    const durMin = this._timeoutMin();
+    this.shadowRoot.querySelectorAll("#durSeg button").forEach((b) => { b.setAttribute("aria-checked", String(+b.dataset.dur === durMin)); b.disabled = !!P; });
     this._$("durHint").textContent = inOvr
-      ? (until ? `Retour automatique en Auto à ${fmtT(until)} (dans ${fmtD((until.getTime() - Date.now()) / 60000)}).`
-               : `Aucun retour automatique : alerte après ${STUCK_MIN} min, et la pompe reste ainsi jusqu'à ce que quelqu'un repasse en Auto.`)
-      : (durMin ? `La pompe reviendra d'elle-même au plan après ${fmtD(durMin)}.`
-                : `Sans minuteur : alerte après ${STUCK_MIN} min, et la pompe reste ainsi jusqu'à ce que quelqu'un repasse en Auto.`);
+      ? (until ? t("card.dur.back_at", { time: fmtT(until), duration: fmtD((until.getTime() - Date.now()) / 60000) }) : t("card.dur.none_running", { min: STUCK_MIN }))
+      : (durMin ? t("card.dur.will_return", { duration: fmtD(durMin) }) : t("card.dur.none", { min: STUCK_MIN }));
 
     // footer
     const sy = this._$("sync");
     const rc = /(\d{2}:\d{2})(:\d{2})?$/.exec(this._s("recomputed") || "");
-    sy.textContent = rc ? `Plan calculé à ${rc[1]}` : ""; // the link: the light, the alert
-    this._$("plannedTxt").textContent = `Plan seul : ${SPEEDS[planned]}`;
+    sy.textContent = rc ? t("card.foot.computed", { time: clock(rc[1]) }) : ""; // the link: the light, the alert
+    this._$("plannedTxt").textContent = t("card.foot.plan_only", { speed: speedTxt(planned) });
 
     this._renderTemp();
     this._renderWater();
