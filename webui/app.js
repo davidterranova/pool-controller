@@ -550,6 +550,62 @@ const orDash = (id) => () => s(id) || "—";
       if (a.installed_version) installed = a.installed_version;
     });
 
+    /* -- An install, step by step, under « Mise à jour »: requested (and what it waits for), the download (Update
+       Progress: written to flash as it arrives), the reboot, then installed. The page reloads onto the new firmware
+       (esphome-hass.js), so the version it waits for is kept in sessionStorage to say « Installée » after it. */
+    const STEPS = ["Demandée", "Téléchargement", "Redémarrage", "Installée"];
+    const inst = h(`<div class="fw-inst" hidden aria-live="polite">
+      <ol class="fw-steps">${STEPS.map((t) => `<li><i></i>${t}</li>`).join("")}</ol>
+      <div class="prog"><i></i></div>
+      <p class="fw-line"><span></span><b class="num"></b></p></div>`);
+    row.after(inst);
+    const [bar, [line, pct]] = [inst.querySelector(".prog"), inst.querySelectorAll(".fw-line > *")];
+    const KEY = "pool-fw-install";
+    const saved = () => { try { return JSON.parse(sessionStorage.getItem(KEY)) || null; } catch { return null; } };
+    const save = (v) => { try { v ? sessionStorage.setItem(KEY, JSON.stringify(v)) : sessionStorage.removeItem(KEY); } catch { /* private mode */ } };
+    const DONE_MS = 60_000; // « Installée » stays this long after the reboot
+    let watched = false, drawnInst = "";
+    /** Where the install is: { step, state ("on" | "err" | "done"), pct (number, or null for an unknown amount), text }. */
+    const phase = () => {
+      const a = fw(), st_ = status(), p = n(E.updateProgress), latest = a.latest_version || "la nouvelle version";
+      const job = saved();
+      if (job?.to && a.installed_version === job.to && !a.in_progress) {
+        if (Date.now() - job.at > DONE_MS) return save(null), null;
+        return { step: 3, state: "done", pct: 100, text: `${job.to} installée : le contrôleur a redémarré dessus.` };
+      }
+      if (st_.startsWith("en attente")) return { step: 0, state: "on", text: st_.includes("remplissage")
+        ? "Attend la fin du remplissage en cours." : "Attend la fin de l'override manuel." };
+      if (a.in_progress && !hass.connected) return { step: 2, state: "on", pct: null, text: `Redémarrage sur ${latest}…` };
+      if (a.in_progress && p >= 100) return { step: 2, state: "on", pct: null, text: "Vérification du firmware, puis redémarrage…" };
+      if (a.in_progress && Number.isFinite(p)) return { step: 1, state: "on", pct: p, text: `Téléchargement de ${latest}` };
+      if (a.in_progress || st_ === "installation") return { step: 1, state: "on", pct: null, text: "Connexion au serveur des versions…" };
+      if (st_ === "erreur (installation)" && watched) return { step: 1, state: "err", text: `Échec : le contrôleur garde ${a.installed_version || "sa version"}.` };
+      return null;
+    };
+    updaters.push(() => {
+      const ph = hasUpdates() ? phase() : null;
+      if (ph && ph.state === "on") {
+        watched = true;
+        if (saved()?.to !== fw().latest_version) save({ to: fw().latest_version, at: Date.now() });
+      }
+      if (ph?.state === "on" && ph.step === 2) save({ ...saved(), at: Date.now() }); // « Installée » counts from the reboot
+      const key = JSON.stringify(ph && [ph.step, ph.state, ph.pct == null ? null : Math.floor(ph.pct), ph.text]);
+      if (key === drawnInst) return;
+      drawnInst = key;
+      inst.hidden = !ph;
+      if (!ph) return;
+      inst.querySelectorAll(".fw-steps li").forEach((li, i) => {
+        li.className = i < ph.step ? "done" : i === ph.step ? ph.state : "";
+      });
+      bar.hidden = ph.step === 0 || ph.state === "err";
+      bar.classList.toggle("ind", ph.pct === null);
+      bar.classList.toggle("ok", ph.state === "done");
+      bar.firstElementChild.style.width = ph.pct == null ? "" : `${Math.max(2, Math.min(100, ph.pct))}%`;
+      inst.classList.toggle("err", ph.state === "err");
+      line.textContent = ph.text;
+      pct.textContent = ph.step === 1 && ph.pct != null ? `${Math.floor(ph.pct)} %` : "";
+    });
+
     /** A segmented control on a switch or a select: [label, value] pairs, the entity's state picks one. */
     const segRow = ({ id, label, sub, iconName, options, set }) => {
       const r = h(`<div class="erow"><span class="ic">${icon(iconName)}</span><span class="name"><span>${esc(label)}</span><small>${esc(sub)}</small></span>
