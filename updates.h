@@ -12,16 +12,19 @@ namespace pool_updates {
 // ------------------------------------------------------------ check interval
 
 /// Update Check Interval's options, and the hours each one means (0 = only
-/// when asked: Check for Update, the page's « Vérifier »).
+/// when asked: Check for Update, the page's « Vérifier »). The options are
+/// codes the UIs translate (docs/plans/i18n.md), never renamed once
+/// published; the choice is stored as hours (update_check_hours), so it
+/// survived the move from the French options to these.
 struct IntervalOption {
   const char *label;
   uint32_t hours;
 };
 static const IntervalOption INTERVAL_OPTIONS[] = {
-    {"À la demande", 0},
-    {"6 h", 6},
-    {"24 h", 24},
-    {"7 j", 7 * 24},
+    {"on_request", 0},
+    {"6h", 6},
+    {"24h", 24},
+    {"7d", 7 * 24},
 };
 static const uint32_t DEFAULT_INTERVAL_HOURS = 24;
 
@@ -76,12 +79,14 @@ inline Blocker gate_blocker(bool override_active, bool fill_running) {
   return Blocker::NONE;
 }
 
+/// The blocker as Update Status's argument (`pending:<label>`) and the log
+/// name it.
 inline const char *blocker_label(Blocker b) {
   switch (b) {
     case Blocker::OVERRIDE:
-      return "mode manuel";
+      return "override";
     case Blocker::FILL:
-      return "remplissage";
+      return "fill";
     default:
       return "";
   }
@@ -91,7 +96,7 @@ inline const char *blocker_label(Blocker b) {
 
 /// What Auto Update does after a check. It acts on scheduled checks only: a
 /// scheduled check arms it, a manual one disarms it, and an update a manual
-/// check (or the « À la demande » interval) finds waits for an explicit
+/// check (or the `on_request` interval) finds waits for an explicit
 /// install. Once the armed check has answered, it installs if Auto Update is
 /// on and an update is there, else it just disarms: turning Auto Update on
 /// later doesn't install what an earlier check found.
@@ -125,28 +130,29 @@ struct StatusInputs {
   Blocker blocker{Blocker::NONE};
 };
 
-/// Update Status: « installation », « en attente (mode manuel) »,
-/// « vérification », « erreur (vérification) », « disponible », « à jour »,
-/// « non vérifié ». An install outranks the rest; a failure shows until the
-/// next check that works.
+/// Update Status, as a code the UIs translate (docs/plans/i18n.md):
+/// `installing`, `pending:override`, `pending:fill`, `checking`,
+/// `error:check`, `error:install`, `available`, `up_to_date`, `unchecked`.
+/// An install outranks the rest; a failure shows until the next check that
+/// works. A published code is never renamed: add a new one instead.
 inline std::string status_text(const StatusInputs &in) {
   if (in.state == State::INSTALLING)
-    return "installation";
+    return "installing";
   if (in.pending && in.blocker != Blocker::NONE)
-    return std::string("en attente (") + blocker_label(in.blocker) + ")";
+    return std::string("pending:") + blocker_label(in.blocker);
   if (in.pending)
-    return "installation";
+    return "installing";
   if (in.checking)
-    return "vérification";
+    return "checking";
   if (in.error)
-    return in.last_op == Op::INSTALL ? "erreur (installation)" : "erreur (vérification)";
+    return in.last_op == Op::INSTALL ? "error:install" : "error:check";
   switch (in.state) {
     case State::AVAILABLE:
-      return "disponible";
+      return "available";
     case State::NO_UPDATE:
-      return "à jour";
+      return "up_to_date";
     default:
-      return "non vérifié";
+      return "unchecked";
   }
 }
 

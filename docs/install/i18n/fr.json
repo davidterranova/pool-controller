@@ -1,0 +1,196 @@
+{
+  "meta": {
+    "title": "Contrôleur de piscine · Installer",
+    "description": "Installer le firmware du contrôleur de piscine sur un ESP32, depuis le navigateur, par USB."
+  },
+  "skip": "Aller à l'installation",
+  "lang": {
+    "label": "Langue"
+  },
+  "header": {
+    "title": "Contrôleur de piscine",
+    "subtitle": "Installer son firmware depuis le navigateur"
+  },
+  "lede": "Un contrôleur de filtration pour piscine, sur un ESP32. Il pilote une pompe à vitesse variable, place chaque jour la filtration d'après la température de l'eau et le soleil, protège du gel et compte l'eau de remplissage. Il fonctionne seul ; Home Assistant, s'il est là, le suit et le règle.",
+  "firmware": {
+    "chip": "Firmware {version}",
+    "none_chip": "Aucun firmware publié",
+    "error_chip": "Firmware injoignable",
+    "notes": "Notes de version",
+    "none": {
+      "title": "Pas encore de firmware publié",
+      "next": "Le premier arrive avec la prochaine version du projet ; cette page le proposera alors d'elle-même.",
+      "build": "En attendant, on peut le compiler soi-même depuis le dépôt : {make_build} puis {make_flash} (voir le README).",
+      "follow": "Suivre les versions"
+    },
+    "error": {
+      "title": "Impossible de lire le firmware",
+      "body": "{manifest} ne répond pas. Vérifiez la connexion, puis réessayez."
+    },
+    "retry": "Réessayer"
+  },
+  "tool": {
+    "error": {
+      "title": "L'outil d'installation n'a pas pu être chargé",
+      "body": "ESP Web Tools vient de {unpkg} : vérifiez la connexion (ou un bloqueur de contenu), puis réessayez."
+    }
+  },
+  "browser": {
+    "phone": {
+      "title": "Sur téléphone, on prépare ; on installe depuis un ordinateur",
+      "body": "L'installation se fait par USB, avec Chrome ou Edge sur un ordinateur. Ouvrez-y cette page : {site}. Le téléphone resservira juste après, pour régler le contrôleur.",
+      "copy": "Copier le lien",
+      "copied": "Lien copié"
+    },
+    "http": {
+      "title": "Page ouverte sans HTTPS",
+      "body": "Le navigateur ne permet l'accès USB qu'en HTTPS : ouvrez {https_site}."
+    },
+    "unsupported": {
+      "title": "Ce navigateur ne peut pas installer",
+      "body": "Il n'a pas accès aux ports USB (Web Serial). Ouvrez cette page dans Chrome ou Edge, sur un ordinateur."
+    }
+  },
+  "status": {
+    "searching": "Recherche du firmware…",
+    "none": "Pas encore de firmware publié : l'installation n'est pas encore possible.",
+    "error": "Impossible de lire le firmware : vérifiez la connexion, puis réessayez.",
+    "phone": "Firmware {version}. Sur téléphone, on prépare ; on installe depuis un ordinateur.",
+    "not_allowed": "Firmware {version}. Page ouverte sans HTTPS : l'installation n'est pas possible ici.",
+    "unsupported": "Firmware {version}. Ce navigateur ne peut pas installer : ouvrez la page dans Chrome ou Edge, sur un ordinateur.",
+    "tool_error": "Firmware {version}. L'outil d'installation n'a pas pu être chargé.",
+    "tool_loading": "Firmware {version}. Chargement de l'outil d'installation…",
+    "ready": "Firmware {version}, prêt à installer."
+  },
+  "install": {
+    "title": "Installer sur une carte neuve",
+    "button": "Installer",
+    "button_version": "Installer {version}",
+    "erase": {
+      "title": "L'installation efface la carte",
+      "new": "Pour une carte neuve, ou à remettre à zéro : tout ce qu'elle contient est perdu.",
+      "never": "Jamais pour un contrôleur déjà en service : il se met à jour tout seul et garde ses réglages (voir {updates_link})."
+    },
+    "hint": "Branchez la carte en USB, puis cliquez : le navigateur demande quel port utiliser. Pour installer, la carte seule suffit ; le câblage peut venir après."
+  },
+  "dialog": {
+    "title": "Dans la fenêtre d'installation",
+    "note": "celle d'ESP Web Tools, en anglais",
+    "port": "Choisissez le port de la carte (souvent « CP2102 », « CH340 » ou « USB to UART »), puis {connect}.",
+    "port_note": "Rien dans la liste ? Un câble qui ne fait que charger, ou le pilote USB de la carte qui manque (CP210x ou CH34x). Débranchez, rebranchez, réessayez.",
+    "install": "{install_pool_controller}, puis {install}.",
+    "install_note": "La fenêtre prévient que tout sera effacé : c'est voulu, chaque installation part d'une carte vide.",
+    "wait": "L'installation : deux minutes environ. Gardez la page au premier plan, ne débranchez pas.",
+    "wifi": "{configure_wifi} : le réseau de la maison et son mot de passe, puis {connect}.",
+    "wifi_note": "Ils passent par le câble USB (Improv) ; le contrôleur ne les garde qu'une fois connecté. {skip} : il ouvrira son point d'accès à la place (voir {after_link}).",
+    "visit": "{visit_device} ouvre la page du contrôleur : la suite se fait là.",
+    "visit_note": "{add_to_home_assistant} peut attendre : c'est la dernière étape de l'assistant du contrôleur."
+  },
+  "need": {
+    "title": "Ce qu'il faut",
+    "optional": "facultatif",
+    "board": {
+      "name": "Une carte ESP32",
+      "note": "De développement, à ESP32-WROOM (« ESP32 DevKit »), avec son port USB."
+    },
+    "relay": {
+      "name": "Un module relais 5 V, 4 canaux au moins",
+      "note": "À optocoupleurs, commandé à l'état bas (les modules 8 canaux courants conviennent : 4 servent). Il ferme les entrées de la pompe."
+    },
+    "pump": {
+      "name": "Une pompe à vitesse variable",
+      "note": "Avec des entrées de commande à contact sec : trois vitesses et marche/arrêt (DI1 à DI4)."
+    },
+    "probes": {
+      "name": "Des sondes DS18B20",
+      "note": "Une au moins, sur le retour vers la piscine ; deux de plus pour le local technique et l'extérieur. Une résistance de 4,7 kΩ entre la ligne de données et le 3,3 V. Des sondes d'origine : une contrefaçon peut bloquer tout le bus."
+    },
+    "meter": {
+      "name": "Un compteur d'eau à impulsions",
+      "note": "Sur l'arrivée de remplissage, à contact sec, 1 impulsion par litre : le contrôleur compte l'eau ajoutée."
+    },
+    "power": {
+      "name": "Une alimentation 5 V",
+      "note": "Pour la carte et le module relais."
+    },
+    "cable": {
+      "name": "Un câble USB de données",
+      "note": "Pas un câble de charge seule : avec lui, la carte n'apparaît pas dans la liste des ports."
+    },
+    "computer": {
+      "name": "Un ordinateur avec Chrome ou Edge",
+      "note": "Windows, macOS ou Linux. Un téléphone suffit ensuite pour régler le contrôleur."
+    }
+  },
+  "wiring": {
+    "summary": "Branchements (fixés dans le firmware publié)",
+    "pin": "Broche",
+    "goes_to": "Va à",
+    "relay1": "Relais 1 → DI1, vitesse 1 (lente)",
+    "relay2": "Relais 2 → DI2, vitesse 2",
+    "relay3": "Relais 3 → DI3, vitesse 3 (rapide)",
+    "relay4": "Relais 4 → DI4, marche/arrêt",
+    "probes": "Sondes DS18B20 (bus 1-Wire), 4,7 kΩ vers le 3,3 V",
+    "meter": "Compteur d'eau ; son autre fil à GND",
+    "note": "Relais sur COM/NO : carte éteinte, tout s'ouvre et la pompe s'arrête. D'autres broches ? Elles sont compilées : changez-les dans {yaml} et compilez vous-même. Le détail : {hardware_link}."
+  },
+  "after": {
+    "title": "Après l'installation",
+    "restart": "Le contrôleur redémarre et rejoint le Wi-Fi donné dans la fenêtre d'installation.",
+    "open": "Ouvrez {address} depuis un téléphone ou un ordinateur du même réseau (ou {visit_device}).",
+    "open_note": "Si l'adresse ne répond pas : celle que votre box donne à « {hostname} ».",
+    "wizard": "Sa page ouvre l'assistant de configuration : cinq étapes, quelques minutes, et tout reste sur le contrôleur.",
+    "wizard_steps": "Les étapes de l'assistant",
+    "step": {
+      "password": "Mot de passe",
+      "location": "Position",
+      "probes": "Sondes"
+    },
+    "wizard_note": "Commencez sans attendre par le mot de passe de la page : tant qu'il n'y en a pas, quiconque est sur le réseau peut l'ouvrir. Le Wi-Fi donné à l'installation y est déjà coché.",
+    "ha": "Home Assistant, à la dernière étape : ajoutez-y le contrôleur (Paramètres › Appareils et services › ESPHome ; il le découvre souvent tout seul). Il crée la clé de chiffrement et la lui envoie.",
+    "ha_note": "Sans Home Assistant, le contrôleur fonctionne aussi : « Je n'utilise pas Home Assistant ».",
+    "no_wifi": {
+      "title": "Pas de Wi-Fi ?",
+      "body": "Wi-Fi passé ou refusé : le contrôleur ouvre son propre point d'accès, « {hostname} », sans mot de passe Wi-Fi. Connectez-y un téléphone et ouvrez {hotspot_address} : l'assistant commence là, par le mot de passe de la page puis le Wi-Fi.",
+      "later": "Plus tard, s'il perd son réseau plus d'une minute, il rouvre ce même point d'accès."
+    }
+  },
+  "updates": {
+    "title": "Mises à jour",
+    "intro": "Un contrôleur installé ne repasse pas par ici.",
+    "auto": {
+      "name": "Toutes seules",
+      "note": "Il cherche une nouvelle version toutes les 24 h et l'installe (réglable : à la demande, 6 h, 24 h, 7 j, dans Réglages contrôleur › Firmware). Jamais pendant une marche forcée ou un remplissage : il attend la fin."
+    },
+    "request": {
+      "name": "Sur demande",
+      "note": "« Installer » sur sa page (Réglages contrôleur › Firmware) ou dans Home Assistant (Paramètres › Mises à jour)."
+    },
+    "kept": {
+      "name": "Les réglages restent",
+      "note": "Mot de passe, Wi-Fi, position, sondes, clé Home Assistant : une mise à jour n'en touche aucun."
+    },
+    "secrets": {
+      "name": "Compilé avec secrets.yaml (v1.3.x) ?",
+      "note": "Une seule fois, depuis le dépôt : {make_migrate}. Il garde tous ses réglages et sa clé Home Assistant, sans assistant à refaire ; ensuite il se met à jour comme les autres."
+    }
+  },
+  "code": {
+    "title": "Le code",
+    "repo": {
+      "note": "Le firmware ESPHome, la page du contrôleur, la carte Home Assistant. Licence MIT. Questions et problèmes : les issues du dépôt."
+    },
+    "releases": {
+      "name": "Versions",
+      "note": "Les notes de chaque version, et ses fichiers."
+    },
+    "files": {
+      "name": "Les fichiers du firmware",
+      "note": "Pour esptool : l'image complète à l'adresse 0x0."
+    }
+  },
+  "footer": {
+    "source": "Code source",
+    "ewt": "Installation par {ewt_link}"
+  }
+}

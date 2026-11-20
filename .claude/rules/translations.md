@@ -6,7 +6,7 @@ The controller's interface is translated (plan: [docs/plans/i18n.md](../../docs/
 
 - **Card** (`home-assistant/piscine-card.js`): never a literal. Use `this._t("key", vars)` and add the key to `home-assistant/i18n/{en,fr,es}.json`. The helpers outside the class use `T("key")` and `F` (formats), the language of the card being drawn (`_use()`). A key built at run time is `t(\`card.row.${key}.label\`)`, so the check sees its prefix. French that must stay as it is (an older firmware's states, `LEGACY_STATUS`) carries `// i18n-ignore` on its line. The device page shows the card too.
 - **Controller's page and wizard** (`webui/`): `t()` with keys in `webui/i18n-page/{en,fr,es}.json`.
-- **Install page** (`docs/install/`): its own `en`, `fr` and `es` dictionaries.
+- **Install page** (`docs/install/`): its own `en`, `fr` and `es` dictionaries (`docs/install/i18n/`). In `index.html`, `data-i18n="key"` on the element (`data-i18n-aria-label="key"` for an attribute); in the scripts, `t()`. No markup in its texts: a command, an address, a link or one of ESP Web Tools' English buttons is a `{placeholder}` filled by `snippets()` (`install-i18n.js`).
 - **Firmware** (`*.yaml`, `*.h`):
   - a state a person reads is a **code** (ASCII, lower snake case, `:` before an argument: `pending:fill`), never a sentence in any language. Translate the code in the UIs' `status.*` keys;
   - entity `name`s stay English;

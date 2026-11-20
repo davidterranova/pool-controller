@@ -1,5 +1,6 @@
 /*
- * i18n — the interface's languages, for piscine-card and the controller's page (docs/plans/i18n.md).
+ * i18n — the interface's languages, for piscine-card, the controller's page and the install page
+ * (docs/install/i18n.js is a symlink to this file) (docs/plans/i18n.md).
  *
  * Pure: no DOM, no fetch. The dictionaries are JSON files bundled into what runs (the card's
  * home-assistant/i18n/, the page's webui/i18n/), so nothing needs a network to be translated.

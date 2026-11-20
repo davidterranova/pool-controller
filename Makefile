@@ -24,7 +24,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build firmware-test flash status kill-port ota ip logs webui webui-test card i18n-check i18n-export i18n-import mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test clean
+.PHONY: validate build firmware-test flash status kill-port ota ip logs webui webui-test card i18n-check ha-files i18n-export i18n-import mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate: webui
@@ -183,9 +183,11 @@ mock-webui:
 mock-ui-check:
 	$(MOCK) --check $(MOCK_ARGS) /config/$(CONFIG)
 
-# Checks home-assistant/dashboard/ (the dashboard components and the scripts piscine-card calls) against
-# $(CONFIG): every controller entity id it names must exist, as a fresh install names it, and its
-# piscine-card must map every entity the card uses. Python in the ESPHome image, like the mock.
+# Checks home-assistant/dashboard/ (the dashboard components and the scripts piscine-card calls, each
+# language's file that make ha-files generates) and home-assistant/blueprints/ against $(CONFIG): every
+# controller entity id they name must exist, as a fresh install names it, the piscine-card must map every
+# entity the card uses, each language's scripts must have the ones its dashboard calls, and every template
+# must have a file in each language. Python in the ESPHome image, like the mock.
 ha-dashboard-check:
 	docker run --rm -v "$(CURDIR):/config" --entrypoint python3 $(ESPHOME_IMAGE) /config/tools/ha-dashboard-check.py /config/$(CONFIG) /config/home-assistant/dashboard
 
@@ -248,7 +250,10 @@ webui-test:
 	docker run --rm -v "$(CURDIR):/src" -w /src node:22-alpine node --test 'webui/test/*.test.mjs' 'tools/tests/*.test.mjs'
 
 # The interface's texts (docs/plans/i18n.md; the surfaces in tools/i18n/surfaces.mjs), in the same node image.
-#   i18n-check    every dictionary complete in every language and consistent with its sources; fails on an error
+#   i18n-check    every dictionary complete in every language and consistent with its sources, and the Home
+#                 Assistant files up to date with their templates (ha-files --check); fails on an error
+#   ha-files      the Home Assistant files (dashboard, scripts, blueprints) in every language, from each
+#                 home-assistant/**/*.tmpl.yaml and the texts in home-assistant/i18n-yaml/ (tools/i18n/ha-files.mjs)
 #   i18n-export   every text in English as one Markdown file, .i18n/translations.en.md, for any translation tool
 #   i18n-import   the translated file back into each surface's <TO>.json: make i18n-import TO=es FILE=~/Downloads/x.md
 #                 (DRY_RUN=1: only report). TO, not LANG: LANG is the shell's locale.
@@ -256,6 +261,10 @@ I18N_NODE := docker run --rm -v "$(CURDIR):/src" -w /src node:22-alpine node
 
 i18n-check:
 	$(I18N_NODE) tools/i18n/check.mjs
+	$(I18N_NODE) tools/i18n/ha-files.mjs --check
+
+ha-files:
+	$(I18N_NODE) tools/i18n/ha-files.mjs
 
 i18n-export:
 	$(I18N_NODE) tools/i18n/export.mjs --out .i18n/translations.en.md

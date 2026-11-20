@@ -87,7 +87,10 @@ export function listSources(root, globs) {
   return [...files];
 }
 
-/** The keys a source uses: { keys: Set, prefixes: Set } (a prefix from t(`card.speed.${v}`)). */
+/**
+ * The keys a source uses: { keys: Set, prefixes: Set } (a prefix from t(`card.speed.${v}`)). In "code", also an
+ * HTML element's data-i18n="key" (its content) or data-i18n-<attribute>="key" (data-i18n-aria-label="key").
+ */
 export function scanUsage(text, usage) {
   const keys = new Set(), prefixes = new Set(), mentions = new Set();
   if (usage === "template") {
@@ -97,6 +100,8 @@ export function scanUsage(text, usage) {
   // t("key"), this._t("key"), and T("key") (a module-level translator, as the card's helpers outside its class use)
   for (const m of text.matchAll(/(?:^|[^\w$])(?:_?t|T)\(\s*(["'`])([\w.:-]+)\1/g)) keys.add(m[2]);
   for (const m of text.matchAll(/(?:^|[^\w$])(?:_?t|T)\(\s*`([\w.:-]*)\$\{/g)) prefixes.add(m[1]);
+  // HTML filled from its attributes: data-i18n="key", data-i18n-<attribute>="key"
+  for (const m of text.matchAll(/\sdata-i18n(?:-[\w-]+)?\s*=\s*(["'])([\w.:-]+)\1/g)) keys.add(m[2]);
   // a key handed over another way (t(cond ? "a" : "b")): any dotted literal; it only counts as used, it is never required
   for (const m of text.matchAll(/(["'`])([a-z]\w*(?:\.[\w:-]+)+)\1/g)) mentions.add(m[2]);
   return { keys, prefixes, mentions };
