@@ -338,6 +338,8 @@ U = {
     "check": "Check for Update",
     "cancel": "Cancel Update",
 }
+# Update Check Interval's options (codes, as updates.h's INTERVAL_OPTIONS) and the hours each one means.
+UPDATE_INTERVAL_HOURS = {"on_request": 0, "6h": 6, "24h": 24, "7d": 168}
 # The fill meter as an option (fill-meter.yaml): FillSim below.
 F = {
     "enabled": "Fill Meter",
@@ -810,18 +812,18 @@ class UpdateSim:
             self.state = "NO UPDATE" if self.latest == version else "UPDATE AVAILABLE"
 
     def status(self, blocker: str | None) -> str:
-        """Update Status, as updates.h's status_text() words it."""
+        """Update Status, the code updates.h's status_text() publishes."""
         if self.state == "INSTALLING":
-            return "installation"
+            return "installing"
         if self.pending_origin and blocker:
-            return f"en attente ({blocker})"
+            return f"pending:{blocker}"
         if self.pending_origin:
-            return "installation"
+            return "installing"
         if self.checking_until:
-            return "vérification"
+            return "checking"
         if self.error:
-            return "erreur (installation)" if self.last_op == "install" else "erreur (vérification)"
-        return {"UPDATE AVAILABLE": "disponible", "NO UPDATE": "à jour"}.get(self.state, "non vérifié")
+            return "error:install" if self.last_op == "install" else "error:check"
+        return {"UPDATE AVAILABLE": "available", "NO UPDATE": "up_to_date"}.get(self.state, "unchecked")
 
     def entity(self) -> dict:
         return {"state": self.state, "latest": self.latest or "", "installed": self.installed,
@@ -980,7 +982,7 @@ class PoolSim:
         self.rebooted = False  # set by an install: the server drops the page's event stream
         self.started = time.time()
         self.numbers: dict[str, float] = {}
-        self.selects: dict[str, str] = {U["interval"]: "24 h"}
+        self.selects: dict[str, str] = {U["interval"]: "24h"}
         self.static: dict[str, object] = {}  # values for entities the sim doesn't model
         # What each probe on the simulated bus measures (PROBES); Pool Return Temperature & co. read
         # the one their role holds (reading()).
@@ -1241,13 +1243,13 @@ class PoolSim:
 
     @property
     def update_blocker(self) -> str | None:
-        """What an install waits for (updates.h's gate_blocker): the override first, then a fill."""
+        """What an install waits for (updates.h's gate_blocker, blocker_label): the override first, then a fill."""
         if self.override != "Auto":
-            return "mode manuel"
-        return "remplissage" if self.fill.running else None  # Fill Running, as updates.h's gate
+            return "override"
+        return "fill" if self.fill.running else None  # Fill Running, as updates.h's gate
 
     def tick_updates(self):
-        hours = {"À la demande": 0, "6 h": 6, "24 h": 24, "7 j": 168}.get(self.selects.get(U["interval"]), 24)
+        hours = UPDATE_INTERVAL_HOURS.get(self.selects.get(U["interval"]), 24)
         online = self.wifi.mode == "Connected"  # the releases are on the internet
         if self.updates.tick(bool(self.static.get(U["auto"])), hours if online else 0, self.update_blocker):
             self.reboot()
