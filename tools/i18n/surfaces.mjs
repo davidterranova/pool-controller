@@ -5,7 +5,8 @@
 //   dir       the dictionaries, one <lang>.json per language of LANGS (home-assistant/i18n.js)
 //   sources   the files that use the keys (globs: one `*` in the file name), never a symlink: the page's
 //             webui/piscine-card.js is the card's file, counted once under `card`
-//   usage     "code": t("key") / this._t('key') / t(`prefix.${…}`) (a used prefix); "template": {{t:key}}
+//   usage     "code": t("key") / this._t('key') / t(`prefix.${…}`) (a used prefix), and in HTML data-i18n="key" /
+//             data-i18n-<attribute>="key"; "template": {{t:key}}
 //   reads     other surfaces whose keys these sources may also use (the page shows the card, so it reads its keys)
 //   strict    once the surface is fully translated (its WP done): a key no source uses, or a French-looking
 //             literal left in its sources, fails the check instead of being reported
@@ -20,7 +21,7 @@ export const SURFACES = [
   },
   {
     id: "install", title: "The install page",
-    dir: "docs/install/i18n", sources: ["docs/install/*.js", "docs/install/index.html"], usage: "code", reads: [], strict: false,
+    dir: "docs/install/i18n", sources: ["docs/install/*.js", "docs/install/index.html"], usage: "code", reads: [], strict: true,
   },
   {
     id: "yaml", title: "Home Assistant dashboard, scripts and blueprints",
@@ -33,6 +34,8 @@ export const SURFACES = [
 // "<surface>:<key>". Any other fr or es text identical to the English one is taken for an untranslated copy.
 export const SAME_AS_ENGLISH = [
   "card:common.mode.auto",
+  "install:firmware.chip", // « Firmware {version} »: the word is the same in French and Spanish
+  "install:wiring.pin", // « Pin »: the Spanish word too (French: « Broche »)
   "yaml:dashboard.fill.per_day.volume", // fr « Volume »
   "yaml:blueprint.fill_too_long.notifications.name", // fr « Notifications »
   "yaml:blueprint.fill_too_long.message.name", // fr « Message »

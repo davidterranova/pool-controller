@@ -1,0 +1,196 @@
+{
+  "meta": {
+    "title": "Controlador de piscina · Instalar",
+    "description": "Instale el firmware del controlador de piscina en un ESP32, desde el navegador, por USB."
+  },
+  "skip": "Ir a la instalación",
+  "lang": {
+    "label": "Idioma"
+  },
+  "header": {
+    "title": "Controlador de piscina",
+    "subtitle": "Instale su firmware desde el navegador"
+  },
+  "lede": "Un controlador de filtración para piscina, en un ESP32. Gobierna una bomba de velocidad variable, programa cada día la filtración según la temperatura del agua y el sol, ofrece protección antiheladas y cuenta el agua de llenado. Funciona solo; Home Assistant, si lo tiene, lo sigue y lo ajusta.",
+  "firmware": {
+    "chip": "Firmware {version}",
+    "none_chip": "Ningún firmware publicado",
+    "error_chip": "Firmware inaccesible",
+    "notes": "Notas de la versión",
+    "none": {
+      "title": "Todavía no hay firmware publicado",
+      "next": "El primero llegará con la próxima versión del proyecto; esta página lo ofrecerá entonces por sí sola.",
+      "build": "Mientras tanto, puede compilarlo usted mismo desde el repositorio: {make_build} y luego {make_flash} (vea el README).",
+      "follow": "Seguir las versiones"
+    },
+    "error": {
+      "title": "No se puede leer el firmware",
+      "body": "{manifest} no responde. Compruebe la conexión y vuelva a intentarlo."
+    },
+    "retry": "Reintentar"
+  },
+  "tool": {
+    "error": {
+      "title": "No se pudo cargar la herramienta de instalación",
+      "body": "ESP Web Tools se descarga de {unpkg}: compruebe la conexión (o un bloqueador de contenido) y vuelva a intentarlo."
+    }
+  },
+  "browser": {
+    "phone": {
+      "title": "En el teléfono se prepara; se instala desde un ordenador",
+      "body": "La instalación se hace por USB, con Chrome o Edge en un ordenador. Abra allí esta página: {site}. El teléfono vuelve a servir justo después, para configurar el controlador.",
+      "copy": "Copiar el enlace",
+      "copied": "Enlace copiado"
+    },
+    "http": {
+      "title": "Página abierta sin HTTPS",
+      "body": "El navegador solo permite el acceso USB por HTTPS: abra {https_site}."
+    },
+    "unsupported": {
+      "title": "Este navegador no puede instalar",
+      "body": "No tiene acceso a los puertos USB (Web Serial). Abra esta página en Chrome o Edge, en un ordenador."
+    }
+  },
+  "status": {
+    "searching": "Buscando el firmware…",
+    "none": "Todavía no hay firmware publicado: aún no se puede instalar.",
+    "error": "No se puede leer el firmware: compruebe la conexión y vuelva a intentarlo.",
+    "phone": "Firmware {version}. En el teléfono se prepara; se instala desde un ordenador.",
+    "not_allowed": "Firmware {version}. Página abierta sin HTTPS: aquí no se puede instalar.",
+    "unsupported": "Firmware {version}. Este navegador no puede instalar: abra la página en Chrome o Edge, en un ordenador.",
+    "tool_error": "Firmware {version}. No se pudo cargar la herramienta de instalación.",
+    "tool_loading": "Firmware {version}. Cargando la herramienta de instalación…",
+    "ready": "Firmware {version}, listo para instalar."
+  },
+  "install": {
+    "title": "Instalar en una placa nueva",
+    "button": "Instalar",
+    "button_version": "Instalar {version}",
+    "erase": {
+      "title": "La instalación borra la placa",
+      "new": "Para una placa nueva, o una que se quiera reiniciar: se pierde todo lo que contiene.",
+      "never": "Nunca para un controlador ya en servicio: se actualiza solo y conserva sus ajustes (vea {updates_link})."
+    },
+    "hint": "Conecte la placa por USB y haga clic: el navegador pregunta qué puerto usar. Para instalar basta con la placa sola; el cableado puede venir después."
+  },
+  "dialog": {
+    "title": "En la ventana de instalación",
+    "note": "la de ESP Web Tools, en inglés",
+    "port": "Elija el puerto de la placa (a menudo «CP2102», «CH340» o «USB to UART») y luego {connect}.",
+    "port_note": "¿Nada en la lista? Un cable que solo carga, o falta el driver USB de la placa (CP210x o CH34x). Desconecte, vuelva a conectar e inténtelo de nuevo.",
+    "install": "{install_pool_controller} y luego {install}.",
+    "install_note": "La ventana avisa de que se borrará todo: es lo previsto, cada instalación parte de una placa vacía.",
+    "wait": "La instalación: unos dos minutos. Mantenga la página en primer plano y no desconecte.",
+    "wifi": "{configure_wifi}: la red de casa y su contraseña, y luego {connect}.",
+    "wifi_note": "Pasan por el cable USB (Improv); el controlador solo los guarda una vez conectado. {skip}: abrirá su propio punto de acceso en su lugar (vea {after_link}).",
+    "visit": "{visit_device} abre la página del controlador: el resto se hace allí.",
+    "visit_note": "{add_to_home_assistant} puede esperar: es el último paso del asistente del controlador."
+  },
+  "need": {
+    "title": "Lo que necesita",
+    "optional": "opcional",
+    "board": {
+      "name": "Una placa ESP32",
+      "note": "De desarrollo, con un ESP32-WROOM («ESP32 DevKit») y su puerto USB."
+    },
+    "relay": {
+      "name": "Un módulo de relés de 5 V, de 4 canales o más",
+      "note": "Con optoacopladores, activo a nivel bajo (sirven los módulos comunes de 8 canales: se usan 4). Cierra las entradas de la bomba."
+    },
+    "pump": {
+      "name": "Una bomba de velocidad variable",
+      "note": "Con entradas de control de contacto seco: tres velocidades y marcha/paro (DI1 a DI4)."
+    },
+    "probes": {
+      "name": "Sondas DS18B20",
+      "note": "Al menos una, en el retorno hacia la piscina; dos más para el cuarto técnico y el exterior. Una resistencia de 4,7 kΩ entre la línea de datos y 3,3 V. Sondas originales: una falsificada puede bloquear todo el bus."
+    },
+    "meter": {
+      "name": "Un contador de agua de impulsos",
+      "note": "En la entrada de llenado, de contacto seco, 1 impulso por litro: el controlador cuenta el agua añadida."
+    },
+    "power": {
+      "name": "Una fuente de alimentación de 5 V",
+      "note": "Para la placa y el módulo de relés."
+    },
+    "cable": {
+      "name": "Un cable USB de datos",
+      "note": "No un cable solo de carga: con él, la placa no aparece en la lista de puertos."
+    },
+    "computer": {
+      "name": "Un ordenador con Chrome o Edge",
+      "note": "Windows, macOS o Linux. Después basta un teléfono para configurar el controlador."
+    }
+  },
+  "wiring": {
+    "summary": "Conexiones (fijadas en el firmware publicado)",
+    "pin": "Pin",
+    "goes_to": "Va a",
+    "relay1": "Relé 1 → DI1, velocidad 1 (lenta)",
+    "relay2": "Relé 2 → DI2, velocidad 2",
+    "relay3": "Relé 3 → DI3, velocidad 3 (rápida)",
+    "relay4": "Relé 4 → DI4, marcha/paro",
+    "probes": "Sondas DS18B20 (bus 1-Wire), 4,7 kΩ a 3,3 V",
+    "meter": "Contador de agua; su otro cable a GND",
+    "note": "Relés en COM/NO: con la placa apagada, todos se abren y la bomba se para. ¿Otros pines? Están compilados: cámbielos en {yaml} y compile el firmware usted mismo. Los detalles: {hardware_link}."
+  },
+  "after": {
+    "title": "Después de la instalación",
+    "restart": "El controlador se reinicia y se conecta a la red Wi-Fi indicada en la ventana de instalación.",
+    "open": "Abra {address} desde un teléfono o un ordenador de la misma red (o {visit_device}).",
+    "open_note": "Si la dirección no responde: la que su router asigna a «{hostname}».",
+    "wizard": "Su página abre el asistente de configuración: cinco pasos, unos minutos, y todo queda en el controlador.",
+    "wizard_steps": "Los pasos del asistente",
+    "step": {
+      "password": "Contraseña",
+      "location": "Ubicación",
+      "probes": "Sondas"
+    },
+    "wizard_note": "Empiece sin esperar por la contraseña de la página: mientras no la tenga, cualquiera en la red puede abrirla. La red Wi-Fi indicada en la instalación ya aparece marcada.",
+    "ha": "Home Assistant, en el último paso: añada allí el controlador (Ajustes › Dispositivos y servicios › ESPHome; a menudo lo descubre solo). Home Assistant crea la clave de cifrado y se la envía al controlador.",
+    "ha_note": "Sin Home Assistant, el controlador también funciona: «No uso Home Assistant».",
+    "no_wifi": {
+      "title": "¿Sin Wi-Fi?",
+      "body": "Wi-Fi omitida o rechazada: el controlador abre su propio punto de acceso, «{hostname}», sin contraseña Wi-Fi. Conecte un teléfono y abra {hotspot_address}: el asistente empieza allí, por la contraseña de la página y luego la Wi-Fi.",
+      "later": "Más adelante, si pierde su red más de un minuto, vuelve a abrir este mismo punto de acceso."
+    }
+  },
+  "updates": {
+    "title": "Actualizaciones",
+    "intro": "Un controlador instalado no vuelve a pasar por aquí.",
+    "auto": {
+      "name": "Automáticas",
+      "note": "Busca una nueva versión cada 24 h y la instala (ajustable: a petición, 6 h, 24 h, 7 d, en Ajustes del controlador › Firmware). Nunca durante un forzado o un llenado: espera a que terminen."
+    },
+    "request": {
+      "name": "A petición",
+      "note": "«Instalar» en su página (Ajustes del controlador › Firmware) o en Home Assistant (Ajustes › Actualizaciones)."
+    },
+    "kept": {
+      "name": "Los ajustes se conservan",
+      "note": "Contraseña, Wi-Fi, ubicación, sondas, clave de Home Assistant: una actualización no cambia ninguno."
+    },
+    "secrets": {
+      "name": "¿Compilado con secrets.yaml (v1.3.x)?",
+      "note": "Una sola vez, desde el repositorio: {make_migrate}. Conserva todos sus ajustes y su clave de Home Assistant, sin asistente que repetir; después se actualiza como los demás."
+    }
+  },
+  "code": {
+    "title": "El código",
+    "repo": {
+      "note": "El firmware ESPHome, la página del controlador, la tarjeta de Home Assistant. Licencia MIT. Preguntas y problemas: las issues del repositorio."
+    },
+    "releases": {
+      "name": "Versiones",
+      "note": "Las notas de cada versión y sus archivos."
+    },
+    "files": {
+      "name": "Los archivos del firmware",
+      "note": "Para esptool: la imagen completa en la dirección 0x0."
+    }
+  },
+  "footer": {
+    "source": "Código fuente",
+    "ewt": "Instalación con {ewt_link}"
+  }
+}

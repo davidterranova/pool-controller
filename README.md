@@ -506,15 +506,31 @@ manifest state) are in `install-model.js`, tested by `make webui-test`;
   (installing is done from a computer: a note, and a link to copy); a
   browser without Web Serial; a page opened without HTTPS; no firmware
   published yet (the manifest answers 404: the button stays off); the
-  manifest unreachable (« Réessayer »); ESP Web Tools not loaded from unpkg.
+  manifest unreachable (« Try again » (« Réessayer »)); ESP Web Tools not
+  loaded from unpkg.
+- **Languages.** English, French and Spanish: the visitor's last choice,
+  else the browser's language (`navigator.languages`), else English. An
+  EN | FR | ES switch in the header changes it in place, without losing
+  what the page has found, and remembers it in the browser
+  (`localStorage`; not remembered where the browser blocks it). The texts
+  are `docs/install/i18n/{en,fr,es}.json`, imported as JSON modules: nothing
+  is fetched to translate. `index.html` names its texts with
+  `data-i18n="key"` (an attribute's with `data-i18n-<attribute>`), and
+  `install.js` draws the rest with `t()`; `install-model.js` returns codes
+  (`status.<code>`). Commands, addresses, links and ESP Web Tools' own
+  English buttons are `{placeholders}` the page fills, so the dictionaries
+  hold no markup. `docs/install/i18n.js` is a symlink to
+  `home-assistant/i18n.js`, the helper the card and the device's page use:
+  the Pages job copies the folder with `cp -L`, so the site gets the file.
 - **Always erases.** The manifest has no `new_install_prompt_erase`, so ESP
   Web Tools erases the board without asking, then goes straight to the Wi-Fi
   step. The page is for a new board or one to start over; a controller in
   service updates itself.
 - **Trying it locally.** Serve `docs/install/` with any static server on
-  localhost (a secure context, so Web Serial works), with a
-  `firmware/` folder beside it holding a release's three files, or none for
-  the 404 state.
+  localhost that follows symlinks (`python3 -m http.server` does) and serves
+  `.json` as `application/json` (a secure context, so Web Serial works),
+  with a `firmware/` folder beside it holding a release's three files, or
+  none for the 404 state.
 - It reaches the site with the next release that carries the firmware (see
   below); a change to the page alone waits for that release.
 
@@ -541,7 +557,8 @@ dashboard, scripts and blueprints. The plan, and how far it has got:
 
 - **Everything is local.** The texts are JSON dictionaries built into what
   runs: the card's (`home-assistant/i18n/`) into the card HACS installs and
-  into the device's page, the page's own (`webui/i18n-page/`) into the page.
+  into the device's page, the page's own (`webui/i18n-page/`) into the page,
+  the install page's (`docs/install/i18n/`) beside it on GitHub Pages.
   Nothing is fetched to translate, so the page works in every language on
   the controller's hotspot with no internet.
 - **The firmware speaks in codes** (`up_to_date`, `pending:fill`), which the
