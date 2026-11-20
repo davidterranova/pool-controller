@@ -48,7 +48,8 @@ export class FakeHass {
    * quiet (minutes), recorder ("full" | "empty" | "error"), press (button key -> {key: spec} applied when pressed)}.
    * specs: key -> spec, every state (scenarios.js statesOf: the normal day with the scenario's changes).
    */
-  constructor({ ids, specs, scenario, dark = false, onChange = () => {}, log = () => {} }) {
+  constructor({ ids, specs, scenario, dark = false, lang = "fr", onChange = () => {}, log = () => {} }) {
+    this.lang = lang; // the HA user's language, which the card follows
     this.ids = ids;
     this.keyOf = Object.fromEntries(Object.entries(ids).map(([k, id]) => [id, k]));
     this.scenario = scenario;
@@ -78,7 +79,7 @@ export class FakeHass {
   snapshot() {
     return { states: this.states, entities: this.entities, devices: this.devices, themes: { darkMode: this.dark },
       config: { latitude: 45.76, longitude: 4.84, time_zone: "Europe/Paris", unit_system: { temperature: "°C" } },
-      language: "fr", locale: { language: "fr" }, callService: this.callService, callWS: this.callWS };
+      language: this.lang, locale: { language: this.lang }, callService: this.callService, callWS: this.callWS };
   }
 
   /** Sets states by key ({key: spec}), now, as a message from the controller. */

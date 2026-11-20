@@ -221,7 +221,12 @@ amber > green. The meter's settings are not the card's: the device's page in
 Home Assistant (Configuration), or the controller's own page. Reminders on a
 phone, every 15 min until acknowledged, come from a blueprint in
 [home-assistant/blueprints/](home-assistant/dashboard/README.md#fill-alarm-notifications).
-It's a plain custom element, no framework and no build step, in French.
+It's a plain custom element, no framework. It speaks English, French and
+Spanish: the Home Assistant user's language (their profile), or `language:
+en`, `fr` or `es` in its config; numbers, dates and times follow the
+profile's formats. Its texts are in [home-assistant/i18n/](home-assistant/i18n/)
+(see [Languages](#languages)). The source runs as it is; the release bundles
+it with its texts (`make card`).
 
 It lives here because it's written against this firmware's entities, and
 because it now has two users that must change together:
@@ -344,13 +349,21 @@ statistics are generated, so every chart draws.
   written with the card's own keys (`override`, `water`…) as changes to a
   normal day; add one when the card learns a new state. Entity ids are the
   dashboard's (a fresh install's), so nothing there is one install's.
+- **Language:** FR, EN or ES in the side bar (`?lang=` in the address) is
+  the Home Assistant user's language the card follows.
 - **`make card-shots`** takes each situation's tile and panel at 390 and
-  760 px, light and dark, at a fixed time, into `tools/card-preview/shots/`
-  (not committed): for a pull request's description. `SCENARIO=stuck,offline`
-  takes only those.
+  760 px, light and dark, in each language, at a fixed time, into
+  `tools/card-preview/shots/` (not committed, `<situation>-<width>-<theme>-<lang>.png`):
+  for a pull request's description. `SCENARIO=stuck,offline` takes only
+  those, `LANG=fr` only French.
 - **`make card-preview-check`** loads every situation on each of the panel's
-  tabs at both widths, and fails on a page or console error, or on
-  « undefined », « NaN » or « [object Object] » in what the card shows. It
+  tabs at both widths, in each language, and fails on a page or console
+  error, or on « undefined », « NaN », « [object Object] » or a dictionary key
+  (a missing text) in what the card shows.
+- **What a change does to the texts:** `node tools/card-preview/shoot.mjs
+  --text <file.json>` (in Playwright's image, like the targets) writes what
+  the cards show, per situation, tab, width and language; run it before and
+  after, and compare. It
   runs in CI (validate.yml, its own job), against the card as the release
   ships it: `CARD_BUNDLE=1` builds it (`make card`) and loads that instead of
   the source. `?bundle` in the preview's address does the same by hand.

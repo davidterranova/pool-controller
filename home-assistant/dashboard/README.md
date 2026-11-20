@@ -76,6 +76,10 @@ The panel has three tabs, the controller's own page's, so the pop-up needs no da
 `settings_tab: false` drops both « Réglages » tabs, and with them the tab bar. `temperatures` (before
 1.8.0) is deprecated: accepted and ignored, the outdoor and equipment-pad probes are in « Réglages » › Sondes.
 
+The card speaks the Home Assistant user's language (English, French or Spanish, from their profile, English
+for any other), with the profile's number and time formats. `language: fr` (or `en`, `es`) fixes it for that
+card whoever looks.
+
 Its header, and the tile, have a light for the controller: green while it talks (the Device Clock, `clock`,
 changes every minute), amber when it goes quiet or has been offline for less than 15 min, red beyond. In the
 header it says when the controller was last heard and opens Home Assistant's device page for the controller

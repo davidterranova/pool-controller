@@ -4,7 +4,7 @@ The controller's interface is translated (plan: [docs/plans/i18n.md](../../docs/
 
 ## Where text goes
 
-- **Card** (`home-assistant/piscine-card.js`): never a literal. Use `t("key", vars)` and add the key to `home-assistant/i18n/{en,fr,es}.json`. The device page shows the card too.
+- **Card** (`home-assistant/piscine-card.js`): never a literal. Use `this._t("key", vars)` and add the key to `home-assistant/i18n/{en,fr,es}.json`. The helpers outside the class use `T("key")` and `F` (formats), the language of the card being drawn (`_use()`). A key built at run time is `t(\`card.row.${key}.label\`)`, so the check sees its prefix. French that must stay as it is (an older firmware's states, `LEGACY_STATUS`) carries `// i18n-ignore` on its line. The device page shows the card too.
 - **Controller's page and wizard** (`webui/`): `t()` with keys in `webui/i18n-page/{en,fr,es}.json`.
 - **Install page** (`docs/install/`): its own `en`, `fr` and `es` dictionaries (`docs/install/i18n/`). In `index.html`, `data-i18n="key"` on the element (`data-i18n-aria-label="key"` for an attribute); in the scripts, `t()`. No markup in its texts: a command, an address, a link or one of ESP Web Tools' English buttons is a `{placeholder}` filled by `snippets()` (`install-i18n.js`).
 - **Firmware** (`*.yaml`, `*.h`):
@@ -26,7 +26,7 @@ The controller's interface is translated (plan: [docs/plans/i18n.md](../../docs/
 - Write English that a machine can't misread: a status as a status, not a bare verb (« Speed forced to {speed} for {duration} », not « Override {speed} for {duration} », which a tool translated as a command).
 - Keep `{placeholders}` and markup (`<b>`) identical across languages. A plural is an object of CLDR forms (`{"one": "{count} day", "other": "{count} days"}`), with the forms each language uses.
 - A text that is the same as English on purpose (« Auto ») goes in `SAME_AS_ENGLISH` (`tools/i18n/surfaces.mjs`); the check refuses any other copy.
-- Spanish and French run longer than English: check the card at 390 px and the page's buttons and tabs for overflow (`make card-shots`, the mock).
+- Spanish and French run longer than English: check the card at 390 px and the page's buttons and tabs for overflow (`make card-shots`, the mock). `make card-preview-check` runs every situation in each language and fails on a key shown instead of a text.
 - Remove a key from all three files when its text goes away.
 
 ## Before committing

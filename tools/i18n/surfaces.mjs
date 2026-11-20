@@ -13,7 +13,7 @@
 export const SURFACES = [
   {
     id: "card", title: "Home Assistant card (also on the controller's page)",
-    dir: "home-assistant/i18n", sources: ["home-assistant/piscine-card.js"], usage: "code", reads: [], strict: false,
+    dir: "home-assistant/i18n", sources: ["home-assistant/piscine-card.js"], usage: "code", reads: [], strict: true,
   },
   {
     id: "page", title: "The controller's own page and its setup wizard",
@@ -33,7 +33,10 @@ export const SURFACES = [
 // Keys whose text is the same as English on purpose (a product name, a word every language uses), as
 // "<surface>:<key>". Any other fr or es text identical to the English one is taken for an untranslated copy.
 export const SAME_AS_ENGLISH = [
-  "card:common.mode.auto",
+  "card:common.mode.auto", "card:card.tab.pump", "card:card.sec.filtration", "card:card.sec.position", "card:card.sec.firmware",
+  "card:card.range.24h", "card:card.pos.lat", "card:card.pos.lon",
+  // Spanish that happens to be written like the English
+  "card:common.mode.manual", "card:card.range.7d", "card:card.range.30d", "card:card.range.90d", "card:card.pos.ha", "card:card.days.tip_plan",
   "install:firmware.chip", // « Firmware {version} »: the word is the same in French and Spanish
   "install:wiring.pin", // « Pin »: the Spanish word too (French: « Broche »)
   "yaml:dashboard.fill.per_day.volume", // fr « Volume »
