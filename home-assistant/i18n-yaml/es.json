@@ -103,5 +103,73 @@
       "alias": "Piscina — volver a Auto",
       "description": "Devuelve la bomba al plan autónomo del controlador (Manual Override → Auto)."
     }
+  },
+  "blueprint": {
+    "fill_too_long": {
+      "name": "Pool Controller — llenado demasiado largo",
+      "description": "Avisa mientras el llenado de la piscina dura más que el **Fill Alarm After** del controlador, cada pocos minutos, hasta que alguien confirma la alarma: desde la acción « Confirmar » de la notificación, la tarjeta de la piscina, la página del controlador o su página de dispositivo en Home Assistant. Borra la notificación una vez confirmada la alarma o terminado el llenado, y puede ejecutar acciones propias en cada recordatorio y al final.\n\nLa alarma en sí está en el controlador: activar o desactivar el contador (**Fill Meter**) y ajustar el retardo (**Fill Alarm After**, 0 = nunca) en su página de dispositivo, en Configuración.",
+      "controller": {
+        "name": "Controlador"
+      },
+      "alarm": {
+        "name": "Llenado demasiado largo (alarma)",
+        "description": "La alarma del controlador, Fill Running Too Long (un sensor de problema)."
+      },
+      "acknowledged": {
+        "name": "Alarma confirmada",
+        "description": "Fill Alarm Acknowledged: encendido en cuanto alguien confirmó la alarma, hasta el final del llenado."
+      },
+      "ack_button": {
+        "name": "Botón de confirmación",
+        "description": "Acknowledge Fill Alarm: el botón del controlador que pulsa la acción de la notificación."
+      },
+      "notifications": {
+        "name": "Notificaciones"
+      },
+      "notify_devices": {
+        "name": "Teléfonos",
+        "description": "Teléfonos con la aplicación Home Assistant a avisar, cada uno con una acción para confirmar la alarma. Ninguno: solo se ejecutan las acciones de abajo."
+      },
+      "repeat": {
+        "name": "Repetir cada",
+        "description": "Minutos entre dos recordatorios mientras nadie haya confirmado la alarma."
+      },
+      "title": {
+        "name": "Título",
+        "description": "El título de la notificación.",
+        "default": "Piscina: llenado demasiado largo"
+      },
+      "message": {
+        "name": "Mensaje",
+        "description": "Puede usar `{{ since }}`, la hora a la que empezó la alarma (HH:MM), y `{{ minutes }}`, los minutos transcurridos desde entonces.",
+        "default": "El llenado dura más de lo previsto (alarma a las {{ since }}). Cerrar la entrada de agua, o « Confirmar » para detener los recordatorios."
+      },
+      "all_clear_message": {
+        "name": "Mensaje de fin de alarma",
+        "description": "Enviado a los teléfonos cuando termina la alarma, en lugar del último recordatorio. Vacío: ninguno.",
+        "default": "Piscina: fin de la alarma de llenado."
+      },
+      "ack_title": {
+        "name": "Título de la acción de confirmación",
+        "description": "El título de la acción de la notificación que confirma la alarma.",
+        "default": "Confirmar"
+      },
+      "more": {
+        "name": "Más acciones"
+      },
+      "extra_actions": {
+        "name": "En cada recordatorio",
+        "description": "Cualquier otra cosa que hacer en cada recordatorio (un altavoz, una luz, otro notificador)."
+      },
+      "all_clear_actions": {
+        "name": "Cuando termina la alarma",
+        "description": "Se ejecutan una vez terminada la alarma: el llenado terminó, o Fill Alarm After se subió por encima (no al confirmarla)."
+      },
+      "alias": {
+        "ack_on_phone": "Confirmada desde un teléfono",
+        "ended": "Confirmada, o llenado terminado",
+        "remind": "Recordatorios mientras la alarma está activa y sin confirmar"
+      }
+    }
   }
 }

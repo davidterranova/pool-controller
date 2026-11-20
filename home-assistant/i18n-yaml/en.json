@@ -103,5 +103,73 @@
       "alias": "Pool — back to Auto",
       "description": "Hands the pump back to the controller's autonomous plan (Manual Override → Auto)."
     }
+  },
+  "blueprint": {
+    "fill_too_long": {
+      "name": "Pool Controller — fill running too long",
+      "description": "Notifies while the pool's fill runs longer than the controller's **Fill Alarm After**, every few minutes until someone acknowledges it: from the phone notification's « Acknowledge » action, the pool card, the controller's own page or its device page in Home Assistant. Clears the notification once acknowledged or once the fill ends, and can run actions of your own on each reminder and when it is over.\n\nThe alarm itself is on the controller: turn the meter on or off (**Fill Meter**) and set the delay (**Fill Alarm After**, 0 = never) on its device page, under Configuration.",
+      "controller": {
+        "name": "Controller"
+      },
+      "alarm": {
+        "name": "Fill running too long (alarm)",
+        "description": "The controller's alarm, Fill Running Too Long (a problem sensor)."
+      },
+      "acknowledged": {
+        "name": "Alarm acknowledged",
+        "description": "Fill Alarm Acknowledged: on once someone acknowledged the alarm, until the fill ends."
+      },
+      "ack_button": {
+        "name": "Acknowledge button",
+        "description": "Acknowledge Fill Alarm: the controller's button that the phone notification's action presses."
+      },
+      "notifications": {
+        "name": "Notifications"
+      },
+      "notify_devices": {
+        "name": "Phones",
+        "description": "Phones with the Home Assistant app to notify, each with an action to acknowledge the alarm. None: only the actions below run."
+      },
+      "repeat": {
+        "name": "Repeat every",
+        "description": "Minutes between two reminders while nobody has acknowledged the alarm."
+      },
+      "title": {
+        "name": "Title",
+        "description": "The notification's title.",
+        "default": "Pool: fill running too long"
+      },
+      "message": {
+        "name": "Message",
+        "description": "May use `{{ since }}`, the time the alarm went on (HH:MM), and `{{ minutes }}`, the minutes since.",
+        "default": "The fill is running longer than expected (alarm at {{ since }}). Close the water supply, or « Acknowledge » to stop the reminders."
+      },
+      "all_clear_message": {
+        "name": "All-clear message",
+        "description": "Sent to the phones when the alarm ends, in place of the last reminder. Empty for none.",
+        "default": "Pool: the fill alarm is over."
+      },
+      "ack_title": {
+        "name": "Acknowledge action's title",
+        "description": "The title of the notification's action that acknowledges the alarm.",
+        "default": "Acknowledge"
+      },
+      "more": {
+        "name": "More actions"
+      },
+      "extra_actions": {
+        "name": "On each reminder",
+        "description": "Anything else to do with each reminder (a speaker, a light, another notifier)."
+      },
+      "all_clear_actions": {
+        "name": "When the alarm ends",
+        "description": "Run once the alarm has ended: the fill ended, or Fill Alarm After was raised past it (not on an acknowledgement)."
+      },
+      "alias": {
+        "ack_on_phone": "Acknowledged from a phone",
+        "ended": "Acknowledged, or the fill ended",
+        "remind": "Reminding while the alarm is on and not acknowledged"
+      }
+    }
   }
 }

@@ -103,5 +103,73 @@
       "alias": "Piscine — retour en Auto",
       "description": "Rend la pompe au plan autonome du contrôleur (Manual Override → Auto)."
     }
+  },
+  "blueprint": {
+    "fill_too_long": {
+      "name": "Pool Controller — remplissage trop long",
+      "description": "Prévient tant que le remplissage de la piscine dure plus que le **Fill Alarm After** du contrôleur, toutes les quelques minutes, jusqu'à ce que quelqu'un acquitte l'alerte : depuis l'action « Acquitter » de la notification, la carte de la piscine, la page du contrôleur ou sa page d'appareil dans Home Assistant. Efface la notification une fois l'alerte acquittée ou le remplissage terminé, et peut lancer vos propres actions à chaque rappel et à la fin.\n\nL'alerte elle-même est sur le contrôleur : activer ou couper le compteur (**Fill Meter**) et régler le délai (**Fill Alarm After**, 0 = jamais) sur sa page d'appareil, sous Configuration.",
+      "controller": {
+        "name": "Contrôleur"
+      },
+      "alarm": {
+        "name": "Remplissage trop long (alerte)",
+        "description": "L'alerte du contrôleur, Fill Running Too Long (un capteur de problème)."
+      },
+      "acknowledged": {
+        "name": "Alerte acquittée",
+        "description": "Fill Alarm Acknowledged : allumé dès que quelqu'un a acquitté l'alerte, jusqu'à la fin du remplissage."
+      },
+      "ack_button": {
+        "name": "Bouton d'acquittement",
+        "description": "Acknowledge Fill Alarm : le bouton du contrôleur que presse l'action de la notification."
+      },
+      "notifications": {
+        "name": "Notifications"
+      },
+      "notify_devices": {
+        "name": "Téléphones",
+        "description": "Téléphones avec l'application Home Assistant à prévenir, chacun avec une action pour acquitter l'alerte. Aucun : seules les actions ci-dessous s'exécutent."
+      },
+      "repeat": {
+        "name": "Répéter toutes les",
+        "description": "Minutes entre deux rappels tant que personne n'a acquitté l'alerte."
+      },
+      "title": {
+        "name": "Titre",
+        "description": "Le titre de la notification.",
+        "default": "Piscine : remplissage trop long"
+      },
+      "message": {
+        "name": "Message",
+        "description": "Peut utiliser `{{ since }}`, l'heure du début de l'alerte (HH:MM), et `{{ minutes }}`, les minutes écoulées depuis.",
+        "default": "Le remplissage dure plus que prévu (alerte à {{ since }}). Fermer l'arrivée d'eau, ou « Acquitter » pour arrêter les rappels."
+      },
+      "all_clear_message": {
+        "name": "Message de fin d'alerte",
+        "description": "Envoyé aux téléphones à la fin de l'alerte, à la place du dernier rappel. Vide : aucun.",
+        "default": "Piscine : fin de l'alerte de remplissage."
+      },
+      "ack_title": {
+        "name": "Titre de l'action d'acquittement",
+        "description": "Le titre de l'action de la notification qui acquitte l'alerte.",
+        "default": "Acquitter"
+      },
+      "more": {
+        "name": "Autres actions"
+      },
+      "extra_actions": {
+        "name": "À chaque rappel",
+        "description": "Tout ce qu'il faut faire d'autre à chaque rappel (une enceinte, une lampe, un autre notificateur)."
+      },
+      "all_clear_actions": {
+        "name": "À la fin de l'alerte",
+        "description": "Exécutées une fois l'alerte terminée : le remplissage s'est arrêté, ou Fill Alarm After a été relevé au-delà (pas sur un acquittement)."
+      },
+      "alias": {
+        "ack_on_phone": "Acquittée depuis un téléphone",
+        "ended": "Acquittée, ou remplissage terminé",
+        "remind": "Rappels tant que l'alerte est active et non acquittée"
+      }
+    }
   }
 }

@@ -31,4 +31,9 @@ export const SURFACES = [
 
 // Keys whose text is the same as English on purpose (a product name, a word every language uses), as
 // "<surface>:<key>". Any other fr or es text identical to the English one is taken for an untranslated copy.
-export const SAME_AS_ENGLISH = ["card:common.mode.auto", "yaml:dashboard.fill.per_day.volume"];
+export const SAME_AS_ENGLISH = [
+  "card:common.mode.auto",
+  "yaml:dashboard.fill.per_day.volume", // fr « Volume »
+  "yaml:blueprint.fill_too_long.notifications.name", // fr « Notifications »
+  "yaml:blueprint.fill_too_long.message.name", // fr « Message »
+];
