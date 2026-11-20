@@ -6,7 +6,8 @@
  * last 7 days; « Réglages contrôleur » its Wi-Fi (wifi-setup.yaml: connection, statistics, joining a
  * network), its firmware, what setup.js adds (its position, probes, fill meter, passwords, Home Assistant key and
  * factory reset), and its live log, plus the setup wizard shown instead of the page while the
- * controller isn't set up (device-settings.yaml). The device keeps no history of its
+ * controller isn't set up (device-settings.yaml), and the login screen while it asks for its password (login.js).
+ * The device keeps no history of its
  * sensors, so the only charts are of what it records itself: the pool's min/max and filtration of the
  * last 7 days, and the fill water of 30 days and 12 months. Everything talks to the ESP32 only, so it
  * keeps working while Home Assistant is down.
@@ -15,6 +16,8 @@ import { EspHass, E } from "./esphome-hass.js";
 import { ICONS } from "./icons.js";
 import { mountSetup } from "./setup.js";
 import { WAITING_FOR } from "./setup-model.js";
+import { mountLogin } from "./login.js";
+import { keepAlive } from "./session.js";
 
 const hass = new EspHass();
 const $ = (id) => document.getElementById(id);
@@ -615,9 +618,24 @@ const orDash = (id) => () => s(id) || "—";
   });
 }
 
+/* ---- The login screen while the controller asks for its Page Password (login.js), and the session kept alive while
+   someone uses the page (session.js): the event stream alone doesn't, so a tab left open logs out after 6 h. */
+const session = keepAlive({ send: () => hass.checkSession() });
+const login = mountLogin({
+  ui: { icon },
+  onLogin: () => {
+    session.refreshed();
+    hass.connect();
+  },
+  onLogout: () => hass.disconnect(),
+});
+hass.addEventListener("login-required", () => login.show());
+for (const type of ["pointerdown", "keydown"]) addEventListener(type, () => login.shown || session.input(), { capture: true, passive: true });
+document.addEventListener("visibilitychange", () => document.hidden || login.shown || session.input());
+
 /* ---- Setup: the wizard while the controller isn't set up, and the Réglages contrôleur tab's Position, Sondes,
    Accès, Home Assistant and Réinitialiser sections (setup.js) */
-updaters.push(mountSetup({ hass, E, ui: { icon, esc, toast, fmt1, bars } }));
+updaters.push(mountSetup({ hass, E, login, ui: { icon, esc, toast, fmt1, bars } }));
 
 /* ---- Capteurs internes */
 const KNOWN = new Set(Object.values(E));

@@ -21,7 +21,7 @@ Usage (from the repo root; `make mock-ui` wraps this):
     python3 tools/webui-mock/mock_server.py --index my-page.html pool-controller.yaml
     python3 tools/webui-mock/mock_server.py --check pool-controller.yaml
     python3 tools/webui-mock/mock_server.py --extra my-package.yaml [--hotspot] pool-controller.yaml
-    python3 tools/webui-mock/mock_server.py --fresh pool-controller.yaml
+    python3 tools/webui-mock/mock_server.py --fresh [--idle 60] pool-controller.yaml
 
 The config's own `packages:` (`name: !include file.yaml`) are loaded like ESPHome
 does, for their entities and sorting groups. --extra loads one more package the
@@ -35,8 +35,23 @@ manifest on GitHub Pages is a 404), as before a project's first release.
 20 s, so the pulse test passes.
 --fresh starts it as a controller straight out of the install: nothing set up
 (Setup State lists everything), no network saved, so on its hotspot with no
-clock. Once a Page Password is set, the mock asks for it (digest, user admin),
-as the device does; the configured mock (no --fresh) never asks.
+clock.
+
+The page login (docs/plans/page-login.md) is the device's: once a Page Password
+is set during this run, every request needs a session (the pool_session cookie)
+but for the page itself and the login endpoints, and a refused one gets a 401
+with no WWW-Authenticate, so the page shows its own login screen. GET
+/login/challenge, POST /login (nonce, HMAC-SHA256 proof), GET /login/session and
+POST /logout; up to 4 sessions, each ended after 6 h idle (--idle SECONDS
+shortens it); 5 failed logins in a row lock the login for 30 s, then 60 s, up to
+15 min. A session that ends (idle, logout, Logout All Devices, a new Page
+Password, Factory Reset) has its event streams closed. The configured mock (no
+--fresh) has no password it knows, so it asks for none until one is set.
+
+POST /__mock/reboot reboots the simulated controller: the pages' streams drop
+and reconnect, sessions survive with their idle clocks restarted, as on the
+device. ?version=v1.6.0 reboots it onto that firmware instead, as an update
+would, and the page reloads itself.
 
 Needs PyYAML, and the `esphome` package for the device's index page -- both present in
 the ghcr.io/esphome/esphome image the Makefile runs this in.
@@ -48,6 +63,7 @@ import binascii
 import functools
 import gzip
 import hashlib
+import hmac
 import json
 import math
 import os
@@ -87,6 +103,11 @@ SENSOR_DEFAULTS = {
 # sun: component and the pool's coordinates (Latitude, Longitude).
 MOCK_SUNRISE = 7 * 3600 + 45 * 60
 MOCK_SUNSET = 17 * 3600 + 15 * 60
+
+# What the gate lets through: the page's shell and code, which draw the login screen (/index.html is the mock's own),
+# and the login endpoints, by path and method.
+PAGE_PATHS = ("/", "/index.html", "/0.js", "/0.css")
+LOGIN_PATHS = {"/login/challenge": "GET", "/login": "POST", "/login/session": "GET", "/logout": "POST"}
 
 # What a custom --index page may load from its own directory.
 STATIC_TYPES = {".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json"}
@@ -305,6 +326,7 @@ S = {
     "outdoor_probe": "Outdoor Probe",
     "rescan": "Rescan Probes",
     "factory_reset": "Factory Reset",
+    "logout_all": "Logout All Devices",
     "waiting_for": "Schedule Waiting For",
 }
 # Firmware updates (updates.yaml, a package of the config).
@@ -341,8 +363,6 @@ PROBES = {
 }
 ROLES = {"pool_probe": "pool_temp", "pad_probe": "pad_temp", "outdoor_probe": "outdoor_temp"}
 NO_PROBE = "none"
-PAGE_USER = "admin"
-REALM = "Login Required"
 
 # What the simulated device "sees" around it: (ssid, rssi dBm, bssid). Joining
 # one of the last three fails, as it would with a wrong password.
@@ -489,11 +509,12 @@ def _api_key_ok(text: str) -> bool:
 class SettingsSim:
     """device-settings.yaml: the page login, API key, position, timezone, probe roles, Setup State."""
 
-    def __init__(self, log, fresh: bool):
+    def __init__(self, log, fresh: bool, idle_s: float = 6 * 3600):
         self.log = log
         # The login the mock asks for: only one set during this run (a configured mock never asks).
         self.page_password: str | None = None
         self.page_password_set = not fresh
+        self.login = LoginSim(log, lambda: self.page_password, idle_s)
         self.api_key_set = not fresh
         self.key_generated = False  # Generate API Key's: nobody holds it, so Home Assistant never connects
         self.bus = list(PROBES)
@@ -516,6 +537,12 @@ class SettingsSim:
     def options(self) -> list[str]:
         known = self.bus + [a for a in self.roles.values() if a and a not in self.bus]
         return [NO_PROBE] + known
+
+    def set_page_password(self, value: str):
+        """Every session ends with a new Page Password, this browser's too: the page logs in again with it."""
+        self.page_password, self.page_password_set = value, True
+        self.log(f"'{S['page_password']}' set; the page now asks for it")  # never echo it
+        self.login.end_all("new Page Password")
 
     def set_role(self, name: str, option: str):
         role = next(r for r in ROLES if S[r] == name)
@@ -554,6 +581,7 @@ class SettingsSim:
         """Access and network go; roles, position and timezone stay."""
         self.page_password, self.page_password_set, self.api_key_set = None, False, False
         self.key_generated = False
+        self.login.end_all("Factory Reset")
 
     def snapshot(self, wifi_saved: bool, temps: dict) -> dict:
         return {
@@ -568,6 +596,111 @@ class SettingsSim:
             S["detected"]: self.detected(temps),
             **{S[role]: address or NO_PROBE for role, address in self.roles.items()},
         }
+
+
+# page_login's limits (components/page_login/).
+LOGIN_NONCE_S = 60       # a challenge's nonce is good once, for this long
+LOGIN_NONCES = 4         # the challenges kept; a newer one pushes the oldest out
+LOGIN_SESSIONS = 4       # one per browser; a fifth login ends the one idle longest
+LOGIN_FAILURES = 5       # failed logins in a row before the lockout
+LOGIN_LOCKOUT_S = 30     # the first lockout, doubled with each further failure…
+LOGIN_LOCKOUT_MAX_S = 900  # …up to this
+SESSION_COOKIE = "pool_session"
+
+
+class LoginSim:
+    """page_login in Python: challenges, the login and its lockout, the sessions and their idle limit.
+
+    The gate is on while a Page Password is set (`password()`). Clocks are monotonic, like the device's uptime: a
+    session's idle clock is its last authenticated request (the event stream doesn't count), restarted at boot.
+    """
+
+    def __init__(self, log, password, idle_s: float):
+        self.log = log
+        self.password = password
+        self.idle_s = idle_s
+        self.nonces: dict[str, float] = {}  # nonce -> when it was drawn
+        self.sessions: dict[str, float] = {}  # token -> last activity
+        self.failures = 0  # failed logins in a row
+        self.locked_until = 0.0
+        self.lockout_s = 0  # the last lockout's length; the next one doubles it
+
+    @property
+    def gated(self) -> bool:
+        return self.password() is not None
+
+    def challenge(self) -> str:
+        now = time.monotonic()
+        self.nonces = {n: t for n, t in self.nonces.items() if now - t < LOGIN_NONCE_S}
+        while len(self.nonces) >= LOGIN_NONCES:
+            del self.nonces[min(self.nonces, key=self.nonces.get)]
+        nonce = os.urandom(16).hex()
+        self.nonces[nonce] = now
+        return nonce
+
+    def retry_after(self) -> int:
+        return max(0, math.ceil(self.locked_until - time.monotonic()))
+
+    def login(self, nonce: str, proof: str, previous: str | None) -> tuple[int, int, str | None]:
+        """(status, retry_after, new token): 204 with a session, 401 refused, 429 locked out. The browser's previous
+        session, if any, gives its place to the new one."""
+        if self.retry_after():
+            return 429, self.retry_after(), None
+        drawn = self.nonces.pop(nonce, None)  # single-use, right or wrong
+        expected = hmac.new(self.password().encode(), nonce.encode(), hashlib.sha256).hexdigest()
+        if drawn is None or time.monotonic() - drawn >= LOGIN_NONCE_S or not hmac.compare_digest(proof.encode(), expected.encode()):
+            self.failures += 1
+            why = "wrong password" if drawn is not None else "unknown or expired challenge"
+            if self.failures < LOGIN_FAILURES:
+                self.log(f"Login refused: {why} ({self.failures} in a row)")
+                return 401, 0, None
+            self.lockout_s = min(LOGIN_LOCKOUT_MAX_S, self.lockout_s * 2 or LOGIN_LOCKOUT_S)
+            self.locked_until = time.monotonic() + self.lockout_s
+            self.log(f"Login refused: {why} ({self.failures} in a row); logins locked for {self.lockout_s} s")
+            return 401, self.lockout_s, None
+        self.failures, self.lockout_s = 0, 0
+        self.sessions.pop(previous, None)
+        if len(self.sessions) >= LOGIN_SESSIONS:
+            oldest = min(self.sessions, key=self.sessions.get)
+            del self.sessions[oldest]
+            self.log(f"Session {oldest[:6]}… ended: the one idle longest, for a new login")
+        token = os.urandom(16).hex()
+        self.sessions[token] = time.monotonic()
+        self.log(f"Login: session {token[:6]}… started ({len(self.sessions)} of {LOGIN_SESSIONS})")
+        return 204, 0, token
+
+    def check(self, token: str | None, refresh: bool = True) -> bool:
+        """Whether a request with this cookie goes through the gate; a live session's idle clock restarts with it."""
+        if not self.gated:
+            return True
+        self.expire()
+        if token not in self.sessions:
+            return False
+        if refresh:
+            self.sessions[token] = time.monotonic()
+        return True
+
+    def expire(self):
+        now = time.monotonic()
+        for token in [t for t, last in self.sessions.items() if now - last >= self.idle_s]:
+            del self.sessions[token]
+            self.log(f"Session {token[:6]}… ended: idle {self.idle_s:g} s")
+
+    def logout(self, token: str | None):
+        if self.sessions.pop(token, None) is not None:
+            self.log(f"Logout: session {token[:6]}… ended")
+
+    def end_all(self, why: str):
+        if self.sessions:
+            self.log(f"{why}: {len(self.sessions)} session(s) ended")
+        self.sessions.clear()
+
+    def boot(self):
+        """At boot every session's idle clock restarts: a reboot or an update logs no one out."""
+        now = time.monotonic()
+        self.sessions = dict.fromkeys(self.sessions, now)
+        self.nonces.clear()
+        self.failures, self.locked_until, self.lockout_s = 0, 0.0, 0  # kept in RAM only
 
 
 def _hhmm(ts: int) -> str:
@@ -669,6 +802,12 @@ class UpdateSim:
             self.installed, self.state = self.latest, "NO UPDATE"
             return True
         return False
+
+    def boot_on(self, version: str):
+        """Another firmware, put there some other way (make ota, /__mock/reboot): the Firmware entity follows."""
+        self.installed = version
+        if self.latest:
+            self.state = "NO UPDATE" if self.latest == version else "UPDATE AVAILABLE"
 
     def status(self, blocker: str | None) -> str:
         """Update Status, as updates.h's status_text() words it."""
@@ -830,13 +969,13 @@ class PoolSim:
     """A pocket version of evaluate_speed and friends, driven by wall-clock time."""
 
     def __init__(self, log, hotspot: bool = False, fresh: bool = False, released: bool = True,
-                 fill_off: bool = False, long_fill: bool = False):
+                 fill_off: bool = False, long_fill: bool = False, idle_s: float = 6 * 3600):
         self.log = log
         self.fill = FillSim(log, enabled=not fill_off, long_fill=long_fill, fresh=fresh)
         self.fill_carry = 0.0  # litres not yet a whole pulse
         # A fresh controller has no network saved: it starts on its hotspot.
         self.wifi = WifiSim(log, hotspot or fresh, saved=not fresh)
-        self.settings = SettingsSim(log, fresh)
+        self.settings = SettingsSim(log, fresh, idle_s)
         self.updates = UpdateSim(log, released=released)
         self.rebooted = False  # set by an install: the server drops the page's event stream
         self.started = time.time()
@@ -1111,9 +1250,16 @@ class PoolSim:
         hours = {"À la demande": 0, "6 h": 6, "24 h": 24, "7 j": 168}.get(self.selects.get(U["interval"]), 24)
         online = self.wifi.mode == "Connected"  # the releases are on the internet
         if self.updates.tick(bool(self.static.get(U["auto"])), hours if online else 0, self.update_blocker):
-            self.log(f"Rebooted on {self.updates.installed}")
-            self.started = time.time()
-            self.rebooted = True
+            self.reboot()
+
+    def reboot(self, version: str | None = None):
+        """The controller restarts, onto another firmware with `version`: the server drops the pages' streams."""
+        if version:
+            self.updates.boot_on(version)
+        self.log(f"Rebooted on {self.updates.installed}")
+        self.started = time.time()
+        self.settings.login.boot()
+        self.rebooted = True
 
     def install(self, origin: str):
         self.updates.install_request(origin, self.update_blocker)
@@ -1158,6 +1304,8 @@ class PoolSim:
             self.log("API key forgotten")
         elif name == S["rescan"]:
             self.log(f"Probe scan: {len(self.settings.bus)} on the bus")
+        elif name == S["logout_all"]:
+            self.settings.login.end_all("Logout All Devices")
         elif name == S["factory_reset"]:
             self.log("Factory reset: forgetting the page and OTA passwords, the API key and the saved Wi-Fi")
             self.settings.factory_reset()
@@ -1459,18 +1607,26 @@ def device_index(web: dict) -> str:
 # --------------------------------------------------------------------------- server
 
 
+class Client(queue.Queue):
+    """One open event stream: what's left to send it, and the session it was opened with (None without one)."""
+
+    def __init__(self, session: str | None = None):
+        super().__init__()
+        self.session = session
+
+
 class MockServer:
     def __init__(self, config_path: str, index_path: str | None, extras: list[str] | None = None,
                  hotspot: bool = False, fresh: bool = False, released: bool = True,
-                 fill_off: bool = False, long_fill: bool = False):
+                 fill_off: bool = False, long_fill: bool = False, idle_s: float = 6 * 3600):
         self.config_path = config_path
         self.index_path = index_path
         self.extras = extras or []
         self.lock = threading.RLock()
-        self.clients: list[queue.Queue] = []
-        self.reload_clients: list[queue.Queue] = []
+        self.clients: list[Client] = []
+        self.reload_clients: list[Client] = []
         self.event_id = 0
-        self.sim = PoolSim(self.log, hotspot, fresh, released, fill_off, long_fill)
+        self.sim = PoolSim(self.log, hotspot, fresh, released, fill_off, long_fill, idle_s)
         self.layout = load_layout(config_path, self.extras)
         self.sim.adopt(self.layout.entities)
         self.sim.tick()
@@ -1500,6 +1656,14 @@ class MockServer:
         print(f"[sim] {message}", flush=True)
         self.broadcast(sse("log", f"\033[0;32m[I][mock]: {message}\033[0m", self.next_id()))
 
+    def close_ended_streams(self):
+        """The device closes the event streams of a session that ended, and those opened without one once the
+        gate is on: the page's EventSource reconnects, gets the gate's 401, and the page shows its login screen."""
+        login = self.sim.settings.login
+        for client in list(self.clients):
+            if not login.check(client.session, refresh=False):
+                client.put(None)
+
     def publish_changes(self):
         """Push a state event for every entity whose value moved since the last push."""
         with self.lock:
@@ -1515,7 +1679,7 @@ class MockServer:
         if not self.index_path:
             return []
         root = os.path.dirname(os.path.abspath(self.index_path))
-        return [os.path.join(d, f) for d, _dirs, files in os.walk(root) for f in files
+        return [os.path.join(d, f) for d, _dirs, files in os.walk(root, followlinks=True) for f in files
                 if os.path.splitext(f)[1] in STATIC_TYPES]
 
     def asset(self, url_path: str) -> str | None:
@@ -1595,8 +1759,7 @@ class MockServer:
                     return 200
                 settings = self.sim.settings
                 if name == S["page_password"]:
-                    settings.page_password, settings.page_password_set = value, True
-                    self.log(f"'{name}' set; the page now asks for it (user {PAGE_USER})")  # never echo it
+                    settings.set_page_password(value)
                 elif name == S["ota_password"]:
                     self.log(f"'{name}' set")
                 elif name == S["api_key"]:
@@ -1645,8 +1808,14 @@ class MockServer:
                 self.sim.install("Home Assistant ou la page")
             else:
                 return 404
+            self.close_ended_streams()  # after a new Page Password, Logout All Devices
         self.publish_changes()
         return 200
+
+    def reboot(self, version: str | None):
+        """/__mock/reboot: the ticker drops every stream within a second, as the device's restart does."""
+        with self.lock:
+            self.sim.reboot(version)
 
     # -- background loops
 
@@ -1657,6 +1826,7 @@ class MockServer:
             with self.lock:
                 self.sim.tick()
                 rebooted, self.sim.rebooted = self.sim.rebooted, False
+                self.close_ended_streams()  # sessions gone idle
             if rebooted:
                 self.broadcast(None)  # the reboot: every page loses its stream and reconnects
                 with self.lock:
@@ -1694,23 +1864,6 @@ class MockServer:
             self.broadcast(sse("reload", "{}"), reload=True)
 
 
-def _digest_ok(header: str | None, method: str, password: str) -> bool:
-    """RFC 2617 digest (MD5, qop auth), user admin: what the device checks. Any nonce goes: it's a mock."""
-    if not header or not header.startswith("Digest "):
-        return False
-    p = {k: q or v for k, q, v in re.findall(r'(\w+)=(?:"([^"]*)"|([^,\s]*))', header[7:])}
-    if p.get("username") != PAGE_USER:
-        return False
-    md5 = lambda text: hashlib.md5(text.encode()).hexdigest()  # noqa: E731, S324 -- digest auth is MD5
-    ha1 = md5(f"{PAGE_USER}:{p.get('realm', REALM)}:{password}")
-    ha2 = md5(f"{method}:{p.get('uri', '')}")
-    if p.get("qop"):
-        expected = md5(f"{ha1}:{p.get('nonce')}:{p.get('nc')}:{p.get('cnonce')}:{p['qop']}:{ha2}")
-    else:
-        expected = md5(f"{ha1}:{p.get('nonce')}:{ha2}")
-    return p.get("response") == expected
-
-
 def make_handler(mock: MockServer):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -1726,13 +1879,13 @@ def make_handler(mock: MockServer):
             self.end_headers()
             self.wfile.write(body)
 
-        def stream(self, clients: list, initial: list[bytes]):
+        def stream(self, clients: list, initial: list[bytes], session: str | None = None):
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
             self.send_header("Connection", "keep-alive")
             self.end_headers()
-            q: queue.Queue = queue.Queue()
+            q = Client(session)
             for event in initial:
                 q.put(event)
             clients.append(q)
@@ -1752,29 +1905,84 @@ def make_handler(mock: MockServer):
                 clients.remove(q)
                 self.close_connection = True
 
-        def authorized(self, path: str) -> bool:
-            """The device's digest login, once a Page Password is set during this run; else a 401 is sent."""
-            password = mock.sim.settings.page_password
-            if password is None or path.startswith("/__mock/"):
+        def session(self) -> str | None:
+            """The pool_session cookie this request carries, if any."""
+            match = re.search(rf"(?:^|;)\s*{SESSION_COOKIE}=([0-9a-f]{{32}})\s*(?:;|$)", self.headers.get("Cookie") or "")
+            return match.group(1) if match else None
+
+        def gate(self, path: str) -> bool:
+            """page_login's gate: once a Page Password is set, a request needs a live session, except for the page
+            itself (its shell and code hold no state, and draw the login screen) and the login endpoints. A refused
+            one gets a 401 with no WWW-Authenticate, so the browser never shows its own dialog."""
+            if self.command == "OPTIONS" or path in LOGIN_PATHS or path.startswith("/__mock/"):
                 return True
-            if _digest_ok(self.headers.get("Authorization"), self.command, password):
+            if self.command == "GET" and (path in PAGE_PATHS or mock.asset(path)):
                 return True
-            nonce, opaque = os.urandom(16).hex(), os.urandom(16).hex()
-            self.send_response(401)
-            self.send_header("WWW-Authenticate", f'Digest realm="{REALM}", qop="auth", nonce="{nonce}", opaque="{opaque}"')
-            self.send_header("Content-Length", "0")
-            self.end_headers()
+            with mock.lock:
+                # The event stream isn't activity: an open tab streams forever.
+                if mock.sim.settings.login.check(self.session(), refresh=path != "/events"):
+                    return True
+            self.send_body(401, b"Login required")
             return False
+
+        def json_body(self, status: int, payload: dict, headers: dict | None = None):
+            body = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            for name, value in (headers or {}).items():
+                self.send_header(name, value)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def no_content(self, cookie: str | None = None):
+            """A 204; with `cookie`, the session cookie to set ("" expires it)."""
+            self.send_response(204)
+            if cookie is not None:
+                self.send_header("Set-Cookie", f"{SESSION_COOKIE}={cookie}; Path=/; HttpOnly; SameSite=Strict"
+                                 + ("" if cookie else "; Max-Age=0"))
+            self.send_header("Content-Length", "0")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+
+        def login_endpoint(self, path: str, form: dict) -> bool:
+            """GET /login/challenge, POST /login, GET /login/session, POST /logout: each a 204 in setup mode."""
+            if LOGIN_PATHS.get(path) != self.command:
+                return False
+            with mock.lock:
+                login = mock.sim.settings.login
+                if not login.gated:
+                    self.no_content()
+                elif path == "/login/challenge":
+                    self.json_body(200, {"nonce": login.challenge()})
+                elif path == "/login":
+                    arg = lambda key: (form.get(key) or [""])[0]  # noqa: E731
+                    status, retry, token = login.login(arg("nonce"), arg("proof"), self.session())
+                    if token:
+                        self.no_content(token)
+                    else:
+                        self.json_body(status, {"retry_after": retry}, {"Retry-After": str(retry)} if status == 429 else None)
+                elif path == "/login/session":
+                    if login.check(self.session()):
+                        self.no_content()
+                    else:
+                        self.send_body(401, b"Login required")
+                else:
+                    login.logout(self.session())
+                    mock.close_ended_streams()
+                    self.no_content("")
+            return True
 
         def do_GET(self):  # noqa: N802 -- http.server API
             url = urlsplit(self.path)
             path = unquote(url.path)
-            if not self.authorized(path):
+            if not self.gate(path) or self.login_endpoint(path, {}):
                 return None
             if path in ("/", "/index.html"):
                 return self.send_body(200, mock.index_html().encode(), "text/html; charset=utf-8")
             if path == "/events":
-                return self.stream(mock.clients, mock.initial_events())
+                return self.stream(mock.clients, mock.initial_events(), self.session())
             if path == "/__mock/reload":
                 return self.stream(mock.reload_clients, [])
             for route, attr, ctype in (("/0.css", "css_include", "text/css"), ("/0.js", "js_include", "text/javascript")):
@@ -1800,9 +2008,13 @@ def make_handler(mock: MockServer):
             url = urlsplit(self.path)
             length = int(self.headers.get("Content-Length") or 0)
             body = self.rfile.read(length).decode() if length else ""
-            if not self.authorized(unquote(url.path)):
-                return
+            path = unquote(url.path)
             params = {**parse_qs(body), **parse_qs(url.query)}
+            if not self.gate(path) or self.login_endpoint(path, parse_qs(body)):
+                return
+            if path == "/__mock/reboot":
+                mock.reboot((params.get("version") or [None])[0])
+                return self.no_content()
             parts = [unquote(p) for p in url.path.strip("/").split("/")]
             status = mock.act(*parts, params) if len(parts) == 3 else 404
             self.send_body(status)
@@ -1853,6 +2065,8 @@ def main() -> int:
                         help="start with a fill running past Fill Alarm After: its alarm is on")
     parser.add_argument("--fresh", action="store_true",
                         help="start as a controller not set up yet (on its hotspot, nothing set)")
+    parser.add_argument("--idle", type=float, default=6 * 3600, metavar="SECONDS",
+                        help="end a login session after this long without a request (the device: 6 h)")
     args = parser.parse_args()
 
     if args.check:
@@ -1862,7 +2076,7 @@ def main() -> int:
     # otherwise wait out its timeout and SIGKILL.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     mock = MockServer(args.config, args.index, args.extra, args.hotspot, args.fresh, not args.no_release,
-                      args.fill_off, args.long_fill)
+                      args.fill_off, args.long_fill, args.idle)
     threading.Thread(target=mock.ticker, daemon=True).start()
     threading.Thread(target=mock.watcher, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(mock))

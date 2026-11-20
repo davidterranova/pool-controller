@@ -1,0 +1,1 @@
+../home-assistant/i18n.js

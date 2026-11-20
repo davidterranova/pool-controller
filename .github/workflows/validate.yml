@@ -40,6 +40,11 @@ jobs:
       - name: make webui-test
         run: make webui-test
 
+      # The interface's texts (docs/plans/i18n.md): every dictionary complete in English, French and
+      # Spanish, consistent with the others (placeholders, plurals, markup) and with the code using it.
+      - name: make i18n-check
+        run: make i18n-check
+
       # The Home Assistant dashboard components (home-assistant/dashboard/) name the firmware's entities
       # the way a fresh install does: fail when one no longer exists, or when the pool card there misses
       # an entity the card has gained, so the dashboard can't silently fall behind the firmware.
@@ -53,7 +58,9 @@ jobs:
 
   # The pool card in every situation of tools/card-preview/ (scenarios.js), on each of its tabs, at a phone's
   # and a screen's width: fails on a page or console error, or on « undefined » / « NaN » in what it shows.
-  # Its own job, in parallel: Chromium comes in Playwright's image (make card-preview-check).
+  # Its own job, in parallel: Chromium comes in Playwright's image (make card-preview-check). Against the
+  # card as the release ships it (make card: built with its texts, minified); make validate bundles the
+  # source into the device's page, so both paths are covered.
   card-preview:
     runs-on: ubuntu-latest
     steps:
@@ -61,4 +68,4 @@ jobs:
         uses: actions/checkout@v4
 
       - name: make card-preview-check
-        run: make card-preview-check
+        run: make card-preview-check CARD_BUNDLE=1

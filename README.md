@@ -24,17 +24,19 @@ tooling, and building the firmware yourself.
 | `device-settings.yaml`, `device_settings.h` | Package included by `pool-controller.yaml`: the controller's settings, set at run time and kept on the device (page and OTA passwords, API key, position, timezone, probe roles, Setup State, Factory Reset). Nothing personal is compiled in. |
 | `fill-meter.yaml`, `fill_meter.h` | Package included by `pool-controller.yaml`: the fill-line water meter as an option (Fill Meter on/off, its pulse test, the long-fill alarm and its acknowledgement). `fill_meter.h` is pure logic, tested on the host (`make firmware-test`). |
 | `Makefile` | Validate / build / flash / OTA / status tooling. |
-| `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS). `dashboard/`: dashboard components for these entities and the scripts the card calls, with a guide ([home-assistant/dashboard/README.md](home-assistant/dashboard/README.md)). `blueprints/`: phone reminders while a fill runs too long ([Fill alarm notifications](home-assistant/dashboard/README.md#fill-alarm-notifications)). |
+| `home-assistant/` | `piscine-card.js`, the pool card of the Home Assistant dashboard, also used by the page in `webui/` (see below). Installed in HA through the Marketplace (HACS), as `make card` builds it into `dist/` (gitignored): minified, with its texts. `i18n.js` and `i18n/`: the interface's languages, English, French and Spanish (see [Languages](#languages)). `dashboard/`: dashboard components for these entities and the scripts the card calls, with a guide ([home-assistant/dashboard/README.md](home-assistant/dashboard/README.md)). `blueprints/`: phone reminders while a fill runs too long ([Fill alarm notifications](home-assistant/dashboard/README.md#fill-alarm-notifications)). |
 | `hacs.json` | Tells the Marketplace (HACS) which file this repo publishes: the card above, from each GitHub release. |
 | `tools/webui-mock/` | Local mock of the device's web UI, for working on the page without flashing (see below). |
+| `tools/i18n/` | The languages' tooling: `make i18n-check`, and the Markdown export and import for machine translation (see [Languages](#languages)). `surfaces.mjs` lists what is translated, `glossary.json` the terms every language uses. |
 | `tools/card-preview/` | The pool card against a stand-in for Home Assistant, in named situations, with screenshots and a check (see [Previewing the card](#previewing-the-card)). |
 | `tools/tz-posix.py` | Regenerates the card's IANA → POSIX time-zone table from tzdata (« Utiliser la position et le fuseau de Home Assistant »). |
 | `tools/release/` | Release helpers for CI: the guard that keeps secrets out of a published firmware, and the firmware's `manifest.json` (see [Releases](#releases)), with its tests (`python3 -I tools/release/test_manifest.py`). |
 | `tools/migrate/` | `make migrate`: moves a controller built with `secrets.yaml` to this firmware in one OTA (see [Coming from a secrets.yaml build](#coming-from-a-secretsyaml-build)). |
 | `docs/install/` | The install page, served at the root of <https://pool-controller.kitesize.fr/> (see [The install page](#the-install-page-docsinstall)). |
-| `webui/` | The device's own web page, built around the same `piscine-card` (see below). `make webui` bundles it into `webui/dist/` (gitignored), which the firmware embeds. |
+| `webui/` | The device's own web page, built around the same `piscine-card` (see below). `make webui` bundles it into `webui/dist/` (gitignored), which the firmware embeds. `i18n-page/`: its own texts; `piscine-card.js`, `i18n.js` and `i18n/` are symlinks to the card's. |
 | `docs/plans/` | Plans for work spanning several PRs, with their progress: [secret-free firmware and OTA updates](docs/plans/secret-free-firmware.md), [optional fill meter](docs/plans/optional-fill-meter.md), [internationalisation (English, French, Spanish)](docs/plans/i18n.md). |
-| `.gitignore` | Excludes `.ota-password` (see `make ota`), `secrets.yaml` (older builds, `make migrate`), `.migrate/`, `.esphome/` (build cache), `.vscode/`. |
+| `.claude/rules/` | Rules for Claude Code in this repo: every user-facing text ships in all three languages (`translations.md`). |
+| `.gitignore` | Excludes `.ota-password` (see `make ota`), `secrets.yaml` (older builds, `make migrate`), `.migrate/`, `.esphome/` (build cache), `.vscode/`, the built card (`home-assistant/dist/`) and `.i18n/` (the translation files). |
 | `LICENSE` | MIT. |
 
 ## Toolchain
@@ -132,9 +134,12 @@ the [plan](docs/plans/secret-free-firmware.md).
 | `make mock-ui-check` | Print the web UI layout (sections and order) and fail on any entity type the mock can't render. Runs in CI. |
 | `make firmware-test` | Host tests of the firmware's pure C++ helpers (`tools/tests/`). Runs in CI. |
 | `make webui-test` | Unit tests of the device's page and the install page's pure modules, with Node's test runner. Runs in CI. |
-| `make card-preview` | Serve the pool card's preview at http://localhost:8124/tools/card-preview/ (see [Previewing the card](#previewing-the-card)). `make card-shots` screenshots every situation into `tools/card-preview/shots/` (`SCENARIO=a,b` for some); `make card-preview-check` loads them all and fails on an error or a « NaN »; it runs in CI. |
+| `make card-preview` | Serve the pool card's preview at http://localhost:8124/tools/card-preview/ (see [Previewing the card](#previewing-the-card)). `make card-shots` screenshots every situation into `tools/card-preview/shots/` (`SCENARIO=a,b` for some); `make card-preview-check` loads them all and fails on an error or a « NaN »; it runs in CI, on the built card (`CARD_BUNDLE=1`). |
+| `make card` | Build the card as a release ships it: `home-assistant/piscine-card.js` with its texts, minified, into `home-assistant/dist/piscine-card.js`. |
+| `make i18n-check` | Fail when a language lacks a text, or a translation changed its placeholders, plural forms or markup, copies the English, or a key the code uses is missing (see [Languages](#languages)). Runs in CI. |
+| `make i18n-export` / `make i18n-import` | Every text in English as one Markdown file to machine-translate, and the translation back: `make i18n-import TO=es FILE=<file>` (see [Languages](#languages)). |
 | `make ha-dashboard-check` | Fail when the Home Assistant dashboard components in `home-assistant/dashboard/` name an entity the firmware doesn't have, or leave one out of the pool card. Runs in CI. |
-| `make clean` | Remove the local build cache (`.esphome/`). |
+| `make clean` | Remove the local build cache (`.esphome/`) and what the targets above built. |
 
 `PORT` (serial) and `HOST` (network) both auto-detect and can be overridden
 on the command line, e.g. `make flash PORT=/dev/cu.usbserial-XXXX` or
@@ -164,8 +169,12 @@ you set `local: true` back).
   prototype a custom page before deciding to put it on the device. The
   scripts and styles next to that HTML are served too, and saving one
   reloads the page like the YAML does.
-- **No login.** Unlike the device, the mock has no auth, to keep iteration
-  quick.
+- **The same login as the device.** The simulated controller starts with no
+  Page Password (setup mode, no login). Once one is set during the run, the
+  page gets the login screen, with the device's sessions, lockout and
+  logout. `MOCK_IDLE=<seconds>` shortens the 6 h idle limit to try it.
+  `curl -X POST 'localhost:8080/__mock/reboot?version=v1.6.0'` fakes a
+  reboot onto another firmware; the page then reloads itself.
 - **The fill meter** (fill-meter.yaml) is simulated too: the valve runs 3 min
   every quarter hour, « Tester » opens it for 20 s so the pulse test passes,
   and turning Fill Meter off empties Remplissage. `MOCK_FILL=off make
@@ -305,8 +314,9 @@ Marketplace installs ([hacs.json](hacs.json)), and its tag is the card's
 2. Look at it in the preview (`make card-preview`, below) and run `make
    card-preview-check`; check the panel on the device's page against the mock
    (`make mock-webui`) too, since the page runs the same file.
-3. Merge. The workflow publishes release `v<VERSION>` with the card, then
-   runs the Marketplace's (HACS's) own checks against the repo.
+3. Merge. The workflow builds the card with its texts (`make card`),
+   publishes release `v<VERSION>` with it, then runs the Marketplace's
+   (HACS's) own checks against the repo.
 4. Home Assistant offers the update (Settings → Updates) once the
    Marketplace has seen the release. Install it: that also changes the
    resource URL, so browsers fetch the new file on their next reload.
@@ -339,7 +349,12 @@ statistics are generated, so every chart draws.
 - **`make card-preview-check`** loads every situation on each of the panel's
   tabs at both widths, and fails on a page or console error, or on
   « undefined », « NaN » or « [object Object] » in what the card shows. It
-  runs in CI (validate.yml, its own job).
+  runs in CI (validate.yml, its own job), against the card as the release
+  ships it: `CARD_BUNDLE=1` builds it (`make card`) and loads that instead of
+  the source. `?bundle` in the preview's address does the same by hand.
+
+The preview loads the card's source as a module, so its texts (`i18n/*.json`)
+load as they are, unbundled.
 
 Both run Chromium in Playwright's image (about 3.5 GB, pulled once);
 `playwright-core` is installed once into `.card-preview/`. The stand-in is
@@ -452,7 +467,7 @@ same way:
 - **Fallback hotspot.** After 1 minute without Wi-Fi (no network yet, router
   down, password changed), the device opens an open network named
   `pool-controller`; its page answers at http://192.168.4.1, still behind
-  the web login. Not ESPHome's `captive_portal`: that answers every page
+  the page's login screen. Not ESPHome's `captive_portal`: that answers every page
   request itself, without login, so the page would be unreachable.
 - **Join a network from the page** (Contrôleur tab, Wi-Fi): pick one of the networks
   nearby or type it, give the password, « Se connecter ». The device tries
@@ -515,6 +530,53 @@ before: a controller without a meter on its fill line turns it off once
 Configuration in Home Assistant). See
 [POOL-CONTROLLER.md, Fill meter](POOL-CONTROLLER.md#fill-meter).
 
+## Languages
+
+The interface speaks English, French and Spanish: the card, the device's
+page and its setup wizard, the install page, and the Home Assistant
+dashboard, scripts and blueprints. The plan, and how far it has got:
+[docs/plans/i18n.md](docs/plans/i18n.md).
+
+- **Everything is local.** The texts are JSON dictionaries built into what
+  runs: the card's (`home-assistant/i18n/`) into the card HACS installs and
+  into the device's page, the page's own (`webui/i18n-page/`) into the page.
+  Nothing is fetched to translate, so the page works in every language on
+  the controller's hotspot with no internet.
+- **The firmware speaks in codes** (`up_to_date`, `pending:fill`), which the
+  card and the page translate. Entity names stay English, and no entity id
+  changes.
+- **[home-assistant/i18n.js](home-assistant/i18n.js)** is the helper both use:
+  `t(key, vars)` with `{placeholders}` and plurals (`{"one": …, "other": …}`,
+  through `Intl.PluralRules`), English when a text is missing, and formatting
+  through `Intl`.
+- **`make i18n-check`** (in CI) fails when a language lacks a text, a
+  translation changed its placeholders, plural forms or markup, copies the
+  English, or the code uses a key no dictionary has. Until a surface is fully
+  translated it only reports its unused keys and the French left in its
+  sources. `strict: true` in
+  [tools/i18n/surfaces.mjs](tools/i18n/surfaces.mjs) makes them errors.
+- **Terms** every language uses are in
+  [tools/i18n/glossary.json](tools/i18n/glossary.json). A text that is
+  exactly one of its terms (a speed, « Override ») must be the glossary's
+  word: `make i18n-check` and `make i18n-import` hold it to it.
+
+**Translating with a tool (any that translates Markdown):**
+
+1. `make i18n-export` writes every text in English to
+   `.i18n/translations.en.md`: plain Markdown, one paragraph per text, with
+   its id alone in an HTML comment above it:
+
+   ```markdown
+   <!-- card:card.temp.span_days#one -->
+   {count} day
+   ```
+2. Translate that file, keeping the comments, the `{placeholders}` and the
+   tags such as `<b>`.
+3. `make i18n-import TO=es FILE=<the translated file>` writes the texts back
+   into every surface's `es.json`, and lists what changed against the
+   previous text. It refuses a text whose placeholders or tags changed, or a
+   glossary term translated another way, and keeps the previous one. `DRY_RUN=1` only reports. Then `make i18n-check`.
+
 ## Releases
 
 One version for the whole project: the card's `const VERSION = "x.y.z"`
@@ -526,7 +588,8 @@ publishes release `v<VERSION>`. Nobody tags or releases by hand.
 
 A release carries:
 
-- `piscine-card.js`, for the Marketplace (HACS), as above;
+- `piscine-card.js`, for the Marketplace (HACS), as above: the card built
+  with its texts and minified (`make card`), not the source file;
 - the controller's firmware, built by
   [.github/workflows/firmware.yml](.github/workflows/firmware.yml) with a
   pinned ESPHome (the Makefile's `ESPHOME_VERSION`) and `-s firmware_version v<VERSION>`:

@@ -1,0 +1,38 @@
+{
+  "common": {
+    "mode": {
+      "auto": "Auto"
+    },
+    "override": "Forcer",
+    "speed": {
+      "Off": "Arrêt",
+      "Low": "Basse",
+      "Medium": "Moyenne",
+      "High": "Haute"
+    }
+  },
+  "card": {
+    "picker": {
+      "name": "Pompe de piscine",
+      "description": "Panneau de commande pour la pompe de piscine (Contrôleur de piscine)"
+    },
+    "override": {
+      "stuck": "Vitesse forcée sur {speed} depuis {duration} : la pompe ne suit plus son plan de filtration."
+    },
+    "hint": {
+      "following": "Le contrôleur suit son plan : <b>{speed}</b> maintenant, {next}."
+    },
+    "temp": {
+      "span_days": {
+        "one": "{count} jour",
+        "other": "{count} jours"
+      }
+    },
+    "fill": {
+      "alarm_since": "Remplissage en cours depuis {time} ({duration}) : vérifiez le robinet de remplissage."
+    },
+    "settings": {
+      "filtration_section": "Durée de filtration · Effectif en cliquant « Appliquer »"
+    }
+  }
+}

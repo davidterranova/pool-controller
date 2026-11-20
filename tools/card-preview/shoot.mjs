@@ -2,6 +2,7 @@
 //
 //   node tools/card-preview/shoot.mjs [--only <scenario>[,<scenario>…]]   screenshots into tools/card-preview/shots/
 //   node tools/card-preview/shoot.mjs --check                            every scenario and tab, no screenshot
+//   … --bundle                                                            the release's minified card (make card), not its source
 //
 // Screenshots: each scenario's tile and panel (on its own tab) at 390 px and 760 px, light and dark, reduced motion,
 // at a fixed time (FIXED, Europe/Paris), so two runs draw the same. The check loads every scenario on each of the
@@ -20,10 +21,11 @@ const FIXED = new Date("2026-07-14T16:20:00+02:00"); // a summer afternoon, in t
 const WIDTHS = [390, 760];
 const TABS = ["pump", "settings", "controller"];
 const OUT = path.join(ROOT, "tools", "card-preview", "shots");
-const MIME = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".yaml": "text/plain", ".css": "text/css" };
+const MIME = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".yaml": "text/plain", ".css": "text/css", ".json": "application/json" };
 
 const args = process.argv.slice(2);
 const check = args.includes("--check");
+const bundle = args.includes("--bundle");
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1].split(",") : null;
 
 // The repo, served read-only: the page fetches the card and the dashboard's YAML.
@@ -51,7 +53,7 @@ async function open(theme, width) {
   return { ctx, page, errors };
 }
 async function load(page, q) {
-  await page.goto(`${base}?shot&${new URLSearchParams(q)}`);
+  await page.goto(`${base}?shot&${new URLSearchParams(q)}${bundle ? "&bundle" : ""}`);
   await page.waitForFunction(() => window.preview && window.preview.ready);
   await page.evaluate(() => window.preview.ready);
 }

@@ -15,6 +15,7 @@
  *   controller_light: false                            # optional: no light for the controller (tile, header)
  *   controller_health: { warn: 3, alert: 15, beat: 4 }  # optional: its minutes before amber, before red; seconds between beats
  *   more_path: /config/…  # optional: where the light leads instead of the controller's device page
+ *   language: es          # optional: en, fr or es, instead of the Home Assistant user's language
  *   # temperatures: deprecated since 1.8.0, accepted and ignored (the probes are in « Réglages » › Sondes)
  *
  * The card never writes the controller's Manual Override select itself:
@@ -112,7 +113,15 @@
  * « Filtration » on the left, « Impulsions et hors gel » and 7 derniers jours on the right; « Réglages
  * contrôleur » is Position beside Firmware.
  */
-const VERSION = "1.10.0";
+// The texts, in every language, bundled into the card (i18n.js; docs/plans/i18n.md): nothing is fetched. The
+// release builds this file with them (make card), and the device's page bundles it the same way.
+import { LANGS, makeT, makeFmt, localeFromHass, resolveLang } from "./i18n.js";
+import en from "./i18n/en.json" with { type: "json" };
+import fr from "./i18n/fr.json" with { type: "json" };
+import es from "./i18n/es.json" with { type: "json" };
+const DICTS = { en, fr, es };
+
+const VERSION = "1.11.0";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",
@@ -877,10 +886,17 @@ class PiscineCard extends HTMLElement {
   setConfig(config) {
     const variant = config.variant || "tile";
     if (!["tile", "panel", "settings", "water"].includes(variant)) throw new Error("variant must be tile, panel, settings or water");
+    let language = config.language ?? null;
+    if (language !== null && !LANGS.includes(language)) {
+      console.warn(`piscine-card: language "${language}" ignored (${LANGS.join(", ")}); the Home Assistant user's language applies`);
+      language = null;
+    }
     this._config = { variant, layout: config.layout || "horizontal", popup_hash: config.popup_hash || "#piscine", more_path: config.more_path || null,
       recorder: config.recorder !== false, title: config.title ?? "Réglages", icons: config.icons || null,
       settings_tab: config.settings_tab !== false, // `temperatures` (before 1.8.0): accepted, ignored
-      controller_light: config.controller_light !== false, health: { ...HEALTH, ...(config.controller_health || {}) } };
+      controller_light: config.controller_light !== false, health: { ...HEALTH, ...(config.controller_health || {}) }, language };
+    this._localeKey = null;
+    this._setLocale(this._hass);
     this._e = { ...DEFAULT_ENTITIES, ...(config.entities || {}) };
     this.setAttribute("variant", variant);
     this._built = false;
@@ -914,6 +930,7 @@ class PiscineCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    this._setLocale(hass);
     if (!this._built) this._build();
     this.toggleAttribute("dark", !!(hass.themes && hass.themes.darkMode));
     this._update();
@@ -923,6 +940,20 @@ class PiscineCard extends HTMLElement {
     if (this._ro && this._built) for (const el of [this._$("tChart"), this._$("wChart")]) if (el) this._ro.observe(el);
   }
   disconnectedCallback() { clearInterval(this._timer); clearTimeout(this._toastTimer); this._ro?.disconnect(); }
+
+  /**
+   * The card's language and formats, from the HA user's profile (or `language:`): this._t(key, vars) and
+   * this._fmt. True when they changed.
+   */
+  _setLocale(hass) {
+    const L = localeFromHass(hass, this._config.language);
+    const key = `${L.lang}|${L.locale}|${L.numberLocale}|${L.hour12}`;
+    if (key === this._localeKey) return false;
+    this._localeKey = key;
+    this._t = makeT(DICTS, L.lang);
+    this._fmt = makeFmt(L.locale, L);
+    return true;
+  }
 
   getCardSize() {
     if (this._config.variant === "water" && this._hass && this._fillOff()) return 0;
@@ -2462,6 +2493,7 @@ let TZ_BY_NAME = null;
 if (!customElements.get("piscine-card")) {
   customElements.define("piscine-card", PiscineCard);
   window.customCards = window.customCards || [];
-  window.customCards.push({ type: "piscine-card", name: "Pompe piscine", description: "Tile and panel for the pool pump (Pool Controller)" });
+  const t = makeT(DICTS, resolveLang([document.documentElement.lang, ...(navigator.languages || [])]));
+  window.customCards.push({ type: "piscine-card", name: t("card.picker.name"), description: t("card.picker.description") });
   console.info(`%c piscine-card %c ${VERSION} `, "background:#0e86c4;color:#fff", "");
 }

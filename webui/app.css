@@ -318,6 +318,11 @@ body.setup > .top, body.setup > .tabs, body.setup > main { display: none; }
 .wz-nav .sp { flex: 1; }
 .wz-nav .later { flex: 1 1 100%; justify-self: center; text-align: center; color: var(--secondary-text-color); font-weight: 400; }
 
+/* the login screen (login.js): in place of the page and the wizard while the controller asks for its password */
+body.locked > .top, body.locked > .tabs, body.locked > main, body.locked > .wizard { display: none; }
+.login { max-width: 440px; margin: 0 auto; padding: 28px 16px 40px; display: flex; flex-direction: column; gap: 14px; }
+.hint.badl { color: var(--danger); }
+
 /* ---------- logs */
 .logbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 16px 8px; }
 .logbar .grow { flex: 1; }

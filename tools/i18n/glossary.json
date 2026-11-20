@@ -1,0 +1,18 @@
+{
+  "about": "The interface's terms in each language (docs/plans/i18n.md, I2). Every dictionary follows it; a new term goes here first.",
+  "terms": [
+    { "en": "Auto", "fr": "Auto", "es": "Auto", "note": "the pump follows the controller's plan" },
+    { "en": "Off", "fr": "Arrêt", "es": "Apagada", "note": "the pump's speed: stopped" },
+    { "en": "Low", "fr": "Basse", "es": "Baja", "note": "the pump's speed" },
+    { "en": "Medium", "fr": "Moyenne", "es": "Media", "note": "the pump's speed" },
+    { "en": "High", "fr": "Haute", "es": "Alta", "note": "the pump's speed" },
+    { "en": "Override", "fr": "Forcer", "es": "Forzado", "note": "a speed forced by hand, instead of the plan" },
+    { "en": "pump", "fr": "pompe", "es": "bomba" },
+    { "en": "filtration", "fr": "filtration", "es": "filtración" },
+    { "en": "freeze protection", "fr": "hors-gel", "es": "antiheladas" },
+    { "en": "fill (water)", "fr": "remplissage", "es": "llenado", "note": "topping the pool up from the fill line" },
+    { "en": "probe", "fr": "sonde", "es": "sonda", "note": "a temperature probe" },
+    { "en": "controller", "fr": "contrôleur", "es": "controlador", "note": "the ESP32 running the pump" },
+    { "en": "equipment pad", "fr": "local technique", "es": "cuarto técnico", "note": "where the pump and filter are" }
+  ]
+}

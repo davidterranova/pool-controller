@@ -1,0 +1,38 @@
+{
+  "common": {
+    "mode": {
+      "auto": "Auto"
+    },
+    "override": "Forzado",
+    "speed": {
+      "Off": "Apagada",
+      "Low": "Baja",
+      "Medium": "Media",
+      "High": "Alta"
+    }
+  },
+  "card": {
+    "picker": {
+      "name": "Bomba de piscina",
+      "description": "Mosaico y panel de la bomba de la piscina (controlador de piscina)"
+    },
+    "override": {
+      "stuck": "Velocidad forzada a {speed} desde hace {duration}: la bomba ya no sigue su plan de filtración."
+    },
+    "hint": {
+      "following": "El controlador sigue su plan: <b>{speed}</b> ahora, {next}."
+    },
+    "temp": {
+      "span_days": {
+        "one": "{count} día",
+        "other": "{count} días"
+      }
+    },
+    "fill": {
+      "alarm_since": "Llenado en curso desde las {time} ({duration}): compruebe el grifo de llenado."
+    },
+    "settings": {
+      "filtration_section": "Tiempo de filtración · se aplica con «Aplicar»"
+    }
+  }
+}

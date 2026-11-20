@@ -59,7 +59,6 @@
     }
   });
 </script>
-<script src="../../home-assistant/piscine-card.js"></script>
 </head>
 <body>
 <div class="app" id="app">
@@ -81,6 +80,8 @@
 import { FakeHass } from "./fake-hass.js";
 import { SCENARIOS, statesOf } from "./scenarios.js";
 import { ICONS } from "../../webui/icons.js";
+// The card: its source (a module: it imports its texts), or with ?bundle the release's minified file (make card).
+await import(new URLSearchParams(location.search).has("bundle") ? "../../home-assistant/dist/piscine-card.js" : "../../home-assistant/piscine-card.js");
 
 // Home Assistant's <ha-icon icon="mdi:…">, from the paths the controller's page ships (a dot for one it lacks).
 customElements.define("ha-icon", class extends HTMLElement {

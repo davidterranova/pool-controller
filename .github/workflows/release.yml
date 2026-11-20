@@ -5,7 +5,9 @@ name: Release
 #
 # home-assistant/piscine-card.js reaches Home Assistant through HACS, which
 # installs this repo's GitHub releases (see hacs.json): each release carries
-# the card as its piscine-card.js asset, and its tag is VERSION.
+# the card as its piscine-card.js asset, and its tag is VERSION. That asset is
+# the card built with its texts (make card: home-assistant/dist/, minified),
+# not the source file, which imports them.
 #   - pull request: a change to the card or to the firmware's sources must
 #     come with a new VERSION;
 #   - push to main: a VERSION with no release yet gets one, which HACS then
@@ -22,6 +24,8 @@ on:
     branches: [main]
     paths:
       - home-assistant/piscine-card.js
+      - home-assistant/i18n.js
+      - home-assistant/i18n/**
       - hacs.json
       - LICENSE
       - "*.yaml"
@@ -45,8 +49,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Card parses
-        run: node --check home-assistant/piscine-card.js
+      # The card as the release ships it: built with its texts, then parsed.
+      - name: Card builds and parses
+        run: make card && node --check home-assistant/dist/piscine-card.js
 
       # What ships in a release: the card, and the firmware built from
       # pool-controller.yaml, the packages beside it (any *.yaml at the root),
@@ -55,7 +60,7 @@ jobs:
       - name: A changed card or firmware has a new VERSION
         run: |
           git fetch --depth=1 origin "${{ github.base_ref }}"
-          changed=$(git diff --name-only FETCH_HEAD -- home-assistant/piscine-card.js webui components ':(glob)*.yaml' ':(glob)*.h')
+          changed=$(git diff --name-only FETCH_HEAD -- home-assistant/piscine-card.js home-assistant/i18n.js home-assistant/i18n webui components ':(glob)*.yaml' ':(glob)*.h')
           if [ -z "$changed" ]; then
             echo "Neither the card nor the firmware changed."
             exit 0
@@ -147,7 +152,8 @@ jobs:
 
       - name: Release VERSION
         run: |
-          card=home-assistant/piscine-card.js
+          make card
+          card=home-assistant/dist/piscine-card.js
           node --check "$card"
           previous=$(git tag --list 'v*' --sort=-v:refname | head -n1)
           assets=("$card")
