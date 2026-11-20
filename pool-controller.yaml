@@ -487,6 +487,8 @@ text_sensor:
   # on days it lands on an identical plan (see the comment in Part 1 of
   # evaluate_speed). Includes the date, not just time-of-day, since this can
   # be stale from a previous day if the sunrise/sunset lookup keeps failing.
+  # "--" until a first recompute, like every other "not yet" (it said
+  # "Never" before 1.11.0).
   - platform: template
     name: "Last Recomputed At"
     web_server: {sorting_group_id: grp_plan, sorting_weight: 110}
@@ -494,7 +496,7 @@ text_sensor:
     icon: mdi:history
     update_interval: 30s
     lambda: |-
-      if (id(sched_last_recompute) == 0) return std::string("Never");
+      if (id(sched_last_recompute) == 0) return std::string("--");
       return ESPTime::from_epoch_local(id(sched_last_recompute)).strftime("%Y-%m-%d %H:%M:%S");
   # The last 7 completed days, newest first: how long the pump ran, and the
   # pool's min/max temperature (see Pool Water Min/Max Today), e.g.
@@ -1281,7 +1283,7 @@ binary_sensor:
   # false-positive during normal startup. A persistently failing temperature
   # read or sun lookup would otherwise leave the pump stuck on the Off/
   # hot-night-keep-alive tiers indefinitely with no alert -- only a stale
-  # "Last Recomputed At: Never" as a silent hint. device_class: problem so
+  # "Last Recomputed At: --" as a silent hint. device_class: problem so
   # it renders as an alert on typical dashboards.
   # Schedule Waiting For (device-settings.yaml) says why. On at once, without
   # the 5 minutes, while there's no position or timezone to compute with.

@@ -1380,7 +1380,7 @@ class PoolSim:
             N["next_speed"]: nxt_speed if nxt else "--",
             N["next_boost_start"]: _hhmm(nbs),
             N["next_boost_end"]: _hhmm(nbe),
-            N["last_recompute"]: _stamp(self.last_recompute) if self.last_recompute else "Never",
+            N["last_recompute"]: _stamp(self.last_recompute) if self.last_recompute else "--",
             N["not_computed"]: b1s == 0 and b2s == 0 and (now - self.started > 300
                                                            or self.waiting_for() in ("position", "timezone")),
             N["pending"]: any(abs(self.num(k) - self.active[k]) > 0.01 for k in self.active),
