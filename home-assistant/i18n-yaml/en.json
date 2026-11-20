@@ -1,0 +1,107 @@
+{
+  "dashboard": {
+    "title": "Pool",
+    "views": {
+      "pool": "Pool",
+      "settings": "Settings"
+    },
+    "pump": {
+      "heading": "Pump"
+    },
+    "probe": {
+      "pad": "Equipment pad",
+      "outdoor": "Outdoor"
+    },
+    "temperatures": {
+      "heading": "Temperatures",
+      "day": {
+        "title": "Probes, 24 h",
+        "return": "Filter return (the pool while the pump runs)"
+      },
+      "mean": {
+        "title": "Probes, daily mean (90 days)",
+        "return": "Filter return"
+      }
+    },
+    "plan_vs_actual": {
+      "heading": "Plan against reality",
+      "speed": {
+        "title": "Pump speed, 24 h",
+        "plan": "Planned",
+        "pump": "Pump",
+        "override": "Override"
+      },
+      "filtration": {
+        "title": "Filtration, 7 days",
+        "actual": "Actual",
+        "planned": "Planned"
+      }
+    },
+    "fill": {
+      "heading": "Fill water",
+      "flow": "Flow rate",
+      "today": "Today",
+      "per_day": {
+        "title": "Fill water per day (30 days)",
+        "volume": "Volume"
+      }
+    },
+    "alerts": {
+      "fill_too_long": {
+        "content": "## ⚠️ Fill running unusually long\n{% set on = states.binary_sensor.pool_controller_fill_running_too_long.last_changed %} The fill has been running for more than **{{ states('number.pool_controller_fill_alarm_after') | int(0) }} min** (alarm at {{ as_local(on).strftime('%H:%M') }}). Check the water supply, the float valve, or for a leak. {% if is_state('binary_sensor.pool_controller_fill_alarm_acknowledged', 'on') %} Alarm **acknowledged**: no more reminders until this fill ends. {% else %} The reminders go on until someone acknowledges it. {% endif %}",
+        "acknowledge": "Acknowledge"
+      },
+      "override_stuck": {
+        "content": "## ⚠️ Filtration paused\n**Manual Override** has been on **{{ states('select.pool_controller_manual_override') }}** for more than 30 min, with no time limit: the pump no longer follows its plan. Set it back to **Auto**, or give the override a duration (the controller then goes back to Auto by itself)."
+      },
+      "not_computed": {
+        "content": "## ⚠️ Today's plan not computed\nThe controller couldn't read the temperature or the time of sunrise: the pump may stay stopped. Check the probes, then **Recompute the plan**."
+      }
+    },
+    "today": {
+      "title": "Today's plan",
+      "planned": "Planned filtration",
+      "actual": "Actual filtration",
+      "block1_start": "Block 1, start",
+      "block1_end": "Block 1, end",
+      "block2_start": "Block 2, start",
+      "block2_end": "Block 2, end",
+      "next_change": "Next speed change",
+      "next_speed": "Next speed",
+      "recomputed_at": "Plan computed at",
+      "recompute": "Recompute the plan"
+    },
+    "controller": {
+      "title": "Controller",
+      "link": "Link to Home Assistant",
+      "pump_speed": "Pump speed",
+      "plan_speed": "Planned speed",
+      "return_probe": "Filter return probe",
+      "read_probes": "Read the probes again",
+      "wifi_signal": "Wi-Fi signal",
+      "wifi_disconnects": "Wi-Fi disconnections"
+    }
+  },
+  "scripts": {
+    "force_speed": {
+      "alias": "Pool — force a speed",
+      "description": "Forces the pool pump to one speed through the controller's Manual Override select. The controller ends the override itself after Manual Override Timeout minutes (0 = never); pass `duree` to set that timeout first.",
+      "speed": {
+        "name": "Speed",
+        "description": "The speed to force. In YAML, its value is Off, Low, Medium or High, whatever the language.",
+        "off": "Off",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High"
+      },
+      "duration": {
+        "name": "Duration (min)",
+        "description": "Minutes before going back to Auto, 0 = never. Empty: the duration already set on the controller."
+      }
+    },
+    "back_to_auto": {
+      "alias": "Pool — back to Auto",
+      "description": "Hands the pump back to the controller's autonomous plan (Manual Override → Auto)."
+    }
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "dashboard": {
+    "title": "Piscine",
+    "views": {
+      "pool": "Piscine",
+      "settings": "Réglages"
+    },
+    "pump": {
+      "heading": "Pompe"
+    },
+    "probe": {
+      "pad": "Local technique",
+      "outdoor": "Extérieur"
+    },
+    "temperatures": {
+      "heading": "Températures",
+      "day": {
+        "title": "Sondes, 24 h",
+        "return": "Retour filtre (bassin si pompe en marche)"
+      },
+      "mean": {
+        "title": "Sondes, moyenne du jour (90 jours)",
+        "return": "Retour filtre"
+      }
+    },
+    "plan_vs_actual": {
+      "heading": "Plan et réalité",
+      "speed": {
+        "title": "Vitesse de la pompe, 24 h",
+        "plan": "Plan",
+        "pump": "Pompe",
+        "override": "Forcer"
+      },
+      "filtration": {
+        "title": "Filtration, 7 jours",
+        "actual": "Réalisé",
+        "planned": "Planifié"
+      }
+    },
+    "fill": {
+      "heading": "Eau de remplissage",
+      "flow": "Débit",
+      "today": "Aujourd'hui",
+      "per_day": {
+        "title": "Remplissage par jour (30 jours)",
+        "volume": "Volume"
+      }
+    },
+    "alerts": {
+      "fill_too_long": {
+        "content": "## ⚠️ Remplissage anormalement long\n{% set on = states.binary_sensor.pool_controller_fill_running_too_long.last_changed %} Le remplissage tourne depuis plus de **{{ states('number.pool_controller_fill_alarm_after') | int(0) }} min** (alerte à {{ as_local(on).strftime('%H:%M') }}). Vérifier l'arrivée d'eau, le flotteur ou une fuite. {% if is_state('binary_sensor.pool_controller_fill_alarm_acknowledged', 'on') %} Alerte **acquittée** : plus de rappel jusqu'à la fin de ce remplissage. {% else %} Les rappels continuent tant que personne ne l'acquitte. {% endif %}",
+        "acknowledge": "Acquitter"
+      },
+      "override_stuck": {
+        "content": "## ⚠️ Filtration en pause\n**Manual Override** est sur **{{ states('select.pool_controller_manual_override') }}** depuis plus de 30 min, sans durée limite : la pompe ne suit plus son plan. Repasser sur **Auto**, ou donner une durée à l'override (le contrôleur reviendra alors en Auto tout seul)."
+      },
+      "not_computed": {
+        "content": "## ⚠️ Plan du jour non calculé\nLe contrôleur n'a pas pu lire la température ou l'heure du lever du soleil : la pompe peut rester arrêtée. Vérifier les sondes, puis **Recalculer le plan**."
+      }
+    },
+    "today": {
+      "title": "Plan du jour",
+      "planned": "Filtration planifiée",
+      "actual": "Filtration réalisée",
+      "block1_start": "Bloc 1, début",
+      "block1_end": "Bloc 1, fin",
+      "block2_start": "Bloc 2, début",
+      "block2_end": "Bloc 2, fin",
+      "next_change": "Prochain changement",
+      "next_speed": "Vers",
+      "recomputed_at": "Plan calculé à",
+      "recompute": "Recalculer le plan"
+    },
+    "controller": {
+      "title": "Contrôleur",
+      "link": "Lien avec Home Assistant",
+      "pump_speed": "Vitesse de la pompe",
+      "plan_speed": "Vitesse du plan",
+      "return_probe": "Sonde retour filtre",
+      "read_probes": "Relire les sondes",
+      "wifi_signal": "Signal Wi-Fi",
+      "wifi_disconnects": "Déconnexions Wi-Fi"
+    }
+  },
+  "scripts": {
+    "force_speed": {
+      "alias": "Piscine — forcer une vitesse",
+      "description": "Force la pompe de la piscine sur une vitesse, par le select Manual Override du contrôleur. Le contrôleur met fin lui-même au forçage après Manual Override Timeout minutes (0 = jamais) ; passer `duree` pour régler d'abord ce délai.",
+      "speed": {
+        "name": "Vitesse",
+        "description": "La vitesse à forcer. En YAML, sa valeur est Off, Low, Medium ou High, quelle que soit la langue.",
+        "off": "Arrêt",
+        "low": "Basse",
+        "medium": "Moyenne",
+        "high": "Haute"
+      },
+      "duration": {
+        "name": "Durée (min)",
+        "description": "Minutes avant le retour en Auto, 0 = jamais. Vide : la durée déjà réglée sur le contrôleur."
+      }
+    },
+    "back_to_auto": {
+      "alias": "Piscine — retour en Auto",
+      "description": "Rend la pompe au plan autonome du contrôleur (Manual Override → Auto)."
+    }
+  }
+}

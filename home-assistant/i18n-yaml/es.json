@@ -1,0 +1,107 @@
+{
+  "dashboard": {
+    "title": "Piscina",
+    "views": {
+      "pool": "Piscina",
+      "settings": "Ajustes"
+    },
+    "pump": {
+      "heading": "Bomba"
+    },
+    "probe": {
+      "pad": "Cuarto técnico",
+      "outdoor": "Exterior"
+    },
+    "temperatures": {
+      "heading": "Temperaturas",
+      "day": {
+        "title": "Sondas, 24 h",
+        "return": "Retorno del filtro (la piscina con la bomba en marcha)"
+      },
+      "mean": {
+        "title": "Sondas, media diaria (90 días)",
+        "return": "Retorno del filtro"
+      }
+    },
+    "plan_vs_actual": {
+      "heading": "Plan frente a realidad",
+      "speed": {
+        "title": "Velocidad de la bomba, 24 h",
+        "plan": "Plan",
+        "pump": "Bomba",
+        "override": "Forzado"
+      },
+      "filtration": {
+        "title": "Filtración, 7 días",
+        "actual": "Real",
+        "planned": "Planificado"
+      }
+    },
+    "fill": {
+      "heading": "Agua de llenado",
+      "flow": "Caudal",
+      "today": "Hoy",
+      "per_day": {
+        "title": "Llenado por día (30 días)",
+        "volume": "Volumen"
+      }
+    },
+    "alerts": {
+      "fill_too_long": {
+        "content": "## ⚠️ Llenado anormalmente largo\n{% set on = states.binary_sensor.pool_controller_fill_running_too_long.last_changed %} El llenado lleva más de **{{ states('number.pool_controller_fill_alarm_after') | int(0) }} min** (alarma a las {{ as_local(on).strftime('%H:%M') }}). Comprobar la entrada de agua, el flotador o una posible fuga. {% if is_state('binary_sensor.pool_controller_fill_alarm_acknowledged', 'on') %} Alarma **confirmada**: no habrá más recordatorios hasta el final de este llenado. {% else %} Los recordatorios siguen hasta que alguien la confirme. {% endif %}",
+        "acknowledge": "Confirmar"
+      },
+      "override_stuck": {
+        "content": "## ⚠️ Filtración en pausa\n**Manual Override** está en **{{ states('select.pool_controller_manual_override') }}** desde hace más de 30 min, sin límite de tiempo: la bomba ya no sigue su plan. Volver a **Auto**, o dar una duración al forzado (el controlador volverá entonces a Auto por sí solo)."
+      },
+      "not_computed": {
+        "content": "## ⚠️ Plan del día sin calcular\nEl controlador no pudo leer la temperatura ni la hora de salida del sol: la bomba puede quedarse parada. Comprobar las sondas y luego **Recalcular el plan**."
+      }
+    },
+    "today": {
+      "title": "Plan del día",
+      "planned": "Filtración planificada",
+      "actual": "Filtración realizada",
+      "block1_start": "Bloque 1, inicio",
+      "block1_end": "Bloque 1, fin",
+      "block2_start": "Bloque 2, inicio",
+      "block2_end": "Bloque 2, fin",
+      "next_change": "Próximo cambio",
+      "next_speed": "Próxima velocidad",
+      "recomputed_at": "Plan calculado a las",
+      "recompute": "Recalcular el plan"
+    },
+    "controller": {
+      "title": "Controlador",
+      "link": "Conexión con Home Assistant",
+      "pump_speed": "Velocidad de la bomba",
+      "plan_speed": "Velocidad del plan",
+      "return_probe": "Sonda de retorno del filtro",
+      "read_probes": "Volver a leer las sondas",
+      "wifi_signal": "Señal Wi-Fi",
+      "wifi_disconnects": "Desconexiones Wi-Fi"
+    }
+  },
+  "scripts": {
+    "force_speed": {
+      "alias": "Piscina — forzar una velocidad",
+      "description": "Fuerza la bomba de la piscina a una velocidad mediante el select Manual Override del controlador. El controlador termina el forzado por sí solo tras Manual Override Timeout minutos (0 = nunca); pasar `duree` para ajustar antes ese tiempo.",
+      "speed": {
+        "name": "Velocidad",
+        "description": "La velocidad a forzar. En YAML, su valor es Off, Low, Medium o High, sea cual sea el idioma.",
+        "off": "Apagada",
+        "low": "Baja",
+        "medium": "Media",
+        "high": "Alta"
+      },
+      "duration": {
+        "name": "Duración (min)",
+        "description": "Minutos antes de volver a Auto, 0 = nunca. Vacío: la duración ya ajustada en el controlador."
+      }
+    },
+    "back_to_auto": {
+      "alias": "Piscina — volver a Auto",
+      "description": "Devuelve la bomba al plan autónomo del controlador (Manual Override → Auto)."
+    }
+  }
+}
