@@ -661,7 +661,11 @@ text_sensor:
 # never this month's total, which becomes its closed days in the record (the
 # page adds Fill Water Today, the midnight rollover adds it too), and "-"
 # never erases a known value. Refused whole when anything is off (the log
-# says why). Its state is what the last import did, never the line. A
+# says why). Its state is what the last import did, never the line, as a
+# code the UIs translate (fill_import.h's outcome(); docs/plans/i18n.md):
+# imported:days:N, imported:months:N, refused:no_clock, refused:format,
+# refused:date, refused:value, refused:too_many, refused:future,
+# refused:record_ahead (before 1.11.0, French: « importé : 3 jours »). A
 # 30-day line is 191 characters at most, so one always fits in 255.
 text:
   - platform: template
@@ -680,28 +684,24 @@ text:
           auto t = id(local_time).now();
           if (!t.is_valid()) {
             ESP_LOGW("fill", "Fill water import refused: no clock yet");
-            id(fill_import_text).publish_state("refusé : pas d'heure");
+            id(fill_import_text).publish_state(fill_import::REFUSED_NO_CLOCK);
             return;
           }
           fill_import::Line line;
-          fill_import::Error err = fill_import::parse(x, line);
           fill_import::Result r;
-          if (err == fill_import::Error::NONE) {
+          r.error = fill_import::parse(x, line);
+          if (r.error == fill_import::Error::NONE) {
             uint32_t today = t.year * 10000UL + t.month * 100UL + t.day_of_month;
             r = fill_import::apply(line, today, id(fill_days), id(fill_days_date), id(fill_months), id(fill_months_key));
-            err = r.error;
           }
-          if (err != fill_import::Error::NONE) {
-            ESP_LOGW("fill", "Fill water import refused (%u characters): %s", (unsigned) x.size(), fill_import::error_text(err));
-            id(fill_import_text).publish_state(std::string("refusé : ") + fill_import::error_text(err));
+          if (r.error != fill_import::Error::NONE) {
+            ESP_LOGW("fill", "Fill water import refused (%u characters): %s", (unsigned) x.size(), fill_import::error_text(r.error));
+            id(fill_import_text).publish_state(fill_import::outcome(r));
             return;
           }
-          const char *unit = r.months ? "mois" : (r.written > 1 ? "jours" : "jour");
           ESP_LOGI("fill", "Fill water import: %d %s written, %d unknown, %d open (today / this month), %d older than the record, %d capped at 65534 L; this month's closed days: %u L",
                    r.written, r.months ? "months" : "days", r.unknown, r.open, r.outside, r.clamped, (unsigned) id(fill_months)[0]);
-          char buf[48];
-          snprintf(buf, sizeof(buf), "importé : %d %s", r.written, unit);
-          id(fill_import_text).publish_state(buf);
+          id(fill_import_text).publish_state(fill_import::outcome(r));
           id(fill_days_text).update();
           id(fill_months_text).update();
 

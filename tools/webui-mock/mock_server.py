@@ -1335,20 +1335,23 @@ class PoolSim:
 
     def import_fill(self, text: str):
         """Fill Water Import (fill_import.h): writes a Fill Water Days / Months line into the record, as the firmware
-        does, and says what it did -- the entity's state, never the line."""
+        does, and says what it did as fill_import.h's outcome() codes it -- the entity's state, never the line."""
+        if not self.wifi.clock_ok:
+            self.log("Fill water import refused: no clock yet")
+            self.fill_import_state = "refused:no_clock"
+            return
         today = datetime.now().date()
         try:
             line = parse_fill_line(text)
             done = apply_fill_line(line, today, self.fill_days, self.fill_months)
-        except ValueError as err:
+        except FillImportRefused as err:
             self.log(f"Fill water import refused ({len(text)} characters): {err}")
-            self.fill_import_state = f"refusé : {err}"
+            self.fill_import_state = f"refused:{err.code}"
             return
         self.log(f"Fill water import: {done['written']} {'months' if line[0] else 'days'} written, {done['unknown']} unknown, "
                  f"{done['open']} open (today / this month), {done['outside']} older than the record, "
                  f"{done['clamped']} capped at 65534 L; this month's closed days: {self.fill_months[0]} L")
-        unit = "mois" if line[0] else "jours" if done["written"] > 1 else "jour"
-        self.fill_import_state = f"importé : {done['written']} {unit}"
+        self.fill_import_state = f"imported:{'months' if line[0] else 'days'}:{done['written']}"
 
     def snapshot(self) -> dict:
         now = time.time()
@@ -1422,40 +1425,57 @@ def _fill_line(head, values) -> str:
 
 
 FILL_DAYS, FILL_MONTHS, FILL_DAY_MAX = 30, 12, 0xFFFE
+# fill_import.h's error_code() -> its error_text(), the log's English reason.
+FILL_IMPORT_ERRORS = {
+    "format": 'format (expected "2026-11-17: 0 19 - 940" or "2026-11: 23 950")',
+    "date": "invalid date",
+    "value": "invalid value (whole litres >= 0, or -)",
+    "too_many": "too many values (30 days or 12 months at most)",
+    "future": "date in the future",
+}
+
+
+class FillImportRefused(ValueError):
+    """A refused Fill Water Import: `code` is fill_import.h's error_code(), the message its English error_text()."""
+
+    def __init__(self, code: str):
+        super().__init__(FILL_IMPORT_ERRORS[code])
+        self.code = code
 
 
 def parse_fill_line(text: str):
     """A Fill Water Days / Months line -> (months?, newest date, [litres or None]), with fill_import.h's parse() rules;
-    ValueError(reason, in the firmware's words) otherwise."""
+    FillImportRefused otherwise."""
     m = re.fullmatch(r" *(\d{4})-(\d{2})(?:-(\d{2}))?:((?: +\S+)+) *", text or "")
     if not m:
-        raise ValueError("format (attendu « 2026-11-17: 0 19 - 940 » ou « 2026-11: 23 950 »)")
+        raise FillImportRefused("format")
     months = m.group(3) is None
     try:
         date = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3) or 1)).date()
     except ValueError:
-        raise ValueError("date invalide") from None
+        raise FillImportRefused("date") from None
     if date.year < 2000:
-        raise ValueError("date invalide")
+        raise FillImportRefused("date")
     tokens = m.group(4).split()
     if len(tokens) > (FILL_MONTHS if months else FILL_DAYS):
-        raise ValueError("trop de valeurs (30 jours ou 12 mois au plus)")
+        raise FillImportRefused("too_many")
     values = []
     for tok in tokens:
         if tok != "-" and not (re.fullmatch(r"\d{1,10}", tok) and int(tok) < 0xFFFFFFFF):
-            raise ValueError("valeur invalide (litres entiers >= 0, ou -)")
+            raise FillImportRefused("value")
         values.append(None if tok == "-" else int(tok))
     return months, date, values
 
 
 def apply_fill_line(line, today, days: list, months: list) -> dict:
     """fill_import.h's apply() on the mock's record, which is always dated yesterday (days) and this month (months):
-    every closed day or month of the line, then this month's total as its closed days. ValueError for a future line."""
+    every closed day or month of the line, then this month's total as its closed days. FillImportRefused for a future
+    line (never record_ahead: the mock's record can't be dated after yesterday)."""
     is_months, date, values = line
     yesterday = today - timedelta(days=1)
     month_no = lambda d: d.year * 12 + d.month - 1  # noqa: E731
     if (month_no(date) > month_no(today)) if is_months else date > today:
-        raise ValueError("date dans le futur")
+        raise FillImportRefused("future")
     done = {"written": 0, "unknown": 0, "open": 0, "outside": 0, "clamped": 0}
     for k, v in enumerate(values):
         idx = month_no(today) - (month_no(date) - k) if is_months else (yesterday - (date - timedelta(days=k))).days
