@@ -61,23 +61,45 @@ inline bool valid_date(uint32_t y, uint32_t m, uint32_t d) {
 
 enum class Error : uint8_t { NONE = 0, FORMAT, DATE, VALUE, TOO_MANY, FUTURE, RECORD_AHEAD };
 
-/// For the log and the entity's state: why a line was refused.
+/// For the entity's state (`refused:<code>`, see outcome()): why a line was refused, as a code the UIs translate
+/// (docs/plans/i18n.md). A published code is never renamed: add a new one instead.
+inline const char *error_code(Error e) {
+  switch (e) {
+    case Error::NONE:
+      return "ok";
+    case Error::FORMAT:
+      return "format";
+    case Error::DATE:
+      return "date";
+    case Error::VALUE:
+      return "value";
+    case Error::TOO_MANY:
+      return "too_many";
+    case Error::FUTURE:
+      return "future";
+    case Error::RECORD_AHEAD:
+      return "record_ahead";
+  }
+  return "?";
+}
+
+/// For the log only, in English: why a line was refused.
 inline const char *error_text(Error e) {
   switch (e) {
     case Error::NONE:
       return "ok";
     case Error::FORMAT:
-      return "format (attendu « 2026-11-17: 0 19 - 940 » ou « 2026-11: 23 950 »)";
+      return "format (expected \"2026-11-17: 0 19 - 940\" or \"2026-11: 23 950\")";
     case Error::DATE:
-      return "date invalide";
+      return "invalid date";
     case Error::VALUE:
-      return "valeur invalide (litres entiers >= 0, ou -)";
+      return "invalid value (whole litres >= 0, or -)";
     case Error::TOO_MANY:
-      return "trop de valeurs (30 jours ou 12 mois au plus)";
+      return "too many values (30 days or 12 months at most)";
     case Error::FUTURE:
-      return "date dans le futur";
+      return "date in the future";
     case Error::RECORD_AHEAD:
-      return "le relevé du contrôleur est daté après hier : son horloge a reculé ?";
+      return "the controller's record is dated after yesterday: did its clock go back?";
   }
   return "?";
 }
@@ -267,6 +289,19 @@ inline Result apply(const Line &line, uint32_t today, uint16_t days[DAYS], uint3
   }
   months[0] = closed_days_of_month(days, yesterday, today);
   return r;
+}
+
+// ------------------------------------------------------------------ the entity's state
+
+/// Fill Water Import's state when there is no clock to date the line against.
+static const char *const REFUSED_NO_CLOCK = "refused:no_clock";
+
+/// Fill Water Import's state after an import, as a code the UIs translate: `imported:days:N`,
+/// `imported:months:N` (N values written), or `refused:<error_code>`.
+inline std::string outcome(const Result &r) {
+  if (r.error != Error::NONE)
+    return std::string("refused:") + error_code(r.error);
+  return std::string("imported:") + (r.months ? "months:" : "days:") + std::to_string(r.written);
 }
 
 }  // namespace fill_import

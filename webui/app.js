@@ -496,26 +496,32 @@ const orDash = (id) => () => s(id) || "—";
     const { row, buttons: [check, install, cancel], draw } = statusRow(
       [{ text: "Vérifier" }, { text: "Installer", fill: true }, { text: "Annuler la demande" }]);
     const fw = () => st(E.fwUpdate)?.attributes || {};
-    const status = () => s(E.updateStatus) || "";
+    // TEMPORARY (i18n I1): Update Status and the interval's options are codes from 1.11.0 (updates.h). The older
+    // French words read as their codes, and the options show in the page's French, until I4's t().
+    const LEGACY_UPDATE = { "non vérifié": "unchecked", "vérification": "checking", "à jour": "up_to_date", "disponible": "available",
+      "installation": "installing", "en attente (mode manuel)": "pending:override", "en attente (remplissage)": "pending:fill",
+      "erreur (vérification)": "error:check", "erreur (installation)": "error:install" };
+    const intervalLabel = (o) => ({ on_request: "À la demande", "6h": "6 h", "24h": "24 h", "7d": "7 j" })[o] || o;
+    const status = () => { const v = s(E.updateStatus) || ""; return LEGACY_UPDATE[v] || v; };
     let installed = null; // the installed version last seen: a change after a reboot is an update done
-    /** Update Status (the firmware's words) -> the sentence under « Mise à jour ». */
+    /** Update Status (the firmware's code) -> the sentence under « Mise à jour ». */
     const sentence = () => {
       const a = fw(), latest = a.latest_version || "la nouvelle version", now = a.installed_version || "—";
-      const st_ = status();
-      if (!hass.connected && (st_ === "installation" || a.in_progress)) return { text: "Redémarrage du contrôleur sur la nouvelle version…", cls: "fw-up" };
-      if (st_ === "installation" || a.in_progress) return { text: `Installation de ${latest}… Le contrôleur redémarre ensuite (environ 1 min).`, cls: "fw-up" };
-      if (st_.startsWith("en attente")) {
-        const why = st_.includes("remplissage") ? "la fin du remplissage en cours" : "la fin de l'override manuel";
+      const st_ = status(), every = s(E.updateInterval);
+      if (!hass.connected && (st_ === "installing" || a.in_progress)) return { text: "Redémarrage du contrôleur sur la nouvelle version…", cls: "fw-up" };
+      if (st_ === "installing" || a.in_progress) return { text: `Installation de ${latest}… Le contrôleur redémarre ensuite (environ 1 min).`, cls: "fw-up" };
+      if (st_.startsWith("pending:")) {
+        const why = st_ === "pending:fill" ? "la fin du remplissage en cours" : "la fin de l'override manuel";
         return { text: `${latest} s'installera à ${why}.`, cls: "fw-up" };
       }
-      if (st_ === "vérification") return { text: "Vérification de la dernière version…" };
+      if (st_ === "checking") return { text: "Vérification de la dernière version…" };
       // Also every check until a first release is published: the controller only knows it got no answer.
-      if (st_ === "erreur (vérification)") return { text: "La vérification a échoué : pas de réseau, ou aucune version publiée pour l'instant.", cls: "fw-err" };
-      if (st_ === "erreur (installation)") return { text: `L'installation de ${latest} a échoué ; le contrôleur garde ${now}.`, cls: "fw-err" };
+      if (st_ === "error:check") return { text: "La vérification a échoué : pas de réseau, ou aucune version publiée pour l'instant.", cls: "fw-err" };
+      if (st_ === "error:install") return { text: `L'installation de ${latest} a échoué ; le contrôleur garde ${now}.`, cls: "fw-err" };
       if (st(E.fwUpdate).state === "on") return { text: `${latest} disponible (installée : ${now}).`, cls: "fw-up", href: a.release_url, link: "Notes de version" };
       if (st(E.fwUpdate).state === "off") return { text: `À jour : ${now} est la dernière version.`, cls: "fw-ok" };
-      return { text: s(E.updateInterval) && s(E.updateInterval) !== "À la demande"
-        ? `Pas encore vérifiée : le contrôleur vérifie toutes les ${s(E.updateInterval)}.` : "Pas encore vérifiée." };
+      return { text: every && every !== "on_request" && every !== "À la demande"
+        ? `Pas encore vérifiée : le contrôleur vérifie toutes les ${intervalLabel(every)}.` : "Pas encore vérifiée." };
     };
     check.addEventListener("click", () => {
       check.classList.add("busy");
@@ -536,12 +542,12 @@ const orDash = (id) => () => s(id) || "—";
       row.hidden = !hasUpdates();
       if (row.hidden) return;
       const a = fw(), st_ = status();
-      const busy = st_ === "installation" || st_.startsWith("en attente") || a.in_progress;
-      check.disabled = !hass.connected || busy || st_ === "vérification" || !st(E.checkUpdate);
+      const busy = st_ === "installing" || st_.startsWith("pending:") || a.in_progress;
+      check.disabled = !hass.connected || busy || st_ === "checking" || !st(E.checkUpdate);
       install.hidden = st(E.fwUpdate).state !== "on" || busy;
       install.disabled = !hass.connected;
       // Only while the install waits at the gate: the controller ignores it otherwise.
-      cancel.hidden = !st_.startsWith("en attente") || !st(E.cancelUpdate);
+      cancel.hidden = !st_.startsWith("pending:") || !st(E.cancelUpdate);
       cancel.disabled = !hass.connected;
       draw(sentence());
       if (a.installed_version && installed && a.installed_version !== installed) toast(`Firmware mis à jour : ${a.installed_version}`);
@@ -576,7 +582,7 @@ const orDash = (id) => () => s(id) || "—";
       set: (v) => hass.callService("switch", v === "on" ? "turn_on" : "turn_off", { entity_id: E.autoUpdate }) });
     segRow({ id: E.updateInterval, label: "Vérifier les mises à jour", iconName: "timer-outline",
       sub: "Le contrôleur demande la dernière version publiée sur GitHub.",
-      options: () => (st(E.updateInterval)?.attributes.options || []).map((o) => [o, o]),
+      options: () => (st(E.updateInterval)?.attributes.options || []).map((o) => [intervalLabel(o), o]),
       set: (v) => hass.select(E.updateInterval, v) });
   }
 }

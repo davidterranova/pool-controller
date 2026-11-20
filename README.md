@@ -100,7 +100,7 @@ A controller running your own build still checks the published releases:
 your build reports `git describe`'s version (`v1.5.0-3-g1a2b3c4`, `dev`),
 which never matches a release's, so with Auto Update on the next scheduled
 check installs the release over it. Turn Auto Update off, or set Update
-Check Interval to « À la demande », on a controller you flash yourself
+Check Interval to `on_request` (« À la demande »), on a controller you flash yourself
 (Réglages contrôleur › Firmware, or Home Assistant).
 
 ## Coming from a secrets.yaml build

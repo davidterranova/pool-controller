@@ -171,26 +171,30 @@ site), over HTTPS, and keeps every setting (they live in its own storage,
 which an update doesn't touch).
 
 - **Automatic, by default.** **Auto Update** is on; **Update Check
-  Interval** (« À la demande », 6 h, 24 h, 7 j; 24 h by default) says how
+  Interval** (`on_request`, `6h`, `24h`, `7d`; 24 h by default; see
+  [Controller settings](#controller-settings)) says how
   often it looks, the first time a minute after boot. What a scheduled
   check finds, it installs.
 - **On request.** « Vérifier » (Check for Update) looks now, but never
   installs by itself, Auto Update or not; « Installer » then installs: on
   the controller's page (Réglages contrôleur › Firmware), in Home Assistant
   (Settings › Updates, the **Firmware** update entity) or in the pool card
-  (Réglages contrôleur › Firmware). With « À la demande » nothing is checked on a
-  schedule.
+  (Réglages contrôleur › Firmware). With `on_request` (« À la demande »)
+  nothing is checked on a schedule.
 - **The gate.** Every install, Home Assistant's included, waits while a
   Manual Override or a fill runs (a reboot would end the override, and lose
   the meter's pulses), then starts by itself. « A fill runs » is **Fill
   Running** (see [Fill meter](#fill-meter)), so nothing waits for a fill
   while Fill Meter is off. **Cancel Update** (« Annuler
   la demande ») drops a waiting install.
-- **Update Status** says where it is: `non vérifié`, `vérification`,
-  `à jour`, `disponible`, `en attente (mode manuel)`, `en attente
-  (remplissage)`, `installation`, `erreur (vérification)`, `erreur
-  (installation)`. A failed install keeps the running firmware and is tried
-  again at the next scheduled check.
+- **Update Status** says where it is, as a code: `unchecked`, `checking`,
+  `up_to_date`, `available`, `pending:override` or `pending:fill` (an
+  install waiting at the gate), `installing`, `error:check`,
+  `error:install`. The page and the card translate it; Home Assistant's
+  device page shows the code as it is. (Before 1.11.0 these were French
+  words, `non vérifié` … `erreur (installation)`, which the card still
+  reads.) A failed install keeps the running firmware and is tried again at
+  the next scheduled check.
 - The install downloads in one go and reboots: the page and Home Assistant
   lose the controller for a minute or so, and the pump keeps its plan
   through the reboot.
@@ -287,7 +291,13 @@ network) and kept in its NVS, which a firmware update never touches.
   the hotspot. The page asks for a confirmation first. See
   [Factory reset](#factory-reset).
 - **Auto Update, Update Check Interval, Check for Update, Cancel Update,
-  Update Status, Firmware** — see [Updates](#updates).
+  Update Status, Firmware** — see [Updates](#updates). Update Check
+  Interval's options are codes: `on_request`, `6h`, `24h`, `7d` (24h by
+  default); the page and the card show them translated, Home Assistant's
+  device page as they are. Before 1.11.0 they were « À la demande »,
+  « 6 h », « 24 h », « 7 j »: the choice is kept across that update (it is
+  stored as hours), but an automation that picks the option by its French
+  text must use the code now.
 - **Fill Meter, Fill Alarm After, Detect Fill Meter** (from
   [fill-meter.yaml](fill-meter.yaml)) — whether the fill-line water meter
   is there (on by default), how long a fill may run before the alarm (60
@@ -420,7 +430,8 @@ Re-evaluated every 30 seconds, highest priority wins:
      press is always confirmable even when it lands on a byte-for-byte
      identical plan (e.g. filtration hours already clamped at the same
      `Max Filtration Hours` ceiling) — that's a correct, expected no-op, not
-     the button silently failing to do anything.
+     the button silently failing to do anything. `--` until a first
+     recompute (`Never` before 1.11.0).
    - **Daily History** (diagnostic) lists, for each of the last 7 completed
      days, newest first, how long the pump actually ran and the pool's
      min/max temperature — e.g. `2026-11-13: 6.42 h 25.9/26.6 °C,
@@ -477,8 +488,13 @@ Re-evaluated every 30 seconds, highest priority wins:
      line), so nothing is counted twice; `-` never erases a known value, and
      a day above 65534 L is capped there as the record does. Anything off (a
      bad date, a value that isn't whole litres, too many values, a date in
-     the future, no clock) refuses the whole line; its state then says why,
-     else what was imported (`importé : 30 jours`), never the line itself.
+     the future, no clock) refuses the whole line. Its state is a code,
+     never the line itself: what was imported (`imported:days:30`,
+     `imported:months:12`), else why it was refused (`refused:format`,
+     `refused:date`, `refused:value`, `refused:too_many`, `refused:future`,
+     `refused:record_ahead` when the controller's record is dated after
+     yesterday, `refused:no_clock`); the log says it in English. Before
+     1.11.0 it was French (`importé : 30 jours`).
      A 30-day line is at most 191 characters, within a text entity's 255.
    - **Firmware Version** (diagnostic) is the commit of this repo the
      firmware was compiled from, as `git describe --tags --always --dirty`

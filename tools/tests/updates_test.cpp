@@ -16,15 +16,33 @@ static int failures = 0;
     }                                                             \
   } while (0)
 
+/// A code as docs/plans/i18n.md's contract has it: ASCII, lower snake case,
+/// `:` before an argument (`pending:fill`), letters or digits on each side.
+static bool is_code(const std::string &s) {
+  if (s.empty() || s.front() == ':' || s.back() == ':' || s.front() == '_')
+    return false;
+  for (char c : s)
+    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == ':'))
+      return false;
+  return s.find("::") == std::string::npos;
+}
+
 static void test_interval() {
-  EXPECT(interval_hours("À la demande") == 0);
-  EXPECT(interval_hours("6 h") == 6);
-  EXPECT(interval_hours("24 h") == 24);
-  EXPECT(interval_hours("7 j") == 168);
+  EXPECT(interval_hours("on_request") == 0);
+  EXPECT(interval_hours("6h") == 6);
+  EXPECT(interval_hours("24h") == 24);
+  EXPECT(interval_hours("7d") == 168);
   EXPECT(interval_hours("nonsense") == DEFAULT_INTERVAL_HOURS);
-  for (const auto &o : INTERVAL_OPTIONS)
+  // The options before 1.11.0 are gone (the select refuses them); the choice
+  // itself is kept as hours, so it reads back as its code.
+  EXPECT(interval_hours("6 h") == DEFAULT_INTERVAL_HOURS);
+  EXPECT(std::string(interval_label(6)) == "6h");
+  EXPECT(std::string(interval_label(0)) == "on_request");
+  for (const auto &o : INTERVAL_OPTIONS) {
     EXPECT(std::string(interval_label(o.hours)) == o.label);
-  EXPECT(std::string(interval_label(12)) == "24 h");  // unknown: the default
+    EXPECT(is_code(o.label));
+  }
+  EXPECT(std::string(interval_label(12)) == "24h");  // unknown: the default
 }
 
 static void test_check_due() {
@@ -46,7 +64,7 @@ static void test_gate() {
 }
 
 static void test_auto_update() {
-  // Not armed: a manual check, the « À la demande » interval, or already acted.
+  // Not armed: a manual check, the on_request interval, or already acted.
   EXPECT(auto_update_step(false, false, true, true, false) == AutoStep::NONE);
   // Armed by a scheduled check still on its way: wait for its answer.
   EXPECT(auto_update_step(true, true, true, true, false) == AutoStep::NONE);
@@ -60,43 +78,56 @@ static void test_auto_update() {
 
 static void test_status() {
   StatusInputs in;
-  EXPECT(status_text(in) == "non vérifié");
+  EXPECT(status_text(in) == "unchecked");
   in.checking = true;
-  EXPECT(status_text(in) == "vérification");
+  EXPECT(status_text(in) == "checking");
   in.checking = false;
   in.state = State::NO_UPDATE;
-  EXPECT(status_text(in) == "à jour");
+  EXPECT(status_text(in) == "up_to_date");
   in.state = State::AVAILABLE;
-  EXPECT(status_text(in) == "disponible");
+  EXPECT(status_text(in) == "available");
   in.pending = true;
   in.blocker = Blocker::OVERRIDE;
-  EXPECT(status_text(in) == "en attente (mode manuel)");
+  EXPECT(status_text(in) == "pending:override");
   in.blocker = Blocker::FILL;
-  EXPECT(status_text(in) == "en attente (remplissage)");
+  EXPECT(status_text(in) == "pending:fill");
   in.blocker = Blocker::NONE;
-  EXPECT(status_text(in) == "installation");
+  EXPECT(status_text(in) == "installing");
   in.pending = false;
   in.state = State::INSTALLING;
-  EXPECT(status_text(in) == "installation");
+  EXPECT(status_text(in) == "installing");
   // A failed install: back to available, with the source's error.
   in.state = State::AVAILABLE;
   in.error = true;
   in.last_op = Op::INSTALL;
-  EXPECT(status_text(in) == "erreur (installation)");
+  EXPECT(status_text(in) == "error:install");
   in.last_op = Op::CHECK;
-  EXPECT(status_text(in) == "erreur (vérification)");
+  EXPECT(status_text(in) == "error:check");
   // Waiting outranks an old error.
   in.pending = true;
   in.blocker = Blocker::FILL;
-  EXPECT(status_text(in) == "en attente (remplissage)");
+  EXPECT(status_text(in) == "pending:fill");
   // Cancel Update: the request dropped, the update still there.
   in = StatusInputs{};
   in.state = State::AVAILABLE;
   in.pending = true;
   in.blocker = Blocker::OVERRIDE;
-  EXPECT(status_text(in) == "en attente (mode manuel)");
+  EXPECT(status_text(in) == "pending:override");
   in.pending = false;
-  EXPECT(status_text(in) == "disponible");
+  EXPECT(status_text(in) == "available");
+  // Every state is a code: the UIs translate it.
+  for (State s : {State::UNKNOWN, State::NO_UPDATE, State::AVAILABLE, State::INSTALLING})
+    for (Blocker b : {Blocker::NONE, Blocker::OVERRIDE, Blocker::FILL})
+      for (int flags = 0; flags < 16; flags++) {
+        StatusInputs x;
+        x.state = s;
+        x.blocker = b;
+        x.pending = flags & 1;
+        x.checking = flags & 2;
+        x.error = flags & 4;
+        x.last_op = flags & 8 ? Op::INSTALL : Op::CHECK;
+        EXPECT(is_code(status_text(x)));
+      }
 }
 
 int main() {
