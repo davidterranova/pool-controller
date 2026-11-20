@@ -2,8 +2,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  SETUP_ITEMS, parseSetupState, nextStep, andList, parseDetectedProbes, probeTrend, passwordProblem,
-  validApiKey, parseDegrees, degreesInput, sunTimes, fillStatus, parseAlarmMinutes, lastPulseText,
+  SETUP_ITEMS, parseSetupState, nextStep, parseDetectedProbes, probeTrend, passwordProblem,
+  validApiKey, parseDegrees, degreesInput, sunTimes, fillStatus, parseAlarmMinutes, lastPulse,
 } from "../setup-model.js";
 import { TIMEZONES, posixOf, validPosix, validZoneName, posixStandardOffset, clockIn } from "../timezones.js";
 
@@ -21,8 +21,6 @@ test("next step: the first missing one after the current, else from the start, 6
   assert.equal(nextStep(["page_password", "wifi", "api_key"], 2), 5); // after a factory reset: Position, Sondes skipped
   assert.equal(nextStep(["page_password"], 3), 1);
   assert.equal(nextStep([], 5), 6);
-  assert.equal(andList(["a"]), "a");
-  assert.equal(andList(["a", "b", "c"]), "a, b et c");
 });
 
 test("Detected Probes: addresses as written, readings, no answer, none", () => {
@@ -44,9 +42,9 @@ test("probe trend: a hand warms it, then it cools; small noise says nothing", ()
 });
 
 test("passwords: 8 to 64 characters, typed twice", () => {
-  assert.match(passwordProblem("short", "short"), /8 caractères/);
-  assert.match(passwordProblem("x".repeat(65), "x".repeat(65)), /64 caractères/);
-  assert.match(passwordProblem("longenough", "longenougH"), /diffèrent/);
+  assert.equal(passwordProblem("short", "short"), "short");
+  assert.equal(passwordProblem("x".repeat(65), "x".repeat(65)), "long");
+  assert.equal(passwordProblem("longenough", "longenougH"), "differ");
   assert.equal(passwordProblem("longenough", "longenough"), null);
 });
 
@@ -66,6 +64,7 @@ test("degrees: comma or point, rounded to 0.01", () => {
   assert.equal(parseDegrees(""), null);
   assert.equal(degreesInput(2.3), "2,30");
   assert.equal(degreesInput(NaN), "");
+  assert.equal(degreesInput(2.3, false), "2.30"); // a language writing decimals with a point
 });
 
 test("sunrise and sunset: plausible at mid-latitude, polar in the far north", () => {
@@ -73,8 +72,8 @@ test("sunrise and sunset: plausible at mid-latitude, polar in the far north", ()
   const local = clockIn(rise, "Europe/Paris", "CET-1CEST,M3.5.0,M10.5.0/3");
   assert.ok(local >= "05:42" && local <= "05:52", `Paris's sunrise on 21 June is about 05:47 (got ${local})`);
   assert.ok(set - rise > 16 * 3600e3 && set - rise < 16.5 * 3600e3, "about 16 h of day at the June solstice");
-  assert.deepEqual(sunTimes(78, 15, new Date(Date.UTC(2026, 11, 21))), { polar: "nuit" });
-  assert.deepEqual(sunTimes(78, 15, new Date(Date.UTC(2026, 5, 21))), { polar: "jour" });
+  assert.deepEqual(sunTimes(78, 15, new Date(Date.UTC(2026, 11, 21))), { polar: "night" });
+  assert.deepEqual(sunTimes(78, 15, new Date(Date.UTC(2026, 5, 21))), { polar: "day" });
 });
 
 test("time zones: the table's rules parse, names are what the firmware takes", () => {
@@ -96,14 +95,14 @@ test("time zones: the table's rules parse, names are what the firmware takes", (
   assert.equal(clockIn(new Date(Date.UTC(2026, 6, 1, 12, 0)), "Europe/Paris", ""), "14:00");
 });
 
-test("fill meter: Fill Meter Status in the page's words, unknown words left out", () => {
+test("fill meter: Fill Meter Status as its code and colour, unknown words left out", () => {
   for (const s of ["off", "untested", "listening", "detected", "not_detected"]) {
     const f = fillStatus(s);
-    assert.ok(f && f.tag && f.sub && ["ok", "warn", "bad", "idle"].includes(f.cls), s);
+    assert.ok(f && f.code === s && ["ok", "warn", "bad", "idle"].includes(f.cls), s);
   }
   assert.equal(fillStatus("detected").cls, "ok");
   assert.equal(fillStatus("not_detected").cls, "bad");
-  assert.match(fillStatus("listening").sub, /3 L en 5 min/);
+  assert.equal(fillStatus(" listening ").code, "listening");
   for (const s of [undefined, "", "unknown", "calibrating"]) assert.equal(fillStatus(s), null);
 });
 
@@ -119,9 +118,9 @@ test("fill meter: « Alarme après » in minutes, within 0–1440, on a 5-min st
 
 test("fill meter: its last pulse, from today back", () => {
   const now = new Date(2026, 6, 14, 16, 20);
-  assert.equal(lastPulseText("2026-07-14 14:02", now), "aujourd'hui à 14:02");
-  assert.equal(lastPulseText("2026-07-13 09:15", now), "hier à 09:15");
-  assert.equal(lastPulseText("2026-07-01 09:15", now), "le 01/07 à 09:15");
-  assert.equal(lastPulseText("2025-12-30 08:00", now), "le 30/12/2025 à 08:00");
-  for (const t of ["--", "", undefined, "unknown"]) assert.equal(lastPulseText(t, now), "jamais");
+  assert.deepEqual(lastPulse("2026-07-14 14:02", now), { when: "today", at: new Date(2026, 6, 14, 14, 2), otherYear: false });
+  assert.equal(lastPulse("2026-07-13 09:15", now).when, "yesterday");
+  assert.deepEqual(lastPulse("2026-07-01 09:15", now), { when: "date", at: new Date(2026, 6, 1, 9, 15), otherYear: false });
+  assert.equal(lastPulse("2025-12-30 08:00", now).otherYear, true);
+  for (const t of ["--", "", undefined, "unknown"]) assert.deepEqual(lastPulse(t, now), { when: "never" });
 });

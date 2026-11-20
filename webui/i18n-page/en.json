@@ -1,1 +1,474 @@
-{}
+{
+  "page": {
+    "title": "Pool",
+    "lang": {
+      "label": "Language"
+    },
+    "conn": {
+      "connecting": "Connecting…",
+      "ok": "Connected to the controller",
+      "lost": "Connection lost…"
+    },
+    "refused": "Refused by the controller ({error})",
+    "press": "Press",
+    "yes": "Yes",
+    "no": "No",
+    "uptime": {
+      "d": "{d} d {h} h {m} min"
+    },
+    "pw": {
+      "label": "Password",
+      "show": "Show",
+      "hide": "Hide",
+      "show_aria": "Show the password"
+    },
+    "fill": {
+      "heading": "Filling"
+    },
+    "device": {
+      "title": "Internal sensors",
+      "link": "Link with this page",
+      "link_ok": "Connected",
+      "link_lost": "Lost, trying again…",
+      "uptime": "Running for",
+      "last_event": "Last data received",
+      "ago_s": "{s} s ago",
+      "controller": "Controller",
+      "ha_sub": "The controller's API link",
+      "ha_on": "Connected",
+      "ha_off": "Not connected",
+      "clock": "Clock",
+      "clock_unset": "Not set",
+      "sensors": "Sensors",
+      "flow": "Fill flow",
+      "volume": "Total volume filled",
+      "others": "Other entities"
+    },
+    "clock": {
+      "sntp": "Synchronised over the internet",
+      "browser": "Set from a browser",
+      "none": "No source: no plan for the day",
+      "set": "Controller's clock set from this browser ({time})"
+    },
+    "alert": {
+      "hotspot": "The controller isn't on any Wi-Fi network: you are on its hotspot « {ssid} ».",
+      "hotspot_btn": "Set up the Wi-Fi",
+      "no_clock": "The controller doesn't know the time: it can't compute today's plan.",
+      "no_clock_btn": "Set from this browser"
+    },
+    "plan": {
+      "not_computed": "Not computed",
+      "waits": "Waiting for {what}",
+      "forced_nolimit": "Speed forced with no limit",
+      "forced_30": "For more than 30 min"
+    },
+    "pos": {
+      "title": "Sun and local time"
+    },
+    "probes": {
+      "title": "Each probe's role"
+    },
+    "wifi": {
+      "connection": "Connection",
+      "join_title": "Join a network",
+      "network": "Network",
+      "join": "Connect",
+      "bssid": "Wi-Fi access point (BSSID)",
+      "ip": "IP address",
+      "hotspot_clients": "Devices on the hotspot",
+      "mac": "MAC address",
+      "disconnects": "Disconnections",
+      "since_boot": "Since start-up",
+      "chip": {
+        "connected": "Connected",
+        "hotspot": "Hotspot",
+        "connecting": "Connecting…"
+      },
+      "connected_to": "Connected to « {ssid} »",
+      "signal_line": "Signal {dbm} dBm · {pct} % · {word}",
+      "signal": {
+        "good": "good",
+        "fair": "fair",
+        "weak": "weak"
+      },
+      "hotspot_named": "Hotspot « {ssid} »",
+      "hotspot_open": {
+        "one": "Open, no password · {count} device connected",
+        "other": "Open, no password · {count} devices connected"
+      },
+      "connecting_to": "Connecting to « {ssid} »",
+      "up_to_30s": "Up to 30 s",
+      "joined": "Connected to « {ssid} »; network saved",
+      "join_failed": "Couldn't join « {ssid} » (password or range). The controller keeps its network.",
+      "join_hint_hotspot": "The controller tries this network for 30 s and saves it only if the connection succeeds. Once connected, its hotspot stops: join that network with this phone, then open {url}.",
+      "join_hint": "The controller tries this network for 30 s and saves it only if the connection succeeds; otherwise it keeps the current network. If it changes network, this page loses the link: find it again at {url}.",
+      "none": "No network found yet.",
+      "tag_connected": "connected",
+      "pw_short": "Password: 8 characters at least, or empty for an open network.",
+      "confirm_switch": "The controller will leave « {from} » for « {to} ». This page will lose the link: find it again at {url}. Continue?"
+    },
+    "fw": {
+      "version": "Version",
+      "new_version": "the new version",
+      "rebooting": "Controller restarting on the new version…",
+      "installing": "Installing {version}… The controller then restarts (about 1 min).",
+      "pending_fill": "{version} will install when the running fill ends.",
+      "pending_override": "{version} will install when the forced speed ends.",
+      "checking": "Checking for the latest version…",
+      "error_check": "The check failed: no network, or no version published yet.",
+      "error_install": "Installing {version} failed; the controller keeps {installed}.",
+      "available": "{version} available (installed: {installed}).",
+      "up_to_date": "Up to date: {installed} is the latest version.",
+      "not_checked_every": "Not checked yet: the controller checks every {every}.",
+      "not_checked": "Not checked yet.",
+      "confirm_install": "Install {version}? The controller downloads it, installs it and restarts (about 1 min); the pump then resumes its plan. During a forced speed or a fill, it waits for them to end.",
+      "install_requested": "Install requested",
+      "updated": "Firmware updated: {version}",
+      "auto": "Install automatically",
+      "auto_sub": "A version found by the periodic check installs by itself, after a forced speed or a running fill. One found with “Check” waits for “Install”.",
+      "interval": "Check for updates",
+      "interval_sub": "The controller asks GitHub for the latest published version."
+    },
+    "log": {
+      "heading": "Log",
+      "title": "Controller messages",
+      "level": "Level",
+      "all": "All",
+      "warn": "Warnings",
+      "error": "Errors",
+      "pause": "Pause",
+      "resume": "Resume",
+      "clear": "Clear",
+      "none": "No line yet. The controller only sends the messages logged while the page is open (level INFO and above).",
+      "count": {
+        "one": "{count} line",
+        "other": "{count} lines"
+      }
+    }
+  },
+  "login": {
+    "sub": "Pool controller",
+    "title": "Log in",
+    "password": "This page's password",
+    "button": "Log in",
+    "hint": "The one chosen at setup. This browser then stays logged in; after 6 h without use, the page asks again.",
+    "wrong": "Wrong password.",
+    "no_answer": "The controller doesn't answer: try again in a moment.",
+    "locked": "Too many attempts: try again in {wait}."
+  },
+  "setup": {
+    "save": "Save",
+    "set": "set",
+    "unset": "not set",
+    "step": {
+      "page_password": {
+        "name": "Password",
+        "title": "This page's password"
+      },
+      "wifi": {
+        "name": "Wi-Fi",
+        "title": "Wi-Fi"
+      },
+      "position": {
+        "name": "Position",
+        "title": "Position and time zone"
+      },
+      "probes": {
+        "name": "Probes",
+        "title": "Temperature probes"
+      },
+      "api_key": {
+        "name": "Home Assistant",
+        "title": "Home Assistant"
+      }
+    },
+    "need": {
+      "page_password": "a password for this page",
+      "wifi": "the Wi-Fi network",
+      "position": "its position and time zone",
+      "probes": "its probes' roles",
+      "api_key": "the link with Home Assistant"
+    },
+    "waiting": {
+      "position": "the position",
+      "timezone": "the time zone",
+      "clock": "the time",
+      "pool_probe": "the pool probe",
+      "pool_temperature": "a reading from the pool probe",
+      "sun": "sunrise and sunset"
+    },
+    "pw": {
+      "new": "New password",
+      "confirm": "Confirm",
+      "min": "8 characters at least.",
+      "others_relog": "Other devices will have to log in again with it; this one does so by itself.",
+      "short": "Password: 8 characters at least.",
+      "long": "Password: 64 characters at most.",
+      "differ": "The two entries differ.",
+      "not_confirmed": "The controller didn't confirm the password.",
+      "page_changed": "Page password changed: the other devices will have to log in again.",
+      "ota_changed": "OTA password changed."
+    },
+    "pos": {
+      "lat": "Latitude (°)",
+      "lon": "Longitude (°)",
+      "rounded": "Rounded to 0.01° (about 1 km): enough for the sun, without locating the house. North and east are positive. On a map, a long press on the pool gives its coordinates.",
+      "other_posix": "Other: POSIX string…",
+      "posix": "POSIX string",
+      "iana": "Name (IANA, shown)",
+      "browser_unlisted": "This browser is on {zone}, not in the list: pick a zone with the same time, or type its POSIX string (the “TZ” column of the time zone database).",
+      "name_display": "The name is only for display; the controller applies the POSIX string.",
+      "posix_invalid": "Invalid POSIX string.",
+      "iana_invalid": "Invalid IANA name (Zone/City).",
+      "preset": "Preset from this browser.",
+      "keeps_both": "The controller keeps both: {zone}, which it shows, and the POSIX string it applies, {posix}.",
+      "sun_intro": "With the latitude and the longitude, the controller computes sunrise and sunset, from which it places the filtration.",
+      "polar_day": "With these values, today: polar day. Check the latitude's sign.",
+      "polar_night": "With these values, today: polar night. Check the latitude's sign.",
+      "sun": "With these values, today: sunrise {rise}, sunset {set}. If they are far from yours, check the signs and the time zone.",
+      "bad_degrees": "Latitude between -90 and 90, longitude between -180 and 180, in decimal degrees.",
+      "bad_posix": "Time zone: invalid POSIX string.",
+      "bad_name": "Time zone name: Zone/City, like Asia/Kolkata.",
+      "tz_refused": "The controller refused this time zone: its POSIX string doesn't pass its parser.",
+      "not_confirmed": "The controller didn't confirm the position.",
+      "from_ha": "Or from Home Assistant: Pool card › Controller settings › Position.",
+      "same": "Nothing changed",
+      "saved": "Position saved: today's plan recomputed"
+    },
+    "probes": {
+      "scanning": "Looking for probes on the 1-Wire bus…",
+      "role_of": "Role of probe {address}",
+      "unused": "Not used",
+      "none": "No probe answered on the 1-Wire bus. Check the wiring, then run the detection again.",
+      "hint": "To tell them apart, hold one in your hand: within a minute it gains a few degrees. {pool} (on the filter's return) is required, the plan and freeze protection depend on it; the other two are optional.",
+      "rescan": "Run the detection again",
+      "no_answer": "no answer",
+      "trend_up": "↗ warming up",
+      "trend_down": "↘ cooling down",
+      "moved": "{role}: probe {probe}; {previous} no longer has a role",
+      "found": {
+        "one": "{count} probe found",
+        "other": "{count} probes found"
+      },
+      "found_none": "No probe found"
+    },
+    "fill": {
+      "heading": "Water meter",
+      "optional": "optional",
+      "status": {
+        "off": {
+          "tag": "Turned off",
+          "sub": "Nothing is counted."
+        },
+        "untested": {
+          "tag": "Not tested",
+          "sub": "“Test”, then open the fill tap: it needs {litres} L in {minutes} min."
+        },
+        "listening": {
+          "tag": "Listening",
+          "sub": "Open the fill tap: {litres} L in {minutes} min is enough."
+        },
+        "detected": {
+          "tag": "Detected",
+          "sub": "It counts: a fill was seen."
+        },
+        "not_detected": {
+          "tag": "Not detected",
+          "sub": "Less than {litres} L in {minutes} min: check the wiring, then run the test again."
+        }
+      },
+      "pulse": {
+        "never": "never",
+        "today": "today at {time}",
+        "yesterday": "yesterday at {time}",
+        "date": "on {date} at {time}"
+      },
+      "on_toast": "Water meter on",
+      "off_toast": "Water meter off: nothing is counted",
+      "listening_toast": "Listening: open the fill tap ({litres} L in {minutes} min)",
+      "detect": "Detect the meter",
+      "listening": "Listening…",
+      "test": "Test",
+      "switch_aria": "Water meter on the fill line",
+      "switch": "Meter on the fill line",
+      "on_sub": "It counts the water added (Control › Filling) and raises an alarm if a fill runs too long.",
+      "off_sub": "Nothing is counted: no Filling, no alarm. For a pool without a meter on its fill line.",
+      "last_pulse": "Last pulse",
+      "last_pulse_sub": "The last litre counted",
+      "alarm": "Alarm after",
+      "alarm_sub": "A longer fill sets off the alarm: here, and Home Assistant reminds every 15 min until “Acknowledge”. 0 = never.",
+      "alarm_aria": "Alarm after, in minutes",
+      "alarm_bad": "Alarm after: a number of minutes, from {min} to {max}",
+      "alarm_set": "Alarm after {min} min of filling",
+      "alarm_none": "No more fill alarm",
+      "wz_none": "No water meter",
+      "wz_none_sub": "Nothing is counted. To add one: Controller settings › Water meter.",
+      "wz_detected": "Meter detected",
+      "wz_detected_sub": "It counts: Filling and its alarm are in place.",
+      "wz_not_detected": "Meter not detected",
+      "wz_intro": "A pulse meter on the fill line (1 L per pulse): the controller counts the water added, and raises an alarm if a fill runs too long.",
+      "retest": "Test again",
+      "have": "I have a meter",
+      "have_not": "No meter"
+    },
+    "ha": {
+      "title": "Encryption key",
+      "step1": "In Home Assistant: <b>Settings › Devices & services</b>. The controller shows up by itself, “Discovered”: ESPHome, Pool Controller (otherwise: “Add integration” › ESPHome › pool-controller.local).",
+      "step2": "<b>Add</b>, then confirm. Home Assistant generates the key and sends it to the controller: nothing to copy, nothing to keep.",
+      "waiting": "Waiting for Home Assistant",
+      "waiting_sub": "This page updates as soon as the key is set.",
+      "open_note": "As long as no key is set, any device on the network can talk to the controller: add it now.",
+      "no_ha": "I don't use Home Assistant",
+      "paste": "Paste an existing key",
+      "key_label": "Encryption key (base64, 44 characters)",
+      "paste_hint": "For a controller Home Assistant already knows (a migration: the api_encryption_key value of the old secrets.yaml): it reconnects with it, changing nothing. Until then, don't confirm “encryption removed” in Home Assistant.",
+      "save_key": "Save on the controller",
+      "key_invalid": "Invalid key: 32 bytes in base64, that is 44 characters ending in “=”.",
+      "key_refused": "The controller refused this key.",
+      "key_saved": "Key saved: Home Assistant reconnects with it.",
+      "key_gen_failed": "The controller couldn't give itself a key.",
+      "key_generated": "Without Home Assistant: random key set",
+      "forget_failed": "The controller didn't forget its key.",
+      "forgotten": "Key forgotten: add the controller in Home Assistant",
+      "key_row": "Encryption key (API)",
+      "key_unset_sub": "Home Assistant sets it when it adds the controller.",
+      "state_waiting": "waiting",
+      "state_waiting_sub": "Add the controller in Home Assistant: it sets the key itself.",
+      "by_paste": "Pasted on this page (migration). Never shown again.",
+      "by_generated": "Random, drawn by the controller: nobody knows it, nobody needs it.",
+      "by_ha": "By Home Assistant, when it added the controller. Shown nowhere, neither here nor in Home Assistant.",
+      "by_unknown": "The controller never shows it, here or anywhere else.",
+      "state_linked": "connected",
+      "state_linked_sub": "It talks with the controller, encrypted with this key.",
+      "state_unused": "not used",
+      "state_unused_sub": "The controller works on its own: plan, freeze protection and updates.",
+      "state_unlinked": "not connected",
+      "state_unlinked_sub": "Without Home Assistant, that's normal: the controller works on its own. To add it there, it must first forget its key.",
+      "forget_hint": "The controller forgets its key and waits for Home Assistant, which will set one when adding it (Settings › Devices & services). Until then, any device on the network can talk to it: do it right away.",
+      "forget": "Forget the key",
+      "add": "Add to Home Assistant",
+      "key_set": "set",
+      "key_unset": "not set"
+    },
+    "acc": {
+      "heading": "Access",
+      "title": "Passwords",
+      "change": "Change",
+      "page": "Page password",
+      "page_sub": "This page asks for it to open, then each browser stays logged in until 6 h without use. It also protects the hotspot, which stays open.",
+      "ota": "OTA password",
+      "ota_sub": "To send a firmware from a computer (make ota). Drawn at random at first start until you choose one; updates from this page and Home Assistant don't need it.",
+      "write_only": "Write-only: the controller never shows them, it only says whether they are set.",
+      "sessions": "Sessions",
+      "logout_hint": "“Log out”: this page will ask for the password again here.",
+      "logout_all_hint": "“Log out all devices”: each will have to give it again, this one included. For a lost, or lent, phone.",
+      "logout": "Log out",
+      "logout_all": "Log out all devices"
+    },
+    "reset": {
+      "heading": "Reset",
+      "title": "Factory settings",
+      "row": "Reset the controller",
+      "row_sub": "Erases the access, the Wi-Fi and the key; keeps the probes, the position and the time zone, so the plan and freeze protection.",
+      "ask": "Reset…",
+      "aria": "Confirm the reset",
+      "confirm": "Erase the access and restart?",
+      "wiped": "Erased:",
+      "wiped_pw": "the page and OTA passwords;",
+      "wiped_wifi": "the saved Wi-Fi network;",
+      "wiped_key": "the encryption key: Home Assistant loses the link.",
+      "kept": "Kept:",
+      "kept_probes": "the probes' roles, the position and the time zone: the filtration plan and freeze protection carry on;",
+      "kept_settings": "the settings (filtration, freeze protection, water meter, updates) and the history kept here (last 7 days, filling);",
+      "kept_fw": "the firmware.",
+      "kept_fw_v": "the firmware ({version}).",
+      "after": "The controller restarts on its hotspot “{ssid}”, open: connect a phone to it and open http://192.168.4.1. The setup only asks again for what was erased: a password, the Wi-Fi, then Home Assistant.",
+      "yes": "Erase and restart",
+      "toast": "Reset: the controller erases its access and restarts…"
+    },
+    "wz1": {
+      "after_reset": "This controller was reset. It kept its probes' roles, its position and its time zone: the filtration plan and freeze protection carry on. It needs {needs} again.",
+      "new": "This controller is fresh from the factory: nothing is set yet. Five steps, a few minutes, and everything stays on the controller.",
+      "hotspot": "Its hotspot “{ssid}” is open, with no Wi-Fi password: this page's password is what protects the controller. Choose it first; until there is one, anyone who joins the hotspot can open this page.",
+      "hint": "8 characters at least. This page will ask for it to open, and the controller will never show it again: keep it in your password manager.",
+      "set": "Password set. Leave empty to keep it.",
+      "choose": "Choose a password for this page."
+    },
+    "wz2": {
+      "hotspot_off": "The controller turned its hotspot off: this page no longer reaches it here.",
+      "hotspot_will_stop": "Once connected, the controller turns its hotspot off: this page no longer reaches it here.",
+      "reconnect": "Reconnect this phone to the Wi-Fi “{ssid}”.",
+      "open": "Open {url}",
+      "or": "or",
+      "resume": "The page asks for the password of step 1. Then it reads Setup State and resumes at the first missing step: {step}.",
+      "none": "none",
+      "signal": "Signal {dbm} dBm",
+      "change_later": "To change network later: Controller settings › Wi-Fi.",
+      "connecting_sub": "Up to 30 s; if it fails, the hotspot stays.",
+      "hotspot_sub": "This phone is connected to the controller itself. Open hotspot: this page, for its part, has its password.",
+      "intro": "Choose the home network: the controller connects to it, then turns its hotspot off. It needs one: the time comes to it from the Internet, and Home Assistant goes through it.",
+      "lose_link": "This page then loses the link; reopened on the home network, it resumes where it was (Setup State keeps {item} until then)."
+    },
+    "wz3": {
+      "intro": "The controller places the filtration from sunrise and the afternoon's heat: it needs the pool's position and the local time."
+    },
+    "wz4": {
+      "found": {
+        "one": "{count} probe found on the bus. Give each one a role:",
+        "other": "{count} probes found on the bus. Give each one a role:"
+      },
+      "need_pool": "Give at least the pool probe.",
+      "not_confirmed": "The controller didn't confirm the pool probe."
+    },
+    "wz5": {
+      "intro": "Home Assistant talks to the controller encrypted. It creates the key itself: add the controller there, it generates the key and sends it over.",
+      "not_home": "The controller isn't on the home network yet (step 2): Home Assistant can't reach it.",
+      "after_reset": "Home Assistant knew this controller with the old key: it reports “encryption removed” on the device. Confirm: it sets a new one by itself.",
+      "otherwise": "Otherwise:",
+      "key_set": "Key set",
+      "pasted": "Pasted from the old secrets.yaml: Home Assistant reconnects with it.",
+      "without_ha": "Without Home Assistant",
+      "generated": "The controller gave itself a random key that nobody sees. To add it later: Controller settings › Home Assistant.",
+      "by_ha": "Key set by Home Assistant",
+      "by_ha_sub": "It is connected, encrypted. The key is shown nowhere.",
+      "unlinked": "The controller has its key. Home Assistant isn't connected for now: Controller settings › Home Assistant."
+    },
+    "done": {
+      "waits": "Today's plan is waiting for {what}.",
+      "plan2": "Today's plan is computed: {hours} h, {block1} and {block2}.",
+      "plan1": "Today's plan is computed: {hours} h, {block1}.",
+      "plan": "Today's plan is computed.",
+      "role_none": "{role} none",
+      "page_sub": "This page asks for it to open",
+      "key_set": "key set",
+      "ha_linked": "Connected, encrypted.",
+      "ha_generated": "Random key; Controller settings › Home Assistant to add it.",
+      "ha_where": "Controller settings › Home Assistant."
+    },
+    "nav": {
+      "open": "Open the page",
+      "back": "Back",
+      "finish": "Finish",
+      "next": "Continue",
+      "later": "Finish later",
+      "step": "Step {n}: {name}",
+      "step_done": "Step {n}: {name}, done",
+      "configured_title": "Controller set up",
+      "after_reset": "After a reset",
+      "first_install": "First setup",
+      "step_of": "step {n} of 5",
+      "todo": {
+        "one": "{count} to do",
+        "other": "{count} to do"
+      },
+      "only_this": "only this one left",
+      "reinstall_done": "Reinstall finished",
+      "install_done": "First setup finished",
+      "not_configured": "Not set up",
+      "configured": "Set up",
+      "configured_toast": "Controller set up"
+    },
+    "banner": "The controller isn't set up yet: it needs {needs}.",
+    "banner_btn": "Resume"
+  }
+}
