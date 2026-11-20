@@ -41,13 +41,15 @@ jobs:
         run: make webui-test
 
       # The interface's texts (docs/plans/i18n.md): every dictionary complete in English, French and
-      # Spanish, consistent with the others (placeholders, plurals, markup) and with the code using it.
+      # Spanish, consistent with the others (placeholders, plurals, markup) and with the code using it,
+      # and the Home Assistant files generated from them up to date (make ha-files).
       - name: make i18n-check
         run: make i18n-check
 
-      # The Home Assistant dashboard components (home-assistant/dashboard/) name the firmware's entities
-      # the way a fresh install does: fail when one no longer exists, or when the pool card there misses
-      # an entity the card has gained, so the dashboard can't silently fall behind the firmware.
+      # The Home Assistant dashboard components (home-assistant/dashboard/, each language's file) name the
+      # firmware's entities the way a fresh install does: fail when one no longer exists, or when the pool
+      # card there misses an entity the card has gained, so the dashboard can't silently fall behind the
+      # firmware. make i18n-check above already failed if a language's file is out of date.
       - name: make ha-dashboard-check
         run: make ha-dashboard-check
 

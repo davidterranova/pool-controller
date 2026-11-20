@@ -183,9 +183,11 @@ mock-webui:
 mock-ui-check:
 	$(MOCK) --check $(MOCK_ARGS) /config/$(CONFIG)
 
-# Checks home-assistant/dashboard/ (the dashboard components and the scripts piscine-card calls) against
-# $(CONFIG): every controller entity id it names must exist, as a fresh install names it, and its
-# piscine-card must map every entity the card uses. Python in the ESPHome image, like the mock.
+# Checks home-assistant/dashboard/ (the dashboard components and the scripts piscine-card calls, each
+# language's file that make ha-files generates) and home-assistant/blueprints/ against $(CONFIG): every
+# controller entity id they name must exist, as a fresh install names it, the piscine-card must map every
+# entity the card uses, each language's scripts must have the ones its dashboard calls, and every template
+# must have a file in each language. Python in the ESPHome image, like the mock.
 ha-dashboard-check:
 	docker run --rm -v "$(CURDIR):/config" --entrypoint python3 $(ESPHOME_IMAGE) /config/tools/ha-dashboard-check.py /config/$(CONFIG) /config/home-assistant/dashboard
 
