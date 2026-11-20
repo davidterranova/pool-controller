@@ -26,7 +26,7 @@ export const SURFACES = [
   {
     id: "yaml", title: "Home Assistant dashboard, scripts and blueprints",
     dir: "home-assistant/i18n-yaml", sources: ["home-assistant/dashboard/*.tmpl.yaml", "home-assistant/blueprints/*.tmpl.yaml"],
-    usage: "template", reads: [], strict: false,
+    usage: "template", reads: [], strict: true,
   },
 ];
 
@@ -36,4 +36,7 @@ export const SAME_AS_ENGLISH = [
   "card:common.mode.auto",
   "install:firmware.chip", // « Firmware {version} »: the word is the same in French and Spanish
   "install:wiring.pin", // « Pin »: the Spanish word too (French: « Broche »)
+  "yaml:dashboard.fill.per_day.volume", // fr « Volume »
+  "yaml:blueprint.fill_too_long.notifications.name", // fr « Notifications »
+  "yaml:blueprint.fill_too_long.message.name", // fr « Message »
 ];

@@ -5,7 +5,7 @@
   `make card-preview-check` drive it headless (shoot.mjs).
 
   ?s=<scenario>&w=<panel width>&theme=light|dark&tab=pump|settings|controller, and &shot for the bare tile and
-  panel the screenshots take. Entity ids are a fresh install's: the dashboard's map (dashboard.yaml, &pool), then the
+  panel the screenshots take. Entity ids are a fresh install's: the dashboard's map (dashboard.tmpl.yaml, &pool, the same in every language), then the
   card's own defaults for what that map leaves out.
 -->
 <html lang="fr">
@@ -101,9 +101,9 @@ const $ = (id) => document.getElementById(id);
 let done, home = location.href;
 window.preview = { scenarios: SCENARIOS.map(({ id, name, tab }) => ({ id, name, tab: tab || "pump" })), errors: [] };
 
-/** The dashboard's entity map (dashboard.yaml, `entities: &pool`): a fresh install's ids, as `make ha-dashboard-check` keeps them. */
+/** The dashboard's entity map (dashboard.tmpl.yaml, `entities: &pool`, the same in every language): a fresh install's ids, as `make ha-dashboard-check` keeps them. */
 async function poolEntities() {
-  const text = await (await fetch("../../home-assistant/dashboard/dashboard.yaml")).text();
+  const text = await (await fetch("../../home-assistant/dashboard/dashboard.tmpl.yaml")).text();
   const lines = text.slice(text.indexOf("entities: &pool")).split("\n").slice(1), out = {};
   const indent = /^\s*/.exec(lines[0])[0].length;
   for (const l of lines) {

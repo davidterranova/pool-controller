@@ -1141,9 +1141,12 @@ class PiscineCard extends HTMLElement {
     return { version: m[1], built };
   }
   /**
-   * Update Status, the firmware's updates and their gate (WP6): « non vérifié », « vérification », « à jour »,
-   * « disponible », « en attente (mode manuel) », « en attente (remplissage) », « installation », « erreur
-   * (vérification) », « erreur (installation) » (English forms too: « deferred: manual override », « failed: … »)
+   * Update Status, the firmware's updates and their gate (WP6): from 1.11.0 a code (updates.h: `unchecked`,
+   * `checking`, `up_to_date`, `available`, `installing`, `pending:override`, `pending:fill`, `error:check`,
+   * `error:install`); before, French words (« non vérifié », « vérification », « à jour », « disponible », « en attente
+   * (mode manuel) », « en attente (remplissage) », « installation », « erreur (vérification) », « erreur
+   * (installation) »). Both read the same: `head:rest` and `head (rest)` split alike.
+   * TEMPORARY (i18n I1): I3 replaces this with LEGACY_STATUS and t("status.update.<code>").
    * -> {kind, why}: kind is deferred, failed, installing, checking or "" (nothing to add to the update entity);
    * why, in the card's words. Also for the device's page.
    */
@@ -1211,6 +1214,9 @@ class PiscineCard extends HTMLElement {
     const btns = (m.canCheck ? `<button class="btn tonal" data-act="check"${idle && !m.checking ? "" : " disabled"}>Vérifier</button>` : "")
       + (m.avail ? `<button class="btn" data-act="install"${idle && !deferred && !m.ask ? "" : " disabled"}>${deferred ? "En attente" : "Installer"}</button>` : "");
     const auto = m.auto, iv = m.interval, opts = (iv && iv.attributes.options) || [];
+    // TEMPORARY (i18n I1): from 1.11.0 the interval's options are codes, shown here in the card's French until I3's
+    // t(); an older firmware's French options show as they are. The option's value is what the select sends.
+    const ivLabel = (o) => ({ on_request: "À la demande", "6h": "6 h", "24h": "24 h", "7d": "7 j" })[o] || o;
     return row("tag-outline", "Version installée", m.esphome ? esc(`ESPHome ${m.esphome.version}${m.esphome.built ? ` · ${m.esphome.built.charAt(0).toLowerCase()}${m.esphome.built.slice(1)}` : ""}`) : "", val(m.installed), "", !m.off)
       + (m.latest ? row("cloud-sync-outline", "Dernière version", (m.avail ? "Mise à jour disponible" : "À jour")
         + (/^https?:\/\//.test(m.notes || "") ? ` · <a href="${esc(m.notes)}" target="_blank" rel="noopener">Notes de version</a>` : ""), val(m.latest, m.avail ? " acc" : ""), m.avail ? "fw-up" : "fw-ok", true) : "")
@@ -1224,9 +1230,9 @@ class PiscineCard extends HTMLElement {
         + (m.canCancel ? `<div class="acts"><button class="btn tonal" data-act="cancel"${m.online ? "" : " disabled"}>Annuler la demande</button></div>` : "") + "</div>" : "")
       + (auto ? row("autorenew", "Mise à jour automatique", "Installe seule une nouvelle version trouvée par une vérification programmée ; « Vérifier » ne fait que chercher. Comme toute installation, elle attend la fin d'un override manuel ou d'un remplissage.",
         `<input type="checkbox" class="tgl" data-act="auto" aria-label="Mise à jour automatique"${auto.state === "on" ? " checked" : ""}${isSet(auto.state) ? "" : " disabled"}>`) : "")
-      + (iv ? row("timer-outline", "Fréquence de vérification", /demande/i.test(iv.state) ? "Seulement sur « Vérifier » : rien ne s'installe seul" : isSet(iv.state) ? "La mise à jour automatique installe ce qu'elle trouve" : "",
+      + (iv ? row("timer-outline", "Fréquence de vérification", /^on_request$|demande/i.test(iv.state) ?"Seulement sur « Vérifier » : rien ne s'installe seul" : isSet(iv.state) ? "La mise à jour automatique installe ce qu'elle trouve" : "",
         `<select class="esel" data-act="interval" aria-label="Fréquence de vérification"${isSet(iv.state) ? "" : " disabled"}>${opts.includes(iv.state) ? "" : "<option selected></option>"}`
-        + opts.map((o) => `<option${o === iv.state ? " selected" : ""}>${esc(o)}</option>`).join("") + "</select>") : "");
+        + opts.map((o) => `<option value="${esc(o)}"${o === iv.state ? " selected" : ""}>${esc(ivLabel(o))}</option>`).join("") + "</select>") : "");
   }
   /** Draws « Réglages contrôleur » › Firmware when the update entity exists; says how a « Vérifier » ended. */
   _renderUpdate() {
