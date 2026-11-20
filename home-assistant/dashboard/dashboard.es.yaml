@@ -107,9 +107,9 @@ views:
             grid_options: {columns: full}
             entities:
               - entity: sensor.pool_controller_pool_return_temperature
-                name: "Retorno del filtro (a la piscina mientras funciona la bomba)"
+                name: "Retorno del filtro (la piscina mientras la bomba funciona)"
               - entity: sensor.pool_controller_equipment_pad_temperature
-                name: "Cuarto de equipos"
+                name: "Cuarto técnico"
               - entity: sensor.pool_controller_outdoor_temperature
                 name: "Exterior"
           - type: statistics-graph
@@ -123,7 +123,7 @@ views:
               - entity: sensor.pool_controller_pool_return_temperature
                 name: "Retorno del filtro"
               - entity: sensor.pool_controller_equipment_pad_temperature
-                name: "Cuarto de equipos"
+                name: "Cuarto técnico"
               - entity: sensor.pool_controller_outdoor_temperature
                 name: "Exterior"
 
@@ -213,7 +213,7 @@ views:
                 entity: binary_sensor.pool_controller_fill_running_too_long
                 state: "on"
             grid_options: {columns: full}
-            content: "## ⚠️ Llenado con una duración inusualmente larga\n{% set on = states.binary_sensor.pool_controller_fill_running_too_long.last_changed %} El llenado lleva más de **{{ states('number.pool_controller_fill_alarm_after') | int(0) }} min** en curso (alarma a las {{ as_local(on).strftime('%H:%M') }}). Revise el suministro de agua, la válvula de flotador o posibles fugas. {% if is_state('binary_sensor.pool_controller_fill_alarm_acknowledged', 'on') %} Alarma **confirmada**: no habrá más recordatorios hasta que termine este llenado. {% else %} Los recordatorios continúan hasta que alguien la confirme. {% endif %}"
+            content: "## ⚠️ Llenado inusualmente largo\n{% set on = states.binary_sensor.pool_controller_fill_running_too_long.last_changed %} El llenado lleva más de **{{ states('number.pool_controller_fill_alarm_after') | int(0) }} min** en curso (alarma a las {{ as_local(on).strftime('%H:%M') }}). Revisa el suministro de agua, la válvula de flotador o posibles fugas. {% if is_state('binary_sensor.pool_controller_fill_alarm_acknowledged', 'on') %} Alarma **confirmada**: no habrá más recordatorios hasta que termine este llenado. {% else %} Los recordatorios continúan hasta que alguien la confirme. {% endif %}"
           - type: button
             visibility:
               - condition: state
@@ -238,7 +238,7 @@ views:
                 entity: binary_sensor.pool_controller_manual_override_active
                 state: "on"
             grid_options: {columns: full}
-            content: "## ⚠️ Filtración en pausa\n**Manual Override** está en **{{ states('select.pool_controller_manual_override') }}** desde hace más de 30 min, sin límite de tiempo: la bomba ya no sigue su plan. Volver a **Auto**, o dar una duración al forzado (el controlador volverá entonces a Auto por sí solo)."
+            content: "## ⚠️ Filtración en pausa\n**Manual Override** está en **{{ states('select.pool_controller_manual_override') }}** desde hace más de 30 min, sin límite de tiempo: la bomba ya no sigue su plan. Vuelve a ponerlo en **Auto**, o da una duración al forzado (el controlador volverá entonces a Auto por sí solo)."
           - type: markdown
             visibility:
               - condition: state
@@ -300,7 +300,7 @@ views:
               - entity: sensor.pool_controller_pool_return_temperature
                 name: "Sonda de retorno del filtro"
               - entity: sensor.pool_controller_equipment_pad_temperature
-                name: "Cuarto de equipos"
+                name: "Cuarto técnico"
               - entity: sensor.pool_controller_outdoor_temperature
                 name: "Exterior"
               - entity: button.pool_controller_update_temperature_sensors_now

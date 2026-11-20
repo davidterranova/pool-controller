@@ -19,15 +19,15 @@
     "notes": "Notas de la versión",
     "none": {
       "title": "Aún no se ha publicado ningún firmware",
-      "next": "La primera llegará con la próxima versión del proyecto; esta página la ofrecerá automáticamente.",
+      "next": "El primero llegará con la próxima versión del proyecto; esta página lo ofrecerá entonces sola.",
       "build": "Mientras tanto, puedes compilarlo tú mismo desde el repositorio: {make_build} y luego {make_flash} (consulta el README).",
-      "follow": "Sigue las novedades"
+      "follow": "Seguir las versiones"
     },
     "error": {
       "title": "No se puede leer el firmware",
       "body": "{manifest} no responde. Comprueba la conexión y vuelve a intentarlo."
     },
-    "retry": "Inténtalo de nuevo"
+    "retry": "Reintentar"
   },
   "tool": {
     "error": {
@@ -75,12 +75,12 @@
   },
   "dialog": {
     "title": "En la ventana de instalación",
-    "note": "El propio de ESP Web Tools, en inglés",
+    "note": "La de ESP Web Tools, en inglés",
     "port": "Elige el puerto de la placa (a menudo «CP2102», «CH340» o «USB a UART») y luego {connect}.",
     "port_note": "¿No hay nada en la lista? Un cable solo de carga o falta el controlador USB de la placa (CP210x o CH34x). Desconecta, vuelve a conectar e inténtalo de nuevo.",
     "install": "{install_pool_controller}; luego, {install}.",
     "install_note": "La ventana advierte que se borrará todo: es intencionado, cada instalación empieza con una placa vacía.",
-    "wait": "La instalación en sí: unos dos minutos. Mantén la página abierta, no desconectes.",
+    "wait": "La instalación en sí: unos dos minutos. Mantén la página en primer plano y no desconectes la placa.",
     "wifi": "{configure_wifi}: la red doméstica y su contraseña; luego, {connect}.",
     "wifi_note": "Se transmiten por el cable USB (Improv); el controlador los conserva solo una vez conectado. {skip}: en su lugar, abre su propio punto de acceso (consulta {after_link}).",
     "visit": "{visit_device} abre la página del controlador: el resto se hace allí.",
@@ -103,11 +103,11 @@
     },
     "probes": {
       "name": "Sondas DS18B20",
-      "note": "Al menos uno, en la línea de retorno a la piscina; dos más para la zona de equipos y el exterior. Una resistencia de 4,7 kΩ entre la línea de datos y 3,3 V. Sondas originales: una falsificada puede bloquear todo el bus."
+      "note": "Al menos una, en la tubería de retorno a la piscina; dos más para el cuarto técnico y el exterior. Una resistencia de 4,7 kΩ entre la línea de datos y 3,3 V. Sondas originales: una falsificada puede bloquear todo el bus."
     },
     "meter": {
-      "name": "Un medidor de agua por pulsos",
-      "note": "En la entrada de llenado, contacto seco, 1 pulso por litro: el controlador cuenta el agua añadida."
+      "name": "Un contador de agua de impulsos",
+      "note": "En la entrada de llenado, contacto seco, 1 impulso por litro: el controlador cuenta el agua añadida."
     },
     "power": {
       "name": "Una fuente de alimentación de 5 V",
@@ -115,7 +115,7 @@
     },
     "cable": {
       "name": "Un cable USB de datos",
-      "note": "No es un cable solo de carga: con uno así, la placa no aparece en la lista de puertos."
+      "note": "No uno solo de carga: con él, la placa no aparece en la lista de puertos."
     },
     "computer": {
       "name": "Un ordenador con Chrome o Edge",
@@ -131,7 +131,7 @@
     "relay3": "Relé 3 → DI3, velocidad 3 (rápida)",
     "relay4": "Relé 4 → DI4, encendido/apagado",
     "probes": "Sondas DS18B20 (bus 1-Wire), 4,7 kΩ a 3,3 V",
-    "meter": "Medidor de agua; su otro cable a GND",
+    "meter": "Contador de agua; su otro cable a GND",
     "note": "Relés en COM/NO: con la placa apagada, todos se abren y la bomba se detiene. ¿Otros pines? Están compilados: cámbialos en {yaml} y compila el firmware tú mismo. Los detalles: {hardware_link}."
   },
   "after": {
@@ -159,11 +159,11 @@
     "title": "Actualizaciones",
     "intro": "Un controlador instalado nunca vuelve aquí.",
     "auto": {
-      "name": "Automático",
-      "note": "Busca una nueva versión cada 24 h y la instala (ajustable: bajo solicitud, 6 h, 24 h, 7 d, en Ajustes del controlador › Firmware). Nunca durante una anulación o un llenado: espera hasta que terminen."
+      "name": "Automáticas",
+      "note": "Busca una nueva versión cada 24 h y la instala (ajustable: bajo demanda, 6 h, 24 h, 7 d, en Ajustes del controlador › Firmware). Nunca durante una velocidad forzada o un llenado: espera a que terminen."
     },
     "request": {
-      "name": "Bajo solicitud",
+      "name": "Bajo demanda",
       "note": "«Instalar» en su página (Ajustes del controlador › Firmware) o en Home Assistant (Ajustes › Actualizaciones)."
     },
     "kept": {
@@ -171,7 +171,7 @@
       "note": "Contraseña, Wi-Fi, ubicación, sondas, clave de Home Assistant: una actualización no cambia ninguno de ellos."
     },
     "secrets": {
-      "name": "¿Creado con secrets.yaml (v1.3.x)?",
+      "name": "¿Compilado con secrets.yaml (v1.3.x)?",
       "note": "Una vez, desde el repositorio: {make_migrate}. Conserva toda su configuración y su clave de Home Assistant, sin tener que pasar de nuevo por ningún asistente; después se actualiza como los demás."
     }
   },

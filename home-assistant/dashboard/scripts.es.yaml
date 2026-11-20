@@ -11,7 +11,7 @@
 
 piscine_forcer_vitesse:
   alias: "Piscina — forzar una velocidad"
-  description: "Fuerza la bomba de la piscina a una velocidad mediante el select Manual Override del controlador. El controlador termina el forzado por sí solo tras Manual Override Timeout minutos (0 = nunca); pasar `duree` para ajustar antes ese tiempo."
+  description: "Fuerza la bomba de la piscina a una velocidad mediante el select Manual Override del controlador. El controlador termina el forzado por sí solo tras Manual Override Timeout minutos (0 = nunca); pasa `duree` para ajustar antes ese tiempo."
   icon: mdi:pump
   mode: queued
   max: 3
