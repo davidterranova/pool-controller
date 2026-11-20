@@ -21,7 +21,7 @@ export const SURFACES = [
   },
   {
     id: "install", title: "The install page",
-    dir: "docs/install/i18n", sources: ["docs/install/*.js", "docs/install/index.html"], usage: "code", reads: [], strict: false,
+    dir: "docs/install/i18n", sources: ["docs/install/*.js", "docs/install/index.html"], usage: "code", reads: [], strict: true,
   },
   {
     id: "yaml", title: "Home Assistant dashboard, scripts and blueprints",
