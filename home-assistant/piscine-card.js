@@ -30,7 +30,7 @@
  * loaded when the panel is shown and every 15 min, extended live from state changes), the running one up
  * to the controller's deadline (24 h without one).
  *
- * Pool temperature (« Température du bassin », right under the day plan, above Pilotage; mock-up approved
+ * Pool temperature (« Température du bassin », under the day plan and Pilotage; mock-up approved
  * 2026-11-17). The probe is on the return pipe: it reads the pool only while water flows, and with the pump
  * stopped it drifts toward the equipment pad's air (warmer than the water in winter). So the card draws what
  * the firmware trusts — readings after 10 min of pumping — apart from the rest:
@@ -65,7 +65,7 @@
  * turns it amber and pulsing, over the controller's health unless that is red: red > pulsing amber > amber > green. The
  * header and the tile then read « Remplissage depuis 1 h 12 », and the header's button leads to the banner below.
  *
- * Fill water (« Contrôle », after Pilotage, under its chart's « Eau de remplissage »; recorder only, so not in the
+ * Fill water (« Contrôle », after the readings, under its chart's « Eau de remplissage »; recorder only, so not in the
  * device page's panel; mock-up 2026-11-17). The water meter on the fill line (Piscine - Volume total remplissage,
  * total_increasing) as HA's statistics `change`: 30 j one bar a day, 90 j one a week (13 weeks from a Monday, HA's
  * weeks), 12 mois one a month, the period's total above. The running day/week/month adds what the meter counted
@@ -106,9 +106,9 @@
  * <ha-icon>.
  *
  * Layout: one column on a phone (Bubble bottom sheet). From 680 px of container width (the Bubble
- * adaptive-dialog on a screen, width_desktop 760px) the panel is two columns with the day plan and the
- * temperature across the full width under the header — layout « B » approved on the mock-up (« Screen »
- * view) on 2026-11-11. « Réglages » is then two columns too, cut after « Appliquer »: Plan du jour, Sondes and
+ * adaptive-dialog on a screen, width_desktop 760px) « Contrôle » runs across the full width under the header:
+ * the day plan, Pilotage right under it, the temperature, then the readings in one row (layout « B », approved
+ * on the mock-up on 2026-11-11; Pilotage moved under the plan on 2026-11-20). « Réglages » is two columns, cut after « Appliquer »: Plan du jour, Sondes and
  * « Filtration » on the left, « Impulsions et hors gel » and 7 derniers jours on the right; « Réglages
  * contrôleur » is Position beside Firmware.
  */
@@ -416,8 +416,8 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 
 /* panel */
 .panel { display:flex; flex-direction:column; gap:18px; padding:4px 2px 8px; color:var(--fg); }
-/* The day plan sits right after the header in the DOM (it spans the wide layout); on a phone, CSS order
-   puts readings and alerts back in front of it, and the two .col wrappers are transparent. */
+/* The day plan, then Pilotage, sit right after the header in the DOM (the wide layout's reading order); on a
+   phone, CSS order puts readings and alerts back in front of them, and the .col wrapper is transparent. */
 .col { display:contents; }
 .sh-head { order:-2; }
 .readings, .alert { order:-1; }
@@ -480,7 +480,10 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .tl-leg { display:flex; gap:4px 12px; flex-wrap:wrap; font-size:11px; color:var(--muted); }
 .tl-leg i { display:inline-block; width:10px; height:10px; border-radius:3px; vertical-align:-1px; margin-right:4px; }
 
+/* Pilotage, right under the day plan: Auto / Manuel, the manual controls, then « Revenir en Auto » and a command's progress */
+.pilot { display:flex; flex-direction:column; gap:14px; }
 .power { display:flex; flex-direction:column; gap:10px; }
+.power:not(:has(:not([hidden]))) { display:none; }
 .pbtn { width:100%; min-height:56px; padding:9px 20px; border-radius:28px; border:0; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:10px;
   font-size:16px; font-weight:500; background:var(--acc); color:var(--on-acc); transition:filter .15s,transform .1s; }
 /* The label carries the deadline (« sinon à 19:04 »); in the 2-column dialog the button is ~340 px wide,
@@ -582,7 +585,7 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .panel[data-tab="controller"] > :not(.sh-head):not(.tabs):not(.ctlpane):not(.toast) { display:none !important; }
 .panel:not([data-tab="settings"]) > .setpane, .panel:not([data-tab="controller"]) > .ctlpane { display:none; }
 .water { display:flex; flex-direction:column; gap:6px; }
-/* « Contrôle »: the fill water after Pilotage, a rule above it; its chart's « Eau de remplissage » is its label */
+/* « Contrôle »: the fill water after the readings, a rule above it; its chart's « Eau de remplissage » is its label */
 .panel > .water { border-top:1px solid var(--line); padding-top:16px; }
 .water .readings { margin-bottom:12px; grid-template-columns:repeat(3,minmax(0,1fr)); }
 /* three narrow tiles on a phone: a label that wraps (« Rempli aujourd'hui ») must not push its value below the others'.
@@ -693,21 +696,21 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
   .erow .ctl { flex:1 1 100%; margin-left:54px; min-width:0; }
 }
 
-/* Wide panel (Bubble popup_mode: adaptive-dialog on a screen, width_desktop 760px): day plan and pool
-   temperature across the full width under the header (24 h on ~700 px), then readings/alerts/Auto on the left,
-   Pilotage and the manual controls on the right. Phones never reach 680 px. */
+/* Wide panel (Bubble popup_mode: adaptive-dialog on a screen, width_desktop 760px): everything across the full
+   width, in reading order: day plan, Pilotage (the manual controls side by side), pool temperature (24 h on
+   ~700 px), then the readings in one row of four and the alerts. Phones never reach 680 px. */
 @container (min-width: 680px) {
   .panel { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 28px; align-items:start; padding:6px 6px 4px; }
-  .sh-head, .tabs, .water, .setpane, .ctlpane, .foot, .plan, .temp { grid-column:1 / -1; }
+  .sh-head, .tabs, .water, .setpane, .ctlpane, .foot, .plan, .pilot, .temp, .col-state { grid-column:1 / -1; }
   .setpane, .ctlpane { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 28px; align-items:start; }
   .sp-col + .sp-col { align-self:stretch; border-left:1px solid var(--line); padding-left:14px; margin-left:-14px; }
   .water .chart { height:170px; }
-  .temp { padding-bottom:20px; border-bottom:1px solid var(--line); }
+  .pilot, .temp { padding-bottom:20px; border-bottom:1px solid var(--line); }
+  .manual { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px 20px; }
+  .col-state .readings { grid-template-columns:repeat(4,minmax(0,1fr)); }
   .temp .chart { height:150px; }
   .plan .tl { height:34px; }
   .col { display:flex; flex-direction:column; gap:16px; min-width:0; }
-  .col-state { align-self:stretch; border-right:1px solid var(--line); padding-right:14px; margin-right:-14px; }
-  .power:not(:has(:not([hidden]))) { display:none; }
 }
 /* Wide « Réglages »: the settings' second part opens the right column, under its own heading, and the first is
    « Filtration » alone. Named: these sit in columns that are containers themselves. */
@@ -720,7 +723,7 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; } }
 `;
 
-/** The fill water: in the panel's « Contrôle », after Pilotage, and alone as `variant: water`. */
+/** The fill water: in the panel's « Contrôle », after the readings, and alone as `variant: water`. */
 const WATER_PANE = `
     <div class="readings">
       <div class="reading"><span class="l">Rempli aujourd'hui</span><span class="v num" id="wToday"></span></div>
@@ -779,46 +782,7 @@ const PANEL_HTML = `
     <div class="tl-scale num"><span>0 h</span><span>6 h</span><span>12 h</span><span>18 h</span><span>24 h</span></div>
     <div class="tl-leg"><span><i style="background:var(--acc-soft)"></i>Low</span><span><i style="background:var(--acc);opacity:.45"></i>Impulsion Medium</span><span><i style="background:var(--acc);opacity:.8"></i>High</span><span id="legOvr" class="leg-ovr"></span></div>
   </div>
-  <div class="temp">
-    <div class="temp-h">
-      <p class="lbl">Température du bassin</p>
-      <div class="seg mini" role="radiogroup" aria-label="Période du graphique" id="tRange">
-        ${Object.entries(T_RANGES).map(([r, l]) => `<button role="radio" data-r="${r}">${l}</button>`).join("")}
-      </div>
-    </div>
-    <p class="temp-sum num" id="tSum"></p>
-    <div class="chart" id="tChart" tabindex="0" role="img" aria-label="Température du bassin"><svg id="tSvg" aria-hidden="true"></svg><div class="ttip" id="tTip" hidden></div><div class="empty" id="tEmpty" hidden></div></div>
-    <div class="tl-leg" id="tLeg"></div>
-  </div>
-  <div class="col col-state">
-  <div class="readings">
-    <div class="reading"><span class="l">Bassin</span><span class="v num" id="water"></span></div>
-    <div class="reading"><span class="l">Extérieur</span><span class="v num" id="outdoor"></span></div>
-    <div class="reading"><span class="l">Filtration aujourd'hui</span><span class="v num" id="hours"></span><span class="bar"><i id="hoursBar"></i></span></div>
-    <div class="reading"><span class="l">Prochain changement</span><span class="v num" id="next"></span></div>
-  </div>
-  <div class="alert" id="offAlert" hidden>${svg("alert")}<span id="offTxt"></span></div>
-  <div class="alert cool" id="freezeAlert" hidden>${svg("snow")}<span id="freezeTxt"></span></div>
-  <div class="alert amber" id="planAlert" hidden>${svg("alert")}<span>Plan du jour non calculé : le contrôleur n'a pas pu lire la température ou le lever du soleil. La pompe peut rester arrêtée.</span></div>
-  <div class="alert" id="stuckAlert" hidden>${svg("alert")}<span id="stuckTxt"></span><div class="act"><button id="stuckBtn">Revenir en Auto</button></div></div>
-  <div class="alert amber" id="fillAlert" hidden>${svg("alert")}<span id="fillTxt"></span><div class="act" id="fillAct"><button id="fillAckBtn">Acquitter</button></div></div>
-  <div class="power">
-    <button class="pbtn" id="autoBtn" hidden>${svg("auto")}<span id="autoBtnTxt">Revenir en Auto</span></button>
-    <div class="confirm" id="confirm" hidden>
-      <span id="confirmTxt"></span>
-      <button class="no" id="cfNo">Annuler</button>
-      <button class="yes" id="cfYes">Arrêter</button>
-    </div>
-    <div class="pend" id="pend" hidden aria-live="polite">
-      <div class="row"><b id="pendLabel"></b><span class="num" id="pendTime"></span></div>
-      <div class="steps">
-        <div class="step" id="st0"><i></i>Envoyé</div>
-        <div class="step" id="st1"><i></i>Appliqué par le contrôleur</div>
-      </div>
-    </div>
-  </div>
-  </div>
-  <div class="col col-set">
+  <div class="pilot">
   <div class="ctl">
     <p class="lbl">Pilotage</p>
     <div class="seg" role="radiogroup" aria-label="Pilotage de la pompe" id="modeSeg" style="--n:2">
@@ -845,6 +809,45 @@ const PANEL_HTML = `
       <p class="hint" id="durHint"></p>
     </div>
   </div>
+  <div class="power">
+    <button class="pbtn" id="autoBtn" hidden>${svg("auto")}<span id="autoBtnTxt">Revenir en Auto</span></button>
+    <div class="confirm" id="confirm" hidden>
+      <span id="confirmTxt"></span>
+      <button class="no" id="cfNo">Annuler</button>
+      <button class="yes" id="cfYes">Arrêter</button>
+    </div>
+    <div class="pend" id="pend" hidden aria-live="polite">
+      <div class="row"><b id="pendLabel"></b><span class="num" id="pendTime"></span></div>
+      <div class="steps">
+        <div class="step" id="st0"><i></i>Envoyé</div>
+        <div class="step" id="st1"><i></i>Appliqué par le contrôleur</div>
+      </div>
+    </div>
+  </div>
+  </div>
+  <div class="temp">
+    <div class="temp-h">
+      <p class="lbl">Température du bassin</p>
+      <div class="seg mini" role="radiogroup" aria-label="Période du graphique" id="tRange">
+        ${Object.entries(T_RANGES).map(([r, l]) => `<button role="radio" data-r="${r}">${l}</button>`).join("")}
+      </div>
+    </div>
+    <p class="temp-sum num" id="tSum"></p>
+    <div class="chart" id="tChart" tabindex="0" role="img" aria-label="Température du bassin"><svg id="tSvg" aria-hidden="true"></svg><div class="ttip" id="tTip" hidden></div><div class="empty" id="tEmpty" hidden></div></div>
+    <div class="tl-leg" id="tLeg"></div>
+  </div>
+  <div class="col col-state">
+  <div class="readings">
+    <div class="reading"><span class="l">Bassin</span><span class="v num" id="water"></span></div>
+    <div class="reading"><span class="l">Extérieur</span><span class="v num" id="outdoor"></span></div>
+    <div class="reading"><span class="l">Filtration aujourd'hui</span><span class="v num" id="hours"></span><span class="bar"><i id="hoursBar"></i></span></div>
+    <div class="reading"><span class="l">Prochain changement</span><span class="v num" id="next"></span></div>
+  </div>
+  <div class="alert" id="offAlert" hidden>${svg("alert")}<span id="offTxt"></span></div>
+  <div class="alert cool" id="freezeAlert" hidden>${svg("snow")}<span id="freezeTxt"></span></div>
+  <div class="alert amber" id="planAlert" hidden>${svg("alert")}<span>Plan du jour non calculé : le contrôleur n'a pas pu lire la température ou le lever du soleil. La pompe peut rester arrêtée.</span></div>
+  <div class="alert" id="stuckAlert" hidden>${svg("alert")}<span id="stuckTxt"></span><div class="act"><button id="stuckBtn">Revenir en Auto</button></div></div>
+  <div class="alert amber" id="fillAlert" hidden>${svg("alert")}<span id="fillTxt"></span><div class="act" id="fillAct"><button id="fillAckBtn">Acquitter</button></div></div>
   </div>
   <div class="water" id="waterBlk" hidden>${WATER_PANE}</div>
   <div class="foot"><span class="num" id="sync"></span><span class="num" id="plannedTxt"></span></div>
