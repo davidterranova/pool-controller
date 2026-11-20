@@ -14,5 +14,7 @@
     { "en": "probe", "fr": "sonde", "es": "sonda", "note": "a temperature probe" },
     { "en": "controller", "fr": "contrôleur", "es": "controlador", "note": "the ESP32 running the pump" },
     { "en": "equipment pad", "fr": "local technique", "es": "cuarto técnico", "note": "where the pump and filter are" }
-  ]
+  ],
+  "keep_about": "Names a translation keeps as they are, when its English has them: the controller's entity names (Home Assistant shows them in English) and product names. make i18n-check and make i18n-import hold every text to it.",
+  "keep": ["Manual Override Timeout", "Manual Override", "Setup State", "Fill Meter", "Fill Alarm After", "Fill Running Too Long", "Fill Running", "Fill Alarm Acknowledged", "Acknowledge Fill Alarm", "Home Assistant", "ESPHome", "Pool Controller"]
 }

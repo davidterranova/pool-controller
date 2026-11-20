@@ -239,3 +239,19 @@ test("frenchLiterals: a line marked i18n-ignore is skipped", () => {
   assert.deepEqual(frenchLiterals('const a = { "à jour": "up_to_date" }; // i18n-ignore: an old firmware\'s words'), []);
   assert.equal(frenchLiterals('const a = { "à jour": "up_to_date" };').length, 1);
 });
+
+test("keep: an entity or product name the English has stays in every translation, in the check and on import", () => {
+  const en = { ...EN, n2: { hint: "Set Fill Running Too Long in Home Assistant" } };
+  const keep = ["Fill Running", "Fill Running Too Long", "Home Assistant"];
+  const root = repo({
+    en,
+    fr: { ...FR, n2: { hint: "Réglez Remplissage trop long dans Home Assistant" } },
+    es: { ...ES, n2: { hint: "Ajuste Fill Running Too Long en Home Assistant" } },
+    sources: { ...USES, "c.js": 't("n2.hint");' },
+  });
+  const r = run(root, { keep, glossary: new Map() });
+  assert.deepEqual(r.errors, ["ui: n2.hint (fr): keeps « Fill Running Too Long » as English has it (glossary.json, keep)"]);
+  const i = importEntries(root, new Map([["ui:n2.hint", "Ajuste Llenado demasiado largo en Home Assistant"]]),
+    { to: "es", surfaces: [SURFACE], keep, glossary: new Map(), dryRun: true });
+  assert.match(i.refused[0].why, /« Fill Running Too Long »/);
+});

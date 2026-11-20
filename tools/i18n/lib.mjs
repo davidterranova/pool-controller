@@ -17,6 +17,23 @@ export function loadGlossary(root) {
   return new Map(JSON.parse(readFileSync(file, "utf8")).terms.map((t) => [t.en, t]));
 }
 
+/** The names a translation keeps as they are (glossary.json's `keep`: entity and product names). */
+export function loadKeep(root) {
+  const file = path.join(root, "tools/i18n/glossary.json");
+  return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")).keep || [] : [];
+}
+/** The kept names `english` has and `translated` lost (a longer name first, so « Fill Running Too Long » isn't « Fill Running »). */
+const lostNames = (keep, english, translated) => {
+  const lost = [];
+  let en = String(english), tr = String(translated);
+  for (const name of [...keep].sort((a, b) => b.length - a.length)) {
+    if (!en.includes(name)) continue;
+    if (!tr.includes(name)) lost.push(name);
+    en = en.split(name).join(""); tr = tr.split(name).join("");
+  }
+  return lost;
+};
+
 /** What the glossary says `english` is in `lang`, when `english` is exactly one of its terms. */
 const glossed = (glossary, english, lang) => (typeof english === "string" ? glossary.get(english)?.[lang] : undefined);
 
@@ -131,7 +148,7 @@ export function frenchLiterals(text) {
  * Every surface's dictionaries against each other and against their sources. Returns
  * { errors: [], warnings: [], summary: [] }: errors fail make i18n-check.
  */
-export function check(root, { surfaces = SURFACES, langs = LANGS, sameAsEnglish = SAME_AS_ENGLISH, glossary = loadGlossary(root) } = {}) {
+export function check(root, { surfaces = SURFACES, langs = LANGS, sameAsEnglish = SAME_AS_ENGLISH, glossary = loadGlossary(root), keep = loadKeep(root) } = {}) {
   const errors = [], warnings = [], summary = [];
   const loaded = Object.fromEntries(surfaces.map((s) => [s.id, loadSurface(root, s, langs)]));
   const usage = {}; // surface id -> { keys: Map(key -> files), prefixes: Map(prefix -> files) }
@@ -174,6 +191,10 @@ export function check(root, { surfaces = SURFACES, langs = LANGS, sameAsEnglish 
         }
         for (const [f, t] of forms(tv)) {
           if (!t.trim() || /^\s*TODO\b/i.test(t)) errors.push(`${where}${f ? `#${f}` : ""}: empty or TODO`);
+        }
+        for (const [f, t] of forms(tv)) {
+          const lost = lostNames(keep, f === null ? ev : ev[f] ?? ev.other, t);
+          if (lost.length) errors.push(`${where}${f ? `#${f}` : ""}: keeps ${lost.map((n) => `« ${n} »`).join(", ")} as English has it (glossary.json, keep)`);
         }
         const term = glossed(glossary, ev, lang);
         if (term !== undefined && tv !== term) errors.push(`${where}: « ${tv} », but the glossary (tools/i18n/glossary.json) says « ${term} »`);
@@ -277,7 +298,7 @@ export function parseMarkdown(md) {
  * and the draft kept. Returns
  * { changed: [{id, from, to}], refused: [{id, why}], missing: [id], unknown: [id], written: [file] }.
  */
-export function importEntries(root, entries, { to, surfaces = SURFACES, dryRun = false, glossary = loadGlossary(root) } = {}) {
+export function importEntries(root, entries, { to, surfaces = SURFACES, dryRun = false, glossary = loadGlossary(root), keep = loadKeep(root) } = {}) {
   const report = { changed: [], refused: [], missing: [], unknown: [], written: [] };
   const seen = new Set();
   for (const s of surfaces) {
@@ -294,6 +315,7 @@ export function importEntries(root, entries, { to, surfaces = SURFACES, dryRun =
         : !same(placeholders(t), placeholders(ref)) ? `placeholders ${JSON.stringify(placeholders(t))} instead of ${JSON.stringify(placeholders(ref))}`
         : !same(tags(t), tags(ref)) ? `markup ${JSON.stringify(tags(t))} instead of ${JSON.stringify(tags(ref))}`
         : glossed(glossary, ref, to) !== undefined && t !== glossed(glossary, ref, to) ? `the glossary (tools/i18n/glossary.json) says « ${glossed(glossary, ref, to)} »`
+        : lostNames(keep, ref, t).length ? `keeps ${lostNames(keep, ref, t).map((n) => `« ${n} »`).join(", ")} as English has it (an entity or product name)`
         : null;
       if (why) { report.refused.push({ id, why, text: t }); if (old === undefined) report.missing.push(id); return old; }
       if (t !== old) report.changed.push({ id, from: old, to: t });

@@ -31,7 +31,7 @@ blueprint:
       icon: mdi:pool
       input:
         alarm:
-          name: "Llenado demasiado largo (alarma)"
+          name: "Llenado en curso demasiado tiempo (alarma)"
           description: "La alarma del controlador, Fill Running Too Long (un sensor de problema)."
           default: binary_sensor.pool_controller_fill_running_too_long
           selector:
@@ -64,7 +64,7 @@ blueprint:
       input:
         notify_devices:
           name: "Teléfonos"
-          description: "Teléfonos con la aplicación Home Assistant a avisar, cada uno con una acción para confirmar la alarma. Ninguno: solo se ejecutan las acciones de abajo."
+          description: "Teléfonos con la aplicación Home Assistant que se deben notificar, cada uno con una acción para confirmar la alarma. Ninguno: solo se ejecutan las acciones siguientes."
           default: []
           selector:
             device:
@@ -85,20 +85,20 @@ blueprint:
         title:
           name: "Título"
           description: "El título de la notificación."
-          default: "Piscina: llenado demasiado largo"
+          default: "Piscina: el llenado lleva demasiado tiempo"
           selector:
             text:
         message:
           name: "Mensaje"
-          description: "Puede usar `{{ since }}`, la hora a la que empezó la alarma (HH:MM), y `{{ minutes }}`, los minutos transcurridos desde entonces."
-          default: "El llenado dura más de lo previsto (alarma a las {{ since }}). Cerrar la entrada de agua, o « Confirmar » para detener los recordatorios."
+          description: "Puede usar `{{ since }}`, la hora en que se activó la alarma (HH:MM), y `{{ minutes }}`, los minutos transcurridos desde entonces."
+          default: "El llenado está tardando más de lo esperado (alarma a las {{ since }}). Cierre el suministro de agua o «Confirmar» para detener los recordatorios."
           selector:
             text:
               multiline: true
         all_clear_message:
-          name: "Mensaje de fin de alarma"
-          description: "Enviado a los teléfonos cuando termina la alarma, en lugar del último recordatorio. Vacío: ninguno."
-          default: "Piscina: fin de la alarma de llenado."
+          name: "Mensaje de normalización"
+          description: "Se envía a los teléfonos cuando termina la alarma, en lugar del último recordatorio. Déjelo vacío si no hay ninguno."
+          default: "Piscina: la alarma de llenado ha terminado."
           selector:
             text:
         ack_title:
@@ -114,12 +114,12 @@ blueprint:
       input:
         extra_actions:
           name: "En cada recordatorio"
-          description: "Cualquier otra cosa que hacer en cada recordatorio (un altavoz, una luz, otro notificador)."
+          description: "Cualquier otra acción que realizar con cada recordatorio (un altavoz, una luz u otro notificador)."
           default: []
           selector:
             action:
         all_clear_actions:
-          name: "Cuando termina la alarma"
+          name: "Cuando finalice la alarma"
           description: "Se ejecutan una vez terminada la alarma: el llenado terminó, o Fill Alarm After se subió por encima (no al confirmarla)."
           default: []
           selector:
@@ -176,7 +176,7 @@ actions:
             target:
               entity_id: "{{ ack_button }}"
 
-      - alias: "Confirmada, o llenado terminado"
+      - alias: "Confirmada o finalizó el llenado"
         conditions:
           - condition: trigger
             id: [acknowledged, ended]
@@ -211,7 +211,7 @@ actions:
                 default: !input all_clear_actions
 
     default:
-      - alias: "Recordatorios mientras la alarma está activa y sin confirmar"
+      - alias: "Recordar mientras la alarma esté activa y no se haya confirmado"
         repeat:
           while:
             - condition: state

@@ -223,6 +223,6 @@ test("snippets: ESP Web Tools' buttons stay English, the section links follow th
   const t = translator("es");
   assert.equal(
     rich(t("install.erase.never"), es),
-    'Nunca para un controlador ya en servicio: se actualiza solo y conserva sus ajustes (vea <a href="#maj">Actualizaciones</a>).',
+    'Nunca en un controlador que ya está en servicio: se actualiza solo y conserva su configuración (consulta <a href="#maj">Actualizaciones</a>).',
   );
 });
