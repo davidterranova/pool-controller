@@ -19,7 +19,7 @@
 # before, pool_fill_too_long.yaml, since every copy imported until then re-imports from there (its source_url).
 blueprint:
   name: "Pool Controller — llenado demasiado largo"
-  description: "Avisa mientras el llenado de la piscina dura más que el **Fill Alarm After** del controlador, cada pocos minutos, hasta que alguien confirma la alarma: desde la acción « Confirmar » de la notificación, la tarjeta de la piscina, la página del controlador o su página de dispositivo en Home Assistant. Borra la notificación una vez confirmada la alarma o terminado el llenado, y puede ejecutar acciones propias en cada recordatorio y al final.\n\nLa alarma en sí está en el controlador: activar o desactivar el contador (**Fill Meter**) y ajustar el retardo (**Fill Alarm After**, 0 = nunca) en su página de dispositivo, en Configuración."
+  description: "Avisa mientras el llenado de la piscina dura más que el **Fill Alarm After** del controlador, cada pocos minutos, hasta que alguien confirma la alarma: desde la acción « Confirmar » de la notificación, la tarjeta de la piscina, la página del controlador o su página de dispositivo en Home Assistant. Borra la notificación una vez confirmada la alarma o terminado el llenado, y puede ejecutar acciones propias en cada recordatorio y al final.\n\nLa alarma en sí está en el controlador: activa o desactiva el contador (**Fill Meter**) y ajusta el retardo (**Fill Alarm After**, 0 = nunca) en su página de dispositivo, en Configuración."
   domain: automation
   author: Pool Controller
   source_url: https://github.com/davidterranova/pool-controller/blob/main/home-assistant/blueprints/pool_fill_too_long.es.yaml
@@ -31,7 +31,7 @@ blueprint:
       icon: mdi:pool
       input:
         alarm:
-          name: "Llenado en curso demasiado tiempo (alarma)"
+          name: "Llenado demasiado largo (alarma)"
           description: "La alarma del controlador, Fill Running Too Long (un sensor de problema)."
           default: binary_sensor.pool_controller_fill_running_too_long
           selector:
@@ -91,13 +91,13 @@ blueprint:
         message:
           name: "Mensaje"
           description: "Puede usar `{{ since }}`, la hora en que se activó la alarma (HH:MM), y `{{ minutes }}`, los minutos transcurridos desde entonces."
-          default: "El llenado está tardando más de lo esperado (alarma a las {{ since }}). Cierre el suministro de agua o «Confirmar» para detener los recordatorios."
+          default: "El llenado dura más de lo previsto (alarma a las {{ since }}). Cierra el suministro de agua o pulsa «Confirmar» para detener los recordatorios."
           selector:
             text:
               multiline: true
         all_clear_message:
           name: "Mensaje de normalización"
-          description: "Se envía a los teléfonos cuando termina la alarma, en lugar del último recordatorio. Déjelo vacío si no hay ninguno."
+          description: "Se envía a los teléfonos cuando termina la alarma, en lugar del último recordatorio. Déjalo vacío para no enviar ninguno."
           default: "Piscina: la alarma de llenado ha terminado."
           selector:
             text:

@@ -9,14 +9,14 @@
       "heading": "Bomba"
     },
     "probe": {
-      "pad": "Cuarto de equipos",
+      "pad": "Cuarto técnico",
       "outdoor": "Exterior"
     },
     "temperatures": {
       "heading": "Temperaturas",
       "day": {
         "title": "Sondas, 24 h",
-        "return": "Retorno del filtro (a la piscina mientras funciona la bomba)"
+        "return": "Retorno del filtro (la piscina mientras la bomba funciona)"
       },
       "mean": {
         "title": "Sondas, media diaria (90 días)",
@@ -48,11 +48,11 @@
     },
     "alerts": {
       "fill_too_long": {
-        "content": "## ⚠️ Llenado con una duración inusualmente larga\n{% set on = states.binary_sensor.pool_controller_fill_running_too_long.last_changed %} El llenado lleva más de **{{ states('number.pool_controller_fill_alarm_after') | int(0) }} min** en curso (alarma a las {{ as_local(on).strftime('%H:%M') }}). Revise el suministro de agua, la válvula de flotador o posibles fugas. {% if is_state('binary_sensor.pool_controller_fill_alarm_acknowledged', 'on') %} Alarma **confirmada**: no habrá más recordatorios hasta que termine este llenado. {% else %} Los recordatorios continúan hasta que alguien la confirme. {% endif %}",
+        "content": "## ⚠️ Llenado inusualmente largo\n{% set on = states.binary_sensor.pool_controller_fill_running_too_long.last_changed %} El llenado lleva más de **{{ states('number.pool_controller_fill_alarm_after') | int(0) }} min** en curso (alarma a las {{ as_local(on).strftime('%H:%M') }}). Revisa el suministro de agua, la válvula de flotador o posibles fugas. {% if is_state('binary_sensor.pool_controller_fill_alarm_acknowledged', 'on') %} Alarma **confirmada**: no habrá más recordatorios hasta que termine este llenado. {% else %} Los recordatorios continúan hasta que alguien la confirme. {% endif %}",
         "acknowledge": "Confirmar"
       },
       "override_stuck": {
-        "content": "## ⚠️ Filtración en pausa\n**Manual Override** está en **{{ states('select.pool_controller_manual_override') }}** desde hace más de 30 min, sin límite de tiempo: la bomba ya no sigue su plan. Volver a **Auto**, o dar una duración al forzado (el controlador volverá entonces a Auto por sí solo)."
+        "content": "## ⚠️ Filtración en pausa\n**Manual Override** está en **{{ states('select.pool_controller_manual_override') }}** desde hace más de 30 min, sin límite de tiempo: la bomba ya no sigue su plan. Vuelve a ponerlo en **Auto**, o da una duración al forzado (el controlador volverá entonces a Auto por sí solo)."
       },
       "not_computed": {
         "content": "## ⚠️ El plan de hoy no se ha calculado\nEl controlador no pudo leer la temperatura ni la hora de salida del sol: la bomba puede permanecer parada. Comprueba las sondas y, a continuación, **vuelve a calcular el plan**."
@@ -85,7 +85,7 @@
   "scripts": {
     "force_speed": {
       "alias": "Piscina — forzar una velocidad",
-      "description": "Fuerza la bomba de la piscina a una velocidad mediante el select Manual Override del controlador. El controlador termina el forzado por sí solo tras Manual Override Timeout minutos (0 = nunca); pasar `duree` para ajustar antes ese tiempo.",
+      "description": "Fuerza la bomba de la piscina a una velocidad mediante el select Manual Override del controlador. El controlador termina el forzado por sí solo tras Manual Override Timeout minutos (0 = nunca); pasa `duree` para ajustar antes ese tiempo.",
       "speed": {
         "name": "Velocidad",
         "description": "La velocidad que se debe forzar. En YAML, su valor es Off, Low, Medium o High, independientemente del idioma.",
@@ -107,12 +107,12 @@
   "blueprint": {
     "fill_too_long": {
       "name": "Pool Controller — llenado demasiado largo",
-      "description": "Avisa mientras el llenado de la piscina dura más que el **Fill Alarm After** del controlador, cada pocos minutos, hasta que alguien confirma la alarma: desde la acción « Confirmar » de la notificación, la tarjeta de la piscina, la página del controlador o su página de dispositivo en Home Assistant. Borra la notificación una vez confirmada la alarma o terminado el llenado, y puede ejecutar acciones propias en cada recordatorio y al final.\n\nLa alarma en sí está en el controlador: activar o desactivar el contador (**Fill Meter**) y ajustar el retardo (**Fill Alarm After**, 0 = nunca) en su página de dispositivo, en Configuración.",
+      "description": "Avisa mientras el llenado de la piscina dura más que el **Fill Alarm After** del controlador, cada pocos minutos, hasta que alguien confirma la alarma: desde la acción « Confirmar » de la notificación, la tarjeta de la piscina, la página del controlador o su página de dispositivo en Home Assistant. Borra la notificación una vez confirmada la alarma o terminado el llenado, y puede ejecutar acciones propias en cada recordatorio y al final.\n\nLa alarma en sí está en el controlador: activa o desactiva el contador (**Fill Meter**) y ajusta el retardo (**Fill Alarm After**, 0 = nunca) en su página de dispositivo, en Configuración.",
       "controller": {
         "name": "Controlador"
       },
       "alarm": {
-        "name": "Llenado en curso demasiado tiempo (alarma)",
+        "name": "Llenado demasiado largo (alarma)",
         "description": "La alarma del controlador, Fill Running Too Long (un sensor de problema)."
       },
       "acknowledged": {
@@ -142,11 +142,11 @@
       "message": {
         "name": "Mensaje",
         "description": "Puede usar `{{ since }}`, la hora en que se activó la alarma (HH:MM), y `{{ minutes }}`, los minutos transcurridos desde entonces.",
-        "default": "El llenado está tardando más de lo esperado (alarma a las {{ since }}). Cierre el suministro de agua o «Confirmar» para detener los recordatorios."
+        "default": "El llenado dura más de lo previsto (alarma a las {{ since }}). Cierra el suministro de agua o pulsa «Confirmar» para detener los recordatorios."
       },
       "all_clear_message": {
         "name": "Mensaje de normalización",
-        "description": "Se envía a los teléfonos cuando termina la alarma, en lugar del último recordatorio. Déjelo vacío si no hay ninguno.",
+        "description": "Se envía a los teléfonos cuando termina la alarma, en lugar del último recordatorio. Déjalo vacío para no enviar ninguno.",
         "default": "Piscina: la alarma de llenado ha terminado."
       },
       "ack_title": {
