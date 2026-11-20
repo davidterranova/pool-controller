@@ -251,15 +251,15 @@
     },
     "row": {
       "min": {
-        "label": "Filtration minimale",
+        "label": "Durée de filtration minimale",
         "sub": "Plancher, même par eau froide"
       },
       "max": {
-        "label": "Filtration maximale",
+        "label": "Durée de filtration maximale",
         "sub": "Plafond, même en pleine chaleur"
       },
       "offset": {
-        "label": "Ajustement de durée",
+        "label": "Ajustement de la durée de filtration",
         "sub": "Ajouté à la durée calculée"
       },
       "warm": {
@@ -293,16 +293,16 @@
         "pct": "{pct} % du plan"
       },
       "b1s": {
-        "label": "Bloc 1"
+        "label": "Bloc de filtration 1"
       },
       "b2s": {
-        "label": "Bloc 2"
+        "label": "Bloc de filtration 2"
       },
       "planned": {
-        "label": "Vitesse du plan maintenant"
+        "label": "Vitesse de filtration courante"
       },
       "commanded": {
-        "label": "Vitesse commandée",
+        "label": "Vitesse de filtration commandée",
         "forced": "Forcée : {speed}",
         "follows": "Suit le plan"
       },
@@ -321,15 +321,15 @@
         "ok": "Plan du jour recalculé"
       },
       "water": {
-        "label": "Eau (retour filtre)",
+        "label": "Température d'eau (retour filtre)",
         "off": "Pompe arrêtée : la sonde lit le tuyau",
         "on": "Pompe en marche : l'eau du bassin"
       },
       "pad": {
-        "label": "Local technique"
+        "label": "Température du local technique"
       },
       "outdoor": {
-        "label": "Extérieur"
+        "label": "Température extérieure"
       },
       "updateTemps": {
         "label": "Relire les sondes de température",

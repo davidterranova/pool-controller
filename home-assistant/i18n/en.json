@@ -251,15 +251,15 @@
     },
     "row": {
       "min": {
-        "label": "Minimum filtration",
+        "label": "Minimum filtration duration",
         "sub": "Floor, even in cold water"
       },
       "max": {
-        "label": "Maximum filtration",
+        "label": "Maximum filtration duration",
         "sub": "Ceiling, even in the hottest weather"
       },
       "offset": {
-        "label": "Duration adjustment",
+        "label": "Filtration duration adjustment",
         "sub": "Added to the computed duration"
       },
       "warm": {
@@ -293,10 +293,10 @@
         "pct": "{pct} % of the plan"
       },
       "b1s": {
-        "label": "Block 1"
+        "label": "Filtration block 1"
       },
       "b2s": {
-        "label": "Block 2"
+        "label": "Filtration block 2"
       },
       "planned": {
         "label": "Plan's speed now"
