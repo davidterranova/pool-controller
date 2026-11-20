@@ -25,7 +25,7 @@ export const SURFACES = [
   {
     id: "yaml", title: "Home Assistant dashboard, scripts and blueprints",
     dir: "home-assistant/i18n-yaml", sources: ["home-assistant/dashboard/*.tmpl.yaml", "home-assistant/blueprints/*.tmpl.yaml"],
-    usage: "template", reads: [], strict: false,
+    usage: "template", reads: [], strict: true,
   },
 ];
 
