@@ -219,9 +219,10 @@ home-assistant/dist/piscine-card.js: $(CARD_SRC)
 # for Home Assistant, in named situations (scenarios.js), with no Home Assistant
 # nor controller. card-preview serves it at http://localhost:$(CARD_PREVIEW_PORT)/tools/card-preview/.
 # card-shots takes each situation's tile and panel at 390 and 760 px, light and
-# dark, into tools/card-preview/shots/ (SCENARIO=fill-alarm,normal for some);
-# card-preview-check loads them all on every tab and fails on an error, or on
-# « undefined » / « NaN » in the card. Both run Chromium in Playwright's image,
+# dark, in French, English and Spanish, into tools/card-preview/shots/
+# (SCENARIO=fill-alarm,normal for some; LANG=fr for one language);
+# card-preview-check loads them all on every tab, in each language, and fails on
+# an error, or on « undefined » / « NaN » / a dictionary key in the card. Both run Chromium in Playwright's image,
 # with playwright-core installed once into .card-preview/.
 CARD_PREVIEW_PORT ?= 8124
 PLAYWRIGHT_VERSION := 1.52.0
@@ -234,11 +235,11 @@ card-preview:
 	docker run --rm -it -p $(CARD_PREVIEW_PORT):8124 -v "$(CURDIR):/src:ro" -w /src --entrypoint python3 $(ESPHOME_IMAGE) -m http.server 8124
 
 card-shots:
-	$(PLAYWRIGHT) $(if $(SCENARIO),--only $(SCENARIO))
+	$(PLAYWRIGHT) $(if $(SCENARIO),--only $(SCENARIO)) $(if $(LANG),--lang $(LANG))
 
 # CARD_BUNDLE=1: against the release's minified card (make card) instead of its source, as CI does.
 card-preview-check: $(if $(CARD_BUNDLE),card)
-	$(PLAYWRIGHT) --check $(if $(CARD_BUNDLE),--bundle)
+	$(PLAYWRIGHT) --check $(if $(CARD_BUNDLE),--bundle) $(if $(LANG),--lang $(LANG))
 
 # Unit tests of the pages' pure modules (webui/test/: the setup's logic, the
 # time zone table; tools/tests/install-page.test.mjs: the install page's
