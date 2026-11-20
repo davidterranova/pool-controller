@@ -10,7 +10,7 @@
       "Medium": "Media",
       "High": "Alta"
     },
-    "stopped": "Parada",
+    "stopped": "Detenida",
     "never": "Nunca",
     "cancel": "Cancelar",
     "apply": "Aplicar",
@@ -38,20 +38,20 @@
       "description": "Mosaico y panel de la bomba de la piscina (Pool Controller)"
     },
     "override": {
-      "stuck": "Velocidad forzada a {speed} desde hace {duration}: la bomba ya no sigue su plan de filtración."
+      "stuck": "Velocidad forzada a {speed} durante {duration}: la bomba ya no sigue su plan de filtración."
     },
     "hint": {
       "following": "El controlador sigue su plan: <b>{speed}</b> ahora, {next}.",
       "next_at": "<b>{speed}</b> a las {time}",
-      "stop_at_end": "parada al final del bloque",
-      "freeze": "Antiheladas: el controlador impone Baja mientras la piscina esté por debajo de {temp} °C. El control se reanudará después.",
-      "following_off_at": "El controlador sigue su plan: bomba parada, se reanuda a las {time}.",
-      "following_off_sunrise": "El controlador sigue su plan: bomba parada, se reanuda mañana al amanecer.",
-      "choose": "Elija una velocidad: se aplica enseguida y sustituye al plan.",
+      "stop_at_end": "detener al final del bloque",
+      "freeze": "Protección contra congelación: el controlador impone Bajo mientras la piscina esté por debajo de {temp} °C. El control se reanuda después.",
+      "following_off_at": "El controlador sigue su plan: bomba detenida, se reiniciará a las {time}.",
+      "following_off_sunrise": "El controlador sigue su plan: bomba detenida; se reiniciará mañana al amanecer.",
+      "choose": "Elige una velocidad: se aplica de inmediato y reemplaza el plan.",
       "suspended": "El plan está suspendido.",
       "suspended_until": "El plan está suspendido hasta las {time}.",
-      "doing": "El controlador hace <b>{speed}</b>.",
-      "doing_vs": "El controlador hace <b>{speed}</b>, el plan habría hecho {planned}."
+      "doing": "El controlador funciona a <b>{speed}</b>.",
+      "doing_vs": "El controlador funciona a <b>{speed}</b>; el plan habría funcionado a {planned}."
     },
     "temp": {
       "span_days": {
@@ -63,42 +63,42 @@
       "loading_history": "Cargando el historial…",
       "loading_stats": "Cargando las estadísticas…",
       "fz": "Antiheladas {temp} °C",
-      "fz_leg": "Antiheladas: Baja forzada por debajo de {temp} °C",
-      "fz_leg_below": "Antiheladas: Baja forzada por debajo de {temp} °C (bajo la escala)",
+      "fz_leg": "Antiheladas: velocidad Baja forzada por debajo de {temp} °C",
+      "fz_leg_below": "Antiheladas: velocidad Baja forzada por debajo de {temp} °C (por debajo de la escala)",
       "below_fz": "por debajo del umbral antiheladas",
-      "none_24h": "Ninguna medición de temperatura en las últimas 24 h.",
-      "tip_pool": "piscina, bomba en marcha",
-      "tip_short": "bomba en marcha desde hace menos de {min} min",
-      "tip_pipe": "tubería, bomba parada",
-      "today_range": "<b>{lo} – {hi} °C</b> hoy, bomba en marcha",
-      "none_today": "Aún no hay medición de la piscina hoy",
-      "pipe_short": "Bomba en marcha desde hace menos de {min} min: {temp} °C es la temperatura de la tubería.",
-      "pipe_off": "Bomba parada: {temp} °C es la temperatura de la tubería.",
+      "none_24h": "No hay lectura de temperatura en las últimas 24 h.",
+      "tip_pool": "piscina, bomba en funcionamiento",
+      "tip_short": "bomba funcionando durante menos de {min} min",
+      "tip_pipe": "tubería, bomba detenida",
+      "today_range": "<b>{lo} – {hi} °C</b> hoy, bomba en funcionamiento",
+      "none_today": "Aún no hay lectura de la piscina hoy",
+      "pipe_short": "Bomba en funcionamiento durante menos de {min} min: {temp} °C es la temperatura de la tubería.",
+      "pipe_off": "Bomba detenida: {temp} °C es la temperatura de la tubería.",
       "last_pool": "Piscina: {temp} °C a las {time}.",
-      "last_pool_yday": "Piscina: {temp} °C ayer a las {time}.",
-      "leg_pool": "Piscina (bomba en marcha desde hace {min} min)",
-      "leg_pipe": "Tubería, bomba parada",
-      "aria24": "Temperatura de la piscina en 24 h, de {lo} a {hi} °C",
+      "last_pool_yday": "Piscina: {temp} °C a las {time} de ayer.",
+      "leg_pool": "Piscina (bomba en funcionamiento durante {min} min)",
+      "leg_pipe": "Tubería, bomba detenida",
+      "aria24": "Temperatura de la piscina durante 24 h, de {lo} a {hi} °C",
       "tip_mean": {
-        "day": "sonda, media del día, tubería incluida",
-        "week": "sonda, media de la semana, tubería incluida"
+        "day": "sonda, media diaria, incluida la tubería",
+        "week": "sonda, media semanal, incluida la tubería"
       },
       "tip_hours": "{hours} h de filtración",
-      "no_reading": "Sin medición",
-      "none_yet": "Aún sin medición",
+      "no_reading": "Sin lectura",
+      "none_yet": "Aún no hay lectura",
       "span_12m": "12 meses",
-      "sum_pool": "<b>{lo} – {hi} °C</b> en {span}, bomba en marcha",
-      "sum_mixed": "<b>{lo} – {hi} °C</b> en {span}",
+      "sum_pool": "<b>{lo} – {hi} °C</b> durante {span}, bomba en funcionamiento",
+      "sum_mixed": "<b>{lo} – {hi} °C</b> durante {span}",
       "sum_mean": {
-        "day": "<b>{lo} – {hi} °C</b> en {span}, media diaria de la sonda",
-        "week": "<b>{lo} – {hi} °C</b> en {span}, media semanal de la sonda"
+        "day": "<b>{lo} – {hi} °C</b> durante {span}, la media diaria de la sonda",
+        "week": "<b>{lo} – {hi} °C</b> durante {span}, la media semanal de la sonda"
       },
       "note_dash": {
-        "day": "Discontinuo: los días sin mín. – máx. de la piscina, la sonda en media, tubería incluida (con la bomba parada, mide el cuarto técnico).",
-        "week": "Discontinuo: las semanas sin mín. – máx. de la piscina, la sonda en media, tubería incluida (con la bomba parada, mide el cuarto técnico)."
+        "day": "Discontinua: los días sin el mín. – máx. de la piscina, la sonda de media, incluida la tubería (con la bomba detenida, mide el equipo técnico).",
+        "week": "Discontinua: las semanas sin el mín. – máx. de la piscina, la sonda de media, incluida la tubería (con la bomba detenida, mide el equipo técnico)."
       },
-      "note_mean": "La sonda en media, tubería incluida (con la bomba parada, mide el cuarto técnico).",
-      "stats_err": "Estadísticas de Home Assistant no disponibles: solo se conocen los últimos 7 días.",
+      "note_mean": "La sonda de media, incluida la tubería (bomba parada, mide la zona de equipos).",
+      "stats_err": "Las estadísticas de Home Assistant no están disponibles: solo se conocen los últimos 7 días.",
       "measured": {
         "day": {
           "one": "{count} día medido de {n}.",
@@ -110,33 +110,33 @@
         }
       },
       "leg_rng": {
-        "day": "Mín. – máx. del día, bomba en marcha desde hace {min} min",
-        "week": "Mín. – máx. de la semana, bomba en marcha desde hace {min} min"
+        "day": "Mín. – máx. diario, bomba en funcionamiento durante {min} min",
+        "week": "Mín. – máx. semanal, bomba en funcionamiento durante {min} min"
       },
       "leg_mean": {
-        "day": "Sonda, media del día, tubería incluida",
-        "week": "Sonda, media de la semana, tubería incluida"
+        "day": "Sonda, media diaria, incluida la tubería",
+        "week": "Sonda, media semanal, incluida la tubería"
       },
       "aria": "Temperatura de la piscina, {span}: {items}",
-      "aria_range": "{when} {lo} a {hi} °C",
-      "aria_mean": "{when} aprox. {temp} °C (sonda)",
-      "aria_none": "{when} sin medición"
+      "aria_range": "{when}, de {lo} a {hi} °C",
+      "aria_mean": "{when}, aproximadamente {temp} °C (sonda)",
+      "aria_none": "{when}, sin lectura"
     },
     "fill": {
-      "alarm_since": "Llenado en curso desde las {time} ({duration}): compruebe el grifo de llenado.",
-      "fill": "Llenando desde hace {duration}",
-      "fill_over": "Llenando desde hace más de {duration}",
-      "running": "Llenado en curso desde hace {duration}",
-      "running_over": "Llenado en curso desde hace más de {duration}",
-      "on": "En curso desde hace {duration}",
-      "on_over": "En curso desde hace más de {duration}",
+      "alarm_since": "Llenado en curso desde {time} ({duration}): comprueba el grifo de llenado.",
+      "fill": "Llenando durante {duration}",
+      "fill_over": "Llenando durante más de {duration}",
+      "running": "Llenado en funcionamiento durante {duration}",
+      "running_over": "Llenado en funcionamiento durante más de {duration}",
+      "on": "Funcionando durante {duration}",
+      "on_over": "En funcionamiento durante más de {duration}",
       "past_alarm": "{text}: superada la alarma ({duration})",
-      "on_at": "En curso desde las {time}",
-      "alarm_over": "Llenado en curso desde hace más de {duration}: compruebe el grifo de llenado.",
-      "acked_since": "Llenado en curso desde las {time} ({duration}): alarma confirmada, no habrá más avisos hasta que termine este llenado.",
-      "acked_over": "Llenado en curso desde hace más de {duration}: alarma confirmada, no habrá más avisos hasta que termine este llenado.",
+      "on_at": "En funcionamiento desde las {time}",
+      "alarm_over": "Llenado en funcionamiento durante más de {duration}: comprueba el grifo de llenado.",
+      "acked_since": "Llenado en funcionamiento desde las {time} ({duration}): alarma reconocida, no habrá más recordatorios hasta que termine este llenado.",
+      "acked_over": "Llenado en funcionamiento durante más de {duration}: alarma reconocida, no habrá más recordatorios hasta que termine este llenado.",
       "ack": "Confirmar",
-      "acked_toast": "Alarma confirmada: no habrá más avisos hasta que termine este llenado"
+      "acked_toast": "Alarma confirmada: no habrá más recordatorios hasta que termine este llenado"
     },
     "settings": {
       "filtration_section": "Tiempo de filtración · se aplica con «Aplicar»"
@@ -149,46 +149,46 @@
       "controller": "Ajustes del controlador"
     },
     "sec": {
-      "plan": "Plan del día",
+      "plan": "Plan de hoy",
       "probes": "Sondas",
       "filtration": "Filtración",
       "filtration_freeze": "Filtración y antiheladas",
-      "pulses_freeze": "Impulsos y antiheladas",
+      "pulses_freeze": "Pulsos y antiheladas",
       "days": "Últimos 7 días",
       "position": "Posición",
       "firmware": "Firmware"
     },
-    "pend_banner": "Tiempo de filtración modificado: solo cuenta una vez aplicado, lo que recalcula el plan del día.",
-    "chart_range": "Periodo del gráfico",
+    "pend_banner": "El tiempo de filtración ha cambiado: solo se tiene en cuenta una vez aplicado, lo que recalcula el plan de hoy.",
+    "chart_range": "Período del gráfico",
     "range": {
       "24h": "24 h",
       "7d": "7 d",
       "30d": "30 d",
       "90d": "90 d",
       "1y": "1 año",
-      "12m": "12 m"
+      "12m": "12 meses"
     },
     "read": {
       "pool": "Piscina",
       "outdoor": "Exterior",
-      "hours": "Filtración hoy",
+      "hours": "Filtración de hoy",
       "next": "Próximo cambio",
       "nothing_today": "nada más hoy"
     },
     "leg": {
-      "pulse": "Impulso {speed}",
-      "forced": "Forzada a {speed}"
+      "pulse": "Pulso a {speed}",
+      "forced": "Forzado a {speed}"
     },
     "plan": {
       "not_computed": "plan no calculado"
     },
     "alert": {
-      "plan": "Plan del día no calculado: el controlador no ha podido leer la temperatura o la salida del sol. La bomba puede quedarse parada.",
-      "off": "Controlador sin conexión desde hace {duration}. El plan sigue en el ESP32, pero no le llegará ninguna orden.",
-      "freeze": "Antiheladas activo (piscina {temp} °C): la bomba gira en Baja se le pida lo que se le pida."
+      "plan": "El plan de hoy no se ha calculado: el controlador no pudo leer la temperatura ni la salida del sol. La bomba puede permanecer apagada.",
+      "off": "Controlador sin conexión durante {duration}. El plan continúa en el ESP32, pero no le llegará ningún comando.",
+      "freeze": "Protección anticongelación activada (piscina a {temp} °C): la bomba funciona a velocidad baja independientemente de lo solicitado."
     },
     "back_auto": "Volver a Auto",
-    "back_auto_now": "Volver a Auto ahora (si no, a las {time})",
+    "back_auto_now": "Volver a Auto ahora (de lo contrario, a las {time})",
     "confirm": {
       "stop": "Detener",
       "stop_for": "¿Detener la bomba durante {duration}?",
@@ -206,22 +206,22 @@
       "title": "Velocidad forzada"
     },
     "dur": {
-      "title": "Vuelta a Auto",
-      "aria": "Duración del forzado",
+      "title": "Volver a Auto",
+      "aria": "Cuánto tiempo permanece forzada la velocidad",
       "alert": "alerta {min} min",
-      "back_at": "Vuelta automática a Auto a las {time} (dentro de {duration}).",
-      "none_running": "Sin vuelta automática: alerta tras {min} min, y la bomba se queda así hasta que alguien vuelva a Auto.",
-      "will_return": "La bomba volverá sola al plan tras {duration}.",
-      "none": "Sin temporizador: alerta tras {min} min, y la bomba se queda así hasta que alguien vuelva a Auto."
+      "back_at": "Regreso automático a Auto a las {time} (en {duration}).",
+      "none_running": "Sin retorno automático: alerta tras {min} min y la bomba permanece así hasta que alguien vuelva a Auto.",
+      "will_return": "La bomba volverá al plan automáticamente después de {duration}.",
+      "none": "Sin temporizador: alerta después de {min} min y la bomba se mantiene así hasta que alguien vuelva a Auto."
     },
     "phase": {
-      "freeze": "Antiheladas · {speed}",
-      "stuck": "Forzada desde hace {duration}"
+      "freeze": "Protección anticongelación · {speed}",
+      "stuck": "Forzada durante {duration}"
     },
     "tile": {
       "sending": "Enviando al controlador…",
-      "stuck": "Forzada a {speed} desde hace {duration}",
-      "auto_at": "Auto a las {time}",
+      "stuck": "Forzado a {speed} durante {duration}",
+      "auto_at": "Automático a las {time}",
       "no_limit": "sin límite"
     },
     "foot": {
@@ -229,67 +229,67 @@
       "plan_only": "Solo el plan: {speed}"
     },
     "cmd": {
-      "timeout": "El controlador no ha respondido. La bomba no ha cambiado.",
-      "auto_done": "Vuelta a Auto: la bomba sigue su plan",
-      "until": "{what} hasta las {time}",
-      "off_done": "Bomba parada",
-      "speed_done": "Bomba en {speed}",
-      "done_auto": "{what}, Auto a las {time}",
-      "already": "Ya en {speed}",
-      "auto_at": "Vuelta a Auto a las {time}",
-      "no_auto": "Ya no hay vuelta automática"
+      "timeout": "El controlador no respondió. La bomba no ha cambiado.",
+      "auto_done": "Volver a Auto: la bomba sigue su plan",
+      "until": "{what} hasta {time}",
+      "off_done": "Bomba detenida",
+      "speed_done": "Bomba a {speed}",
+      "done_auto": "{what}, automático a las {time}",
+      "already": "Ya a {speed}",
+      "auto_at": "Volver a Auto a las {time}",
+      "no_auto": "No volver automáticamente"
     },
     "light": {
       "live": "Controlador · {ago}",
-      "mute_since": "Controlador sin señal desde hace {duration}",
+      "mute_since": "Controlador silenciado durante {duration}",
       "off": "Sin conexión",
-      "off_since": "Sin conexión desde hace {duration}",
+      "off_since": "Sin conexión durante {duration}",
       "tip_off": "Controlador sin conexión",
       "tip_off_last": "Controlador sin conexión: último mensaje a las {time}",
       "tip_alarm": "{fill}, alarma no confirmada.",
-      "tip_last": "Último mensaje del controlador a las {time}, {ago}"
+      "tip_last": "Último mensaje del controlador a las {time}, hace {ago}"
     },
     "row": {
       "min": {
         "label": "Filtración mínima",
-        "sub": "Mínimo, incluso con agua fría"
+        "sub": "Límite mínimo, incluso con agua fría"
       },
       "max": {
         "label": "Filtración máxima",
-        "sub": "Máximo, incluso con mucho calor"
+        "sub": "Límite máximo, incluso con el tiempo más caluroso"
       },
       "offset": {
         "label": "Ajuste de duración",
-        "sub": "Se suma a la duración calculada"
+        "sub": "Añadido a la duración calculada"
       },
       "warm": {
-        "label": "Desfase del pico de calor",
-        "sub": "Centro del 2.º bloque respecto al mediodía solar"
+        "label": "Desplazamiento de la hora más calurosa",
+        "sub": "Centro del segundo bloque con respecto al mediodía solar"
       },
       "apply": {
-        "label": "Aplicar los ajustes",
-        "sub": "Recalcula el plan del día"
+        "label": "Aplicar la configuración",
+        "sub": "Recalcula el plan de hoy"
       },
       "boostDuration": {
-        "label": "Duración de un impulso"
+        "label": "Duración del pulso"
       },
       "boostInterval": {
-        "label": "Intervalo entre impulsos",
-        "sub": "0 = sin impulsos"
+        "label": "Intervalo entre pulsos",
+        "sub": "0 = sin pulsos"
       },
       "highEvery": {
-        "label": "Un impulso Alta cada",
-        "sub": "Los demás son en Media"
+        "label": "Un pulso alto cada",
+        "sub": "Los demás están en Medio"
       },
       "freezeAt": {
-        "label": "Baja forzada por debajo de",
-        "sub": "Cuando el agua baja de este umbral, se pida lo que se pida"
+        "label": "Velocidad baja forzada por debajo de",
+        "sub": "Cuando el agua baja de este umbral, sin importar lo que se solicite"
       },
       "hoursPlanned": {
-        "label": "Duración planificada"
+        "label": "Duración prevista"
       },
       "hoursToday": {
-        "label": "Filtrada hoy",
+        "label": "Filtrado hoy",
         "pct": "{pct} % del plan"
       },
       "b1s": {
@@ -299,10 +299,10 @@
         "label": "Bloque 2"
       },
       "planned": {
-        "label": "Velocidad del plan ahora"
+        "label": "Velocidad actual del plan"
       },
       "commanded": {
-        "label": "Velocidad ordenada",
+        "label": "Velocidad indicada",
         "forced": "Forzada: {speed}",
         "follows": "Sigue el plan"
       },
@@ -310,7 +310,7 @@
         "label": "Próximo cambio"
       },
       "nextBoostStart": {
-        "label": "Próximo impulso"
+        "label": "Siguiente pulso"
       },
       "recomputed": {
         "label": "Plan calculado a las"
@@ -318,30 +318,30 @@
       "recompute": {
         "label": "Recalcular el plan ahora",
         "button": "Recalcular",
-        "ok": "Plan del día recalculado"
+        "ok": "Se ha recalculado el plan de hoy"
       },
       "water": {
         "label": "Agua (retorno del filtro)",
         "off": "Bomba parada: la sonda mide la tubería",
-        "on": "Bomba en marcha: el agua de la piscina"
+        "on": "Bomba en funcionamiento: el agua de la piscina"
       },
       "pad": {
-        "label": "Cuarto técnico"
+        "label": "Zona de equipos"
       },
       "outdoor": {
         "label": "Exterior"
       },
       "updateTemps": {
         "label": "Volver a leer las sondas de temperatura",
-        "button": "Releer",
+        "button": "Volver a leer",
         "ok": "Sondas releídas"
       }
     },
     "sect": {
-      "pulses": "Impulsos · inmediato",
-      "freeze": "Antiheladas · inmediato"
+      "pulses": "Pulsos · inmediato",
+      "freeze": "Protección anticongelación · inmediata"
     },
-    "applied": "Ajustes aplicados: plan del día recalculado",
+    "applied": "Ajustes aplicados: se ha recalculado el plan de hoy",
     "nothing_today": "Nada más hoy",
     "fw": {
       "not_make": "Compilado fuera de make: commit desconocido",
@@ -354,120 +354,120 @@
       "built_at": "Compilado el {date} a las {time}",
       "built_raw": "Compilado {when}",
       "why": {
-        "override": "velocidad forzada en curso",
+        "override": "velocidad forzada manualmente",
         "fill": "llenado en curso",
-        "check": "la comprobación no ha funcionado (sin red, o aún no hay ninguna versión publicada)",
-        "install": "la instalación no ha funcionado",
-        "waits": "el controlador espera"
+        "check": "la comprobación no tuvo éxito (sin red o aún no se ha publicado ninguna versión)",
+        "install": "la instalación no se realizó correctamente",
+        "waits": "el controlador está esperando"
       },
-      "hold_until": "velocidad forzada en curso ({speed}, vuelta a Auto a las {time})",
-      "hold_noend": "velocidad forzada en curso ({speed}, sin fin)",
+      "hold_until": "velocidad forzada manualmente ({speed}, vuelta a Auto a las {time})",
+      "hold_noend": "velocidad forzada manualmente ({speed}, sin fin)",
       "rebooting": "Reiniciando el controlador…",
-      "off": "Controlador inaccesible: versiones desconocidas por ahora",
+      "off": "No se puede acceder al controlador: versiones desconocidas por ahora",
       "installing_pct": "Instalando: {pct} %",
       "installing": "Instalando…",
       "checking": "Buscando una nueva versión…",
       "deferred": "En espera: {why}",
       "failed": "Error: {why}",
-      "avail": "{version}: aprox. 1 min, reinicio incluido",
+      "avail": "{version}: aproximadamente 1 min, incluido el reinicio",
       "nothing": "Nada que instalar",
       "check": "Comprobar",
       "install": "Instalar",
       "installed": "Versión instalada",
       "latest": "Última versión",
       "upd_avail": "Actualización disponible",
-      "up_to_date": "Al día",
+      "up_to_date": "Actualizado",
       "notes": "Notas de la versión",
-      "update": "Actualización",
-      "ask": "{hold}: el controlador no instala nada mientras tanto. Instalará {version} en cuanto termine y luego se reiniciará (aprox. 30 s; la bomba se para durante el reinicio).",
-      "ask_ovr": "Para instalar ya, vuelva antes a Auto.",
-      "install_at_end": "Instalar al terminar",
-      "deferred_v": "Instalación de {version} en espera: {why}. El controlador la iniciará por sí mismo después.",
-      "deferred_nov": "Instalación en espera: {why}. El controlador la iniciará por sí mismo después.",
+      "update": "Actualizar",
+      "ask": "{hold}: mientras tanto, el controlador no instala nada. Instalará {version} en cuanto termine y luego se reiniciará (unos 30 s; la bomba se detiene durante el reinicio).",
+      "ask_ovr": "Para instalarla de inmediato, vuelva primero a Auto.",
+      "install_at_end": "Instalar al finalizar",
+      "deferred_v": "Instalación de {version} en espera: {why}. El controlador la iniciará automáticamente después.",
+      "deferred_nov": "Instalación en espera: {why}. El controlador lo iniciará por sí solo después.",
       "cancel_request": "Cancelar la solicitud",
       "auto": "Actualización automática",
-      "auto_sub": "Instala sola una nueva versión encontrada por una comprobación programada; «Comprobar» solo busca. Como toda instalación, espera a que termine una velocidad forzada o un llenado.",
+      "auto_sub": "Instala automáticamente una nueva versión encontrada por una comprobación programada; «Comprobar» solo busca. Como cualquier instalación, espera a que termine una velocidad forzada o un llenado.",
       "interval": "Frecuencia de comprobación",
-      "interval_on_request": "Solo con «Comprobar»: nada se instala solo",
+      "interval_on_request": "Solo al «Comprobar»: nada se instala por sí solo",
       "interval_auto": "La actualización automática instala lo que encuentra",
       "opt": {
-        "on_request": "Bajo demanda",
+        "on_request": "Bajo solicitud",
         "days": {
           "one": "{count} día",
           "other": "{count} días"
         }
       },
       "toast_avail": "Firmware {version} disponible",
-      "toast_ok": "Firmware al día ({version})",
+      "toast_ok": "Firmware actualizado ({version})",
       "req": "Instalación de {version} solicitada",
-      "req_ovr": "Instalación de {version} solicitada: el controlador la iniciará cuando termine la velocidad forzada",
+      "req_ovr": "Se ha solicitado la instalación de {version}: el controlador la iniciará cuando termine la velocidad forzada",
       "req_fill": "Instalación de {version} solicitada: el controlador la iniciará cuando termine el llenado",
       "cancelled": "Solicitud de instalación cancelada"
     },
     "pos": {
       "lat": "Latitud",
       "lon": "Longitud",
-      "unset": "no definida",
+      "unset": "sin configurar",
       "tz": "Zona horaria",
-      "tz_posix": "cadena POSIX introducida",
-      "tz_unset": "no definida",
-      "note": "Redondeadas a 0,01° (aprox. 1 km): suficiente para la salida y la puesta del sol, de las que el controlador saca su plan, sin ubicar la casa.",
-      "use_ha": "Usar la posición y la zona horaria de Home Assistant",
-      "same": "Ya son los de Home Assistant.",
-      "same_pos": "La posición ya es la de Home Assistant; su zona horaria ({zone}) es desconocida para la tarjeta: ajústela en la página del controlador.",
+      "tz_posix": "Cadena POSIX introducida",
+      "tz_unset": "sin configurar",
+      "note": "Redondeado a 0,01° (aprox. 1 km): suficiente para el amanecer y el atardecer, de los que procede el plan del controlador, sin ubicar la casa.",
+      "use_ha": "Usar la ubicación y la zona horaria de Home Assistant",
+      "same": "Ya es de Home Assistant.",
+      "same_pos": "La posición ya es la de Home Assistant; su zona horaria ({zone}) es desconocida para la tarjeta: configúrala en la página del controlador.",
       "ha": "Home Assistant: {lat} · {lon} · {zone}",
-      "ha_nozone": "Home Assistant: {lat} · {lon} · {zone} (zona horaria desconocida para la tarjeta: solo la posición)",
-      "ha_tz_unset": "zona horaria no definida",
-      "use": "Usar",
-      "sent_both": "Posición y zona horaria de Home Assistant enviadas: plan del día recalculado",
-      "sent_pos": "Posición de Home Assistant enviada: plan del día recalculado"
+      "ha_nozone": "Home Assistant: {lat} · {lon} · {zone} (zona horaria desconocida para la tarjeta: solo posición)",
+      "ha_tz_unset": "zona horaria no configurada",
+      "use": "Uso",
+      "sent_both": "Posición y zona horaria de Home Assistant enviadas: se ha recalculado el plan de hoy",
+      "sent_pos": "Posición de Home Assistant enviada: se ha recalculado el plan de hoy"
     },
     "water": {
       "title": "Agua de llenado",
       "today": "Llenado hoy",
       "month": "Este mes",
-      "flow": "Caudal",
-      "no_device": "El controlador no guarda historial de llenado: su firmware es anterior.",
-      "stats_err": "Estadísticas de Home Assistant no disponibles.",
-      "no_stats": "Aún no hay estadísticas para este contador: Home Assistant las calcula cada hora.",
+      "flow": "Flujo",
+      "no_device": "El controlador no conserva historial de llenados: su firmware es anterior.",
+      "stats_err": "Las estadísticas de Home Assistant no están disponibles.",
+      "no_stats": "Aún no hay estadísticas para este medidor: Home Assistant las calcula cada hora.",
       "no_reading": "Sin lectura",
       "aria_none": "{when} sin lectura",
       "sum": {
-        "30d": "<b>{total}</b> en 30 días · {avg} por día de media",
-        "90d": "<b>{total}</b> en 13 semanas · {avg} por semana de media",
-        "12m": "<b>{total}</b> en 12 meses · {avg} por mes de media"
+        "30d": "<b>{total}</b> durante 30 días · {avg} al día de media",
+        "90d": "<b>{total}</b> durante 13 semanas · {avg} a la semana de media",
+        "12m": "<b>{total}</b> durante 12 meses · {avg} al mes de media"
       },
       "leg": {
-        "30d": "Litros por día, contador de llenado",
-        "90d": "Litros por semana, contador de llenado",
+        "30d": "Litros por día, medidor de llenado",
+        "90d": "Litros por semana, medidor de llenado",
         "12m": "Litros por mes, contador de llenado"
       },
       "cur": {
         "30d": "Hoy",
-        "90d": "Semana en curso",
-        "12m": "Mes en curso"
+        "90d": "Esta semana",
+        "12m": "Este mes"
       },
       "aria": {
-        "30d": "Agua de llenado en 30 días: {items}",
-        "90d": "Agua de llenado en 13 semanas: {items}",
-        "12m": "Agua de llenado en 12 meses: {items}"
+        "30d": "Llenar de agua durante 30 días: {items}",
+        "90d": "Llenar de agua durante 13 semanas: {items}",
+        "12m": "Llenar de agua durante 12 meses: {items}"
       },
       "peak": "Máximo: {value}, {when}",
       "first": "Primera lectura: {when}"
     },
     "days": {
       "water": "Agua",
-      "tip_today": "En curso; la marca indica la duración planificada",
-      "tip_nodata": "Sin datos: controlador apagado o sin hora ese día",
+      "tip_today": "En curso; la marca indica la duración prevista",
+      "tip_nodata": "Sin datos: el controlador está apagado o no tenía la hora ese día",
       "tip_noplan": "Plan del día no registrado",
-      "tip_plan": "Plan {planned} h; {gap}",
+      "tip_plan": "Planificado {planned} h; {gap}",
       "plan_kept": "plan cumplido",
       "mean": {
-        "one": "Media de {hours} h de filtración por día en {count} día.",
-        "other": "Media de {hours} h de filtración por día en {count} días."
+        "one": "Promedio de {hours} h de filtración al día durante {count} día.",
+        "other": "Promedio de {hours} h de filtración al día durante {count} días."
       },
-      "none": "Aún ningún día completo.",
-      "legend": "La marca indica la duración planificada; en naranja, un día que se quedó por debajo de su plan. Agua: mínimo y máximo del día, medidos con la bomba en marcha. El controlador registra cada día a medianoche."
+      "none": "Aún no hay ningún día completo.",
+      "legend": "La marca indica la duración planificada; en naranja, un día que quedó por debajo de su plan. Agua: el mínimo y el máximo del día, medidos con la bomba en funcionamiento. El controlador registra cada día a medianoche."
     }
   }
 }

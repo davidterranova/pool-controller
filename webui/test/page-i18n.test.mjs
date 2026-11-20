@@ -22,7 +22,7 @@ test("a rendered message in each language: the page's own keys, the card's, plur
   const expect = {
     en: ["Connected to the controller", "2 probes found", "the position and the time", "Control"],
     fr: ["Connecté au contrôleur", "2 sondes trouvées", "la position et l'heure", "Contrôle"],
-    es: ["Conectado al controlador", "2 sondas encontradas", "la posición y la hora", "Control"],
+    es: ["Conectado al controlador", "Se encontraron 2 sondas", "la posición y la hora", "Control"],
   };
   for (const lang of ["en", "fr", "es"]) {
     page.setLang(lang);

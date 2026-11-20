@@ -18,7 +18,7 @@ piscine_forcer_vitesse:
   fields:
     vitesse:
       name: "Velocidad"
-      description: "La velocidad a forzar. En YAML, su valor es Off, Low, Medium o High, sea cual sea el idioma."
+      description: "La velocidad que se debe forzar. En YAML, su valor es Off, Low, Medium o High, independientemente del idioma."
       required: true
       selector:
         select:
@@ -29,7 +29,7 @@ piscine_forcer_vitesse:
             - {value: "High", label: "Alta"}
     duree:
       name: "Duración (min)"
-      description: "Minutos antes de volver a Auto, 0 = nunca. Vacío: la duración ya ajustada en el controlador."
+      description: "Minutos antes de volver a Auto; 0 = nunca. Vacío: la duración ya configurada en el controlador."
       required: false
       selector:
         number: {min: 0, max: 480, step: 5, unit_of_measurement: min, mode: box}

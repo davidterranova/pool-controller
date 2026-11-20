@@ -107,9 +107,9 @@ views:
             grid_options: {columns: full}
             entities:
               - entity: sensor.pool_controller_pool_return_temperature
-                name: "Retorno del filtro (la piscina con la bomba en marcha)"
+                name: "Retorno del filtro (a la piscina mientras funciona la bomba)"
               - entity: sensor.pool_controller_equipment_pad_temperature
-                name: "Cuarto técnico"
+                name: "Cuarto de equipos"
               - entity: sensor.pool_controller_outdoor_temperature
                 name: "Exterior"
           - type: statistics-graph
@@ -123,7 +123,7 @@ views:
               - entity: sensor.pool_controller_pool_return_temperature
                 name: "Retorno del filtro"
               - entity: sensor.pool_controller_equipment_pad_temperature
-                name: "Cuarto técnico"
+                name: "Cuarto de equipos"
               - entity: sensor.pool_controller_outdoor_temperature
                 name: "Exterior"
 
@@ -141,7 +141,7 @@ views:
             grid_options: {columns: full}
             entities:
               - entity: sensor.pool_controller_pump_planned_speed
-                name: "Plan"
+                name: "Planificado"
               - entity: sensor.pool_controller_pump_commanded_speed
                 name: "Bomba"
               - entity: select.pool_controller_manual_override
@@ -185,7 +185,7 @@ views:
             period: {calendar: {period: day}}
             grid_options: {columns: 6}
           - type: statistics-graph
-            title: "Llenado por día (30 días)"
+            title: "Agua de llenado por día (30 días)"
             period: day
             days_to_show: 30
             chart_type: bar
@@ -213,7 +213,7 @@ views:
                 entity: binary_sensor.pool_controller_fill_running_too_long
                 state: "on"
             grid_options: {columns: full}
-            content: "## ⚠️ Llenado anormalmente largo\n{% set on = states.binary_sensor.pool_controller_fill_running_too_long.last_changed %} El llenado lleva más de **{{ states('number.pool_controller_fill_alarm_after') | int(0) }} min** (alarma a las {{ as_local(on).strftime('%H:%M') }}). Comprobar la entrada de agua, el flotador o una posible fuga. {% if is_state('binary_sensor.pool_controller_fill_alarm_acknowledged', 'on') %} Alarma **confirmada**: no habrá más recordatorios hasta el final de este llenado. {% else %} Los recordatorios siguen hasta que alguien la confirme. {% endif %}"
+            content: "## ⚠️ Llenado con una duración inusualmente larga\n{% set on = states.binary_sensor.pool_controller_fill_running_too_long.last_changed %} El llenado lleva más de **{{ states('number.pool_controller_fill_alarm_after') | int(0) }} min** en curso (alarma a las {{ as_local(on).strftime('%H:%M') }}). Revise el suministro de agua, la válvula de flotador o posibles fugas. {% if is_state('binary_sensor.pool_controller_fill_alarm_acknowledged', 'on') %} Alarma **confirmada**: no habrá más recordatorios hasta que termine este llenado. {% else %} Los recordatorios continúan hasta que alguien la confirme. {% endif %}"
           - type: button
             visibility:
               - condition: state
@@ -245,7 +245,7 @@ views:
                 entity: binary_sensor.pool_controller_schedule_not_computed
                 state: "on"
             grid_options: {columns: full}
-            content: "## ⚠️ Plan del día sin calcular\nEl controlador no pudo leer la temperatura ni la hora de salida del sol: la bomba puede quedarse parada. Comprobar las sondas y luego **Recalcular el plan**."
+            content: "## ⚠️ El plan de hoy no se ha calculado\nEl controlador no pudo leer la temperatura ni la hora de salida del sol: la bomba puede permanecer parada. Comprueba las sondas y, a continuación, **vuelve a calcular el plan**."
 
       # ── Component: settings ────────────────────────────────────────────────────────────────────────
       # Everything the controller lets you tune: piscine-card's settings variant, the rows of the panel's
@@ -264,13 +264,13 @@ views:
       - type: grid
         cards:
           - type: entities
-            title: "Plan del día"
+            title: "Plan de hoy"
             grid_options: {columns: full}
             entities:
               - entity: sensor.pool_controller_planned_filtration_hours
                 name: "Filtración planificada"
               - entity: sensor.pool_controller_filtration_hours_today
-                name: "Filtración realizada"
+                name: "Filtración real"
               - entity: sensor.pool_controller_schedule_block_1_start
                 name: "Bloque 1, inicio"
               - entity: sensor.pool_controller_schedule_block_1_end
@@ -280,9 +280,9 @@ views:
               - entity: sensor.pool_controller_schedule_block_2_end
                 name: "Bloque 2, fin"
               - entity: sensor.pool_controller_next_speed_change
-                name: "Próximo cambio"
+                name: "Próximo cambio de velocidad"
               - entity: sensor.pool_controller_next_planned_speed
-                name: "Próxima velocidad"
+                name: "Siguiente velocidad"
               - entity: sensor.pool_controller_last_recomputed_at
                 name: "Plan calculado a las"
               - entity: button.pool_controller_recompute_schedule_now
@@ -292,15 +292,15 @@ views:
             grid_options: {columns: full}
             entities:
               - entity: binary_sensor.pool_controller_status
-                name: "Conexión con Home Assistant"
+                name: "Enlace a Home Assistant"
               - entity: sensor.pool_controller_pump_commanded_speed
                 name: "Velocidad de la bomba"
               - entity: sensor.pool_controller_pump_planned_speed
-                name: "Velocidad del plan"
+                name: "Velocidad planificada"
               - entity: sensor.pool_controller_pool_return_temperature
                 name: "Sonda de retorno del filtro"
               - entity: sensor.pool_controller_equipment_pad_temperature
-                name: "Cuarto técnico"
+                name: "Cuarto de equipos"
               - entity: sensor.pool_controller_outdoor_temperature
                 name: "Exterior"
               - entity: button.pool_controller_update_temperature_sensors_now
@@ -308,4 +308,4 @@ views:
               - entity: sensor.pool_controller_wifi_signal
                 name: "Señal Wi-Fi"
               - entity: sensor.pool_controller_wifi_disconnects
-                name: "Desconexiones Wi-Fi"
+                name: "Desconexiones de Wi‑Fi"
