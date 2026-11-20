@@ -260,7 +260,7 @@
       },
       "offset": {
         "label": "Ajustement de la durée de filtration",
-        "sub": "Ajouté à la durée calculée"
+        "sub": "Ajouté à la durée calculée ou retiré (de −6 h à +6 h)"
       },
       "warm": {
         "label": "Décalage du pic de chaleur",

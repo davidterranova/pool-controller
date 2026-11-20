@@ -260,7 +260,7 @@
       },
       "offset": {
         "label": "Ajuste de duración",
-        "sub": "Se suma a la duración calculada"
+        "sub": "Se suma a la duración calculada o se resta (de −6 h a +6 h)"
       },
       "warm": {
         "label": "Desfase del pico de calor",

@@ -260,7 +260,7 @@
       },
       "offset": {
         "label": "Filtration duration adjustment",
-        "sub": "Added to the computed duration"
+        "sub": "Added to or taken off the computed duration (−6 h to +6 h)"
       },
       "warm": {
         "label": "Warmest-hour offset",

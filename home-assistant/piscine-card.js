@@ -1907,7 +1907,8 @@ class PiscineCard extends HTMLElement {
   _numTxt(key, v) {
     if (!isSet(v) || !Number.isFinite(+v)) return "—";
     const step = String(this._attr(key, "step") ?? 1), dec = step.includes(".") ? step.split(".")[1].length : 0;
-    return `${fmtN(+v, dec)} ${this._attr(key, "unit_of_measurement") || ""}`.trim();
+    const sign = key === "offset" && +v > 0 ? "+" : ""; // the duration adjustment goes both ways: +1 h, −1 h
+    return `${sign}${fmtN(+v, dec)} ${this._attr(key, "unit_of_measurement") || ""}`.trim();
   }
   _wireSettings() {
     if (!customElements.get("ha-card")) this._$("setCard").classList.add("plain"); // the device's page: no HA around

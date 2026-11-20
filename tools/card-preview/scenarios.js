@@ -12,7 +12,7 @@ import { hm, dayKey, stamp, today, seasonal } from "./fake-hass.js";
 
 const BLOCKS = [[9, 30, 13, 0], [15, 0, 19, 30]]; // the plan: 8 h in two blocks
 const NUMBERS = { // the firmware's ranges (pool-controller.yaml)
-  min: [2, 0, 24, 0.5, "h"], max: [16, 0, 24, 0.5, "h"], warm: [2.5, 0, 6, 0.25, "h"], offset: [0, 0, 6, 0.5, "h"],
+  min: [2, 0, 24, 0.5, "h"], max: [16, 0, 24, 0.5, "h"], warm: [2.5, 0, 6, 0.25, "h"], offset: [-1, -6, 6, 0.5, "h"],
   boostDuration: [5, 0, 15, 1, "min"], boostInterval: [30, 5, 60, 5, "min"], highEvery: [3, 1, 10, 1, ""],
   freezeAt: [3, 0, 10, 0.5, "°C"], timeout: [60, 0, 480, 5, "min"],
   latitude: [45.76, -90, 90, 0.01, "°"], longitude: [4.84, -180, 180, 0.01, "°"],
