@@ -56,25 +56,24 @@ pop-up; the tile is the card's own:
 
 The panel has three tabs, the controller's own page's, so the pop-up needs no dashboard behind it:
 
-- « Contrôle »: state, today's plan, the pool's temperature (24 h to a year), Auto/Manuel, then the fill
+- « Control » (« Contrôle »): state, today's plan, the pool's temperature (24 h to a year), Auto/Manual (« Auto » / « Manuel »), then the fill
   water today, this month, and by day, week or month. The fill water needs the `volume` entity, the
   recorder, and Fill Meter on (`fillEnabled`); without them it isn't there (`variant: water` draws it alone,
   and hides itself while the meter is off). A fill running longer than Fill Alarm After adds a banner with
-  « Acquitter »;
-- « Réglages »: today's plan in detail with « Recalculer », the probes with « Relire » (a tap on one opens
-  Home Assistant's more-info, with its history), « Filtration et hors gel », every setting with its Apply
+  « Acknowledge » (« Acquitter »);
+- « Settings » (« Réglages »): today's plan in detail with « Recompute » (« Recalculer »), the probes with « Re-read » (« Relire ») (a tap on one opens
+  Home Assistant's more-info, with its history), « Filtration and freeze protection » (« Filtration et hors gel »), every setting with its Apply
   gate, then the last 7 days of filtration against the plan. On a screen, two columns cut after
-  « Appliquer »: « Filtration » on the left, « Impulsions et hors gel » on the right;
-- « Réglages contrôleur »: the controller's position and time zone, with « Utiliser la position et le
-  fuseau de Home Assistant » (Home Assistant's location rounded to 0.01°, its zone as the controller's
+  « Apply » (« Appliquer »): « Filtration » on the left, « Pulses and freeze protection » (« Impulsions et hors gel ») on the right;
+- « Controller settings » (« Réglages contrôleur »): the controller's position and time zone, with « Use Home Assistant's position and time zone » (« Utiliser la position et le fuseau de Home Assistant ») (Home Assistant's location rounded to 0.01°, its zone as the controller's
   Timezone Name and its POSIX string), then the firmware on its update entity (installed and latest
-  version, a tap opening Home Assistant's own update dialog with the release notes, « Vérifier »,
-  « Installer », held by the firmware while a manual override or a fill runs: the card asks first, then
+  version, a tap opening Home Assistant's own update dialog with the release notes, « Check » (« Vérifier »),
+  « Install » (« Installer »), held by the firmware while a manual override or a fill runs: the card asks first, then
   says it waits, and the wait can be cancelled; automatic updates, what a scheduled check finds, and how
   often to check). A firmware without the update entity (before v1.4) has no firmware section.
 
-`settings_tab: false` drops both « Réglages » tabs, and with them the tab bar. `temperatures` (before
-1.8.0) is deprecated: accepted and ignored, the outdoor and equipment-pad probes are in « Réglages » › Sondes.
+`settings_tab: false` drops both « Settings » (« Réglages ») tabs, and with them the tab bar. `temperatures` (before
+1.8.0) is deprecated: accepted and ignored, the outdoor and equipment-pad probes are in « Settings » (« Réglages ») › « Probes » (« Sondes »).
 
 The card speaks the Home Assistant user's language (English, French or Spanish, from their profile, English
 for any other), with the profile's number and time formats. `language: fr` (or `en`, `es`) fixes it for that
@@ -83,11 +82,11 @@ card whoever looks.
 Its header, and the tile, have a light for the controller: green while it talks (the Device Clock, `clock`,
 changes every minute), amber when it goes quiet or has been offline for less than 15 min, red beyond. In the
 header it says when the controller was last heard and opens Home Assistant's device page for the controller
-(Paramètres › Appareils et services › ESPHome › Pool Controller), where its link, Wi-Fi signal and
+(Settings › Devices & services › ESPHome › Pool Controller), where its link, Wi-Fi signal and
 disconnections are; `more_path` leads elsewhere instead. `controller_light: false` drops it;
 `controller_health: { warn: 3, alert: 15, beat: 4 }` sets its minutes before amber and red. While a fill runs
 too long and nobody has acknowledged it, the light is amber and keeps pulsing (steady with reduced motion),
-reads « Remplissage depuis 1 h 12 », and leads to the banner in « Contrôle » instead.
+reads « Filling for 1 h 12 » (« Remplissage depuis 1 h 12 »), and leads to the banner in « Control » (« Contrôle ») instead.
 
 What this dashboard adds to the card: the three probes' curves and their 90-day daily means, the
 pump's plan against reality over the last days, and the fill water with Home Assistant's own cards.
@@ -97,9 +96,8 @@ pump's plan against reality over the last days, and the fill water with Home Ass
 The fill meter is optional (Fill Meter, on by default). While it is on, the controller raises **Fill Running
 Too Long** once a fill has run **Fill Alarm After** minutes (60 by default, `0` = never): the card's light
 pulses amber, and the card, the controller's own page and the alerts component above show it with
-« Acquitter ». Both settings are on the controller's device page in Home Assistant (Paramètres › Appareils
-et services › ESPHome › Pool Controller › Configuration) and in its own page (« Réglages contrôleur » ›
-« Compteur d'eau »), not in the card.
+« Acknowledge » (« Acquitter »). Both settings are on the controller's device page in Home Assistant (Settings › Devices & services › ESPHome › Pool Controller › Configuration) and in its own page (« Réglages contrôleur » ›
+« Water meter » (« Compteur d'eau »)), not in the card.
 
 To get it on a phone, import the blueprint in your language:
 
@@ -128,7 +126,7 @@ What it does:
 
 - the alarm turns on: a notification at once, then one every « Repeat every » minutes, each replacing the last
   (one `tag`), until someone acknowledges it or the fill ends;
-- the acknowledge action (« Acknowledge », « Acquitter »), on a phone, presses Acknowledge Fill Alarm on the controller. An acknowledgement from anywhere
+- the acknowledge action (« Acknowledge », « Acquitter », « Confirmar »), on a phone, presses Acknowledge Fill Alarm on the controller. An acknowledgement from anywhere
   (the card, the controller's page, the device page, a phone) stops the reminders and clears the notification;
   the alarm itself stays on until the fill ends, but no longer pulses the light;
 - the alarm ends (the fill ended, or Fill Alarm After was raised past it): the notification is cleared, then
@@ -189,7 +187,7 @@ once (`.claude/rules/translations.md` at the repo's root).
   statistics: Filtration Hours Today resets at midnight, and a statistics day also counts the value
   it starts with, so a day that filtered less than the one before would show the day before's total.
 - **Fill water.** The meter's total only grows, so its statistics (`change`) are exact, over any
-  span. The card's « Contrôle » shows them by day (30 days), by week (13 weeks) or by month
+  span. The card's « Control » (« Contrôle ») shows them by day (30 days), by week (13 weeks) or by month
   (12 months), with the period's total, its average and its largest bar; the running day, week or
   month adds what the meter counted since the last hour Home Assistant compiled. The component in
   the Piscine view draws the same with Home Assistant's own cards. The meter is optional: the
@@ -199,9 +197,9 @@ once (`.claude/rules/translations.md` at the repo's root).
   manual override, a plan it couldn't compute, a fill running too long. The fill alarm's card says
   since when and whether it was acknowledged, and has « Acknowledge » (« Acquitter ») until someone does.
 - **Settings.** Everything the controller lets you tune, grouped by when it applies: the four
-  filtration-length settings wait for « Appliquer » because they reshape today's plan; freeze
+  filtration-length settings wait for « Apply » (« Appliquer ») because they reshape today's plan; freeze
   protection and the boost pulses apply at once. The override's duration isn't one of them: it is
-  chosen with the override, in the panel's « Contrôle » › Manuel. It is piscine-card's settings
+  chosen with the override, in the panel's « Control » (« Contrôle ») › « Manual » (« Manuel »). It is piscine-card's settings
   variant, not Home Assistant's entities card: the latter cuts a long name short on a phone
-  (« Min filtration h… ») and has no line for what a setting does. The panel's « Réglages » tab and
-  the device's own page (Réglages › Filtration et hors gel) draw the same rows, so all three read alike.
+  (« Min filtration h… ») and has no line for what a setting does. The panel's « Settings » (« Réglages ») tab and
+  the device's own page (« Settings » (« Réglages ») › « Filtration and freeze protection » (« Filtration et hors gel »)) draw the same rows, so all three read alike.

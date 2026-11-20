@@ -6,7 +6,8 @@ temperature and sunrise/sunset, plus manual override), a freeze-protection
 safety rule that always wins, three temperature sensors, and an optional
 fill-line water meter with a long-fill alarm — all exposed to Home
 Assistant, but not dependent on it. The device keeps running its
-schedule whether or not HA is reachable.
+schedule whether or not HA is reachable. Its interface speaks English,
+French and Spanish ([Languages](#languages)).
 
 **Install it from the browser: <https://pool-controller.kitesize.fr/>**
 (Chrome or Edge on a computer, the board over USB), then finish on the
@@ -93,7 +94,7 @@ For a change to the firmware, or other GPIOs than the published ones.
 
 6. Later, over Wi-Fi: `make ota`. It needs the controller's **OTA
    Password** — random at first boot, so set your own on the page
-   (Réglages contrôleur › Accès) — read from `.ota-password` (one line, gitignored)
+   (« Controller settings » (« Réglages contrôleur ») › « Access » (« Accès »)) — read from `.ota-password` (one line, gitignored)
    or `OTA_PASSWORD=…`, and given to the upload only, never compiled in.
 
 A controller running your own build still checks the published releases:
@@ -101,7 +102,7 @@ your build reports `git describe`'s version (`v1.5.0-3-g1a2b3c4`, `dev`),
 which never matches a release's, so with Auto Update on the next scheduled
 check installs the release over it. Turn Auto Update off, or set Update
 Check Interval to `on_request` (« À la demande »), on a controller you flash yourself
-(Réglages contrôleur › Firmware, or Home Assistant).
+(« Controller settings » (« Réglages contrôleur ») › Firmware, or Home Assistant).
 
 ## Coming from a secrets.yaml build
 
@@ -177,10 +178,10 @@ you set `local: true` back).
   `curl -X POST 'localhost:8080/__mock/reboot?version=v1.6.0'` fakes a
   reboot onto another firmware; the page then reloads itself.
 - **The fill meter** (fill-meter.yaml) is simulated too: the valve runs 3 min
-  every quarter hour, « Tester » opens it for 20 s so the pulse test passes,
-  and turning Fill Meter off empties Remplissage. `MOCK_FILL=off make
+  every quarter hour, « Test » (« Tester ») opens it for 20 s so the pulse test passes,
+  and turning Fill Meter off empties « Filling » (« Remplissage »). `MOCK_FILL=off make
   mock-webui` starts with it off; `MOCK_LONG_FILL=1 make mock-webui` with a
-  fill already past Fill Alarm After, so the banner and « Acquitter » can be
+  fill already past Fill Alarm After, so the banner and « Acknowledge » (« Acquitter ») can be
   tried (the fill stops 3 min after it, and the alarm clears 5 min later).
 - An entity the simulation doesn't know (e.g. one you just added) still
   shows up, with a static value. `make mock-ui-check` marks it
@@ -192,16 +193,13 @@ you set `local: true` back).
 [home-assistant/piscine-card.js](home-assistant/piscine-card.js) is
 `custom:piscine-card`, the pool card of the Home Assistant dashboard: a tile,
 and a panel shown in a pop-up with three tabs, the device page's own.
-« Contrôle » has the pump's state, today's plan timeline, the pool's
-temperature (24 h, 7, 30 and 90 days, a year), Auto/Manuel, the forced speed
+« Control » (« Contrôle ») has the pump's state, today's plan timeline, the pool's
+temperature (24 h, 7, 30 and 90 days, a year), Auto/Manual (« Auto » / « Manuel »), the forced speed
 and its duration, then the fill water today, this month and by day, week or
-month with the period's total; « Réglages » today's plan with « Recalculer »,
-the probes (a tap opens Home Assistant's more-info), « Filtration et hors
-gel », every setting the controller has, then the last 7 days; « Réglages
-contrôleur » its position and time zone, which « Utiliser la position et le
-fuseau de Home Assistant » sets from Home Assistant's own, and its firmware
+month with the period's total; « Settings » (« Réglages ») today's plan with « Recompute » (« Recalculer »),
+the probes (a tap opens Home Assistant's more-info), « Filtration and freeze protection » (« Filtration et hors gel »), every setting the controller has, then the last 7 days; « Controller settings » (« Réglages contrôleur ») its position and time zone, which « Use Home Assistant's position and time zone » (« Utiliser la position et le fuseau de Home Assistant ») sets from Home Assistant's own, and its firmware
 (installed and latest version, a tap opening Home Assistant's own update
-dialog, « Vérifier » and « Installer » on its update entity, automatic
+dialog, « Check » (« Vérifier ») and « Install » (« Installer ») on its update entity, automatic
 updates and how often to check). Two more variants draw a part alone:
 `settings` the settings, with a line under each saying what it does, and
 `water` the fill water.
@@ -211,11 +209,11 @@ offline, red after 15 min; each new message sends a ring out of it. In the
 panel, it opens Home Assistant's device page for the controller (its link,
 Wi-Fi signal and disconnections).
 The fill meter is optional ([POOL-CONTROLLER.md, Fill meter](POOL-CONTROLLER.md#fill-meter)):
-with Fill Meter off, the fill water is gone from « Contrôle » and `water`
+with Fill Meter off, the fill water is gone from « Control » (« Contrôle ») and `water`
 hides. A fill running longer than Fill Alarm After puts a banner in
-« Contrôle » with « Acquitter » (Acknowledge Fill Alarm), and until someone
+« Control » (« Contrôle ») with « Acknowledge » (« Acquitter ») (Acknowledge Fill Alarm), and until someone
 acknowledges it the light turns amber and keeps pulsing, the tile and the
-header read « Remplissage depuis 1 h 12 », and the header's light leads to
+header read « Filling for 1 h 12 » (« Remplissage depuis 1 h 12 »), and the header's light leads to
 the banner. Its order: red (controller lost) > pulsing amber (fill alarm) >
 amber > green. The meter's settings are not the card's: the device's page in
 Home Assistant (Configuration), or the controller's own page. Reminders on a
@@ -250,7 +248,7 @@ What it needs from Home Assistant, besides the entities:
   fill up from the day the firmware was flashed), and of Pool Return
   Temperature, whose daily mean (pipe included) stands in for the days before;
 - the long-term statistics of the fill meter (Piscine - Volume total
-  remplissage, `total_increasing`), for the fill water in « Contrôle ».
+  remplissage, `total_increasing`), for the fill water in « Control » (« Contrôle »).
   Without the meter or the recorder, it isn't there;
 - Fill Meter, Fill Running, Fill Running Too Long, Fill Alarm Acknowledged,
   Acknowledge Fill Alarm and Fill Alarm After
@@ -261,16 +259,15 @@ What it needs from Home Assistant, besides the entities:
   minute: the light's heartbeat. Without it, the light only follows the link;
 - the firmware's update entity (Firmware, with Check for Update, Cancel
   Update, Auto Update, Update Check Interval and Update Status), for
-  « Réglages contrôleur » › Firmware: « Installer » is `update.install`, which the
+  « Controller settings » (« Réglages contrôleur ») › Firmware: « Install » (« Installer ») is `update.install`, which the
   firmware holds while a manual override or a fill runs (« Annuler la
   demande » presses Cancel Update); Auto Update installs only what a
   scheduled check finds; a tap on a version row opens Home Assistant's own
-  dialog for the entity (release notes, « Ignorer »). Whether a newer
+  dialog for the entity (release notes, « Skip » (« Ignorer »)). Whether a newer
   firmware exists is the controller's to say: the card asks GitHub nothing
   (it is itself updated by HACS). A firmware without that entity (before
   v1.4) has no Firmware section;
-- Latitude, Longitude, Timezone and Timezone Name, for « Réglages
-  contrôleur » › Position; its « Utiliser » reads Home Assistant's own location and zone
+- Latitude, Longitude, Timezone and Timezone Name, for « Controller settings » (« Réglages contrôleur ») › Position; its « Use » (« Utiliser ») reads Home Assistant's own location and zone
   (Settings › System › General) and converts the zone to the POSIX string the
   controller applies, from tzdata's rules
   ([tools/tz-posix.py](tools/tz-posix.py) regenerates the card's table).
@@ -388,31 +385,30 @@ included, on the step it was on. Its texts are bundled into the firmware
 (`webui/i18n-page/`, and the card's), so the hotspot works with no internet
 (see [Languages](#languages)). It has three tabs, the card's own:
 
-- **Contrôle** (`#controle`), for daily use: Home Assistant's `piscine-card`
+- **Control** (« Contrôle », `#controle`), for daily use: Home Assistant's `piscine-card`
   panel (the pump's state, today's plan timeline, the pool's last 7 days,
-  Auto/Manuel, forced speed and its duration) and, on its right (below it on
-  a phone), Remplissage: the card's `water` variant on the controller's own
+  Auto/Manual (« Auto » / « Manuel »), forced speed and its duration) and, on its right (below it on
+  a phone), « Filling » (« Remplissage »): the card's `water` variant on the controller's own
   record (Fill Water Today, Days and Months): today, this month, the flow,
   and the litres by day over 30 days or by month over 12. With Fill Meter
-  off there is no Remplissage. A fill running longer than Fill Alarm After
-  puts the card's banner here, with « Acquitter », fed by the controller, so
+  off there is no « Filling » (« Remplissage »). A fill running longer than Fill Alarm After
+  puts the card's banner here, with « Acknowledge » (« Acquitter »), fed by the controller, so
   it works with Home Assistant down.
-- **Réglages** (`#reglages`): today's plan in detail, the device's sensors,
-  « Filtration et hors gel » (the filtration settings with their Apply gate,
+- **Settings** (« Réglages », `#reglages`): today's plan in detail, the device's sensors,
+  « Filtration and freeze protection » (« Filtration et hors gel ») (the filtration settings with their Apply gate,
   the boost pulses and the freeze-protection threshold: the card's settings
-  variant, the rows of its « Réglages » tab in Home Assistant), and the last
+  variant, the rows of its « Settings » (« Réglages ») tab in Home Assistant), and the last
   7 days (hours filtered, pool min/max).
-- **Réglages contrôleur** (`#reglages-controleur`): a Wi-Fi section (see
+- **Controller settings** (« Réglages contrôleur », `#reglages-controleur`): a Wi-Fi section (see
   below: the connection and its statistics, and a way to join a network;
-  only when the device has those entities), Position, Sondes, Compteur d'eau
-  (the fill meter on or off, its pulse test, its last pulse and « Alarme
-  après »; the setup wizard asks the same in its Sondes step), a Firmware
-  one (the version it runs, ESPHome's, and its updates: « Vérifier »,
-  « Installer », as in the card's « Réglages contrôleur »), Accès, Home
-  Assistant, Réinitialiser, and its live log (Journal).
+  only when the device has those entities), Position, « Probes » (« Sondes »), « Water meter » (« Compteur d'eau »)
+  (the fill meter on or off, its pulse test, its last pulse and « Alarm after » (« Alarme après »); the setup wizard asks the same in its « Probes » (« Sondes ») step), a Firmware
+  one (the version it runs, ESPHome's, and its updates: « Check » (« Vérifier »),
+  « Install » (« Installer »), as in the card's « Controller settings » (« Réglages contrôleur »)), « Access » (« Accès »), Home
+  Assistant, « Reset » (« Réinitialiser »), and its live log (« Log » (« Journal »)).
 
-Links from before keep working: `#avance` opens Réglages, `#controleur` and
-`#wifi` Réglages contrôleur, `#remplissage` Contrôle at its Remplissage.
+Links from before keep working: `#avance` opens Settings (Réglages), `#controleur` and
+`#wifi` Controller settings (Réglages contrôleur), `#remplissage` Control (Contrôle) at its Filling (Remplissage).
 
 How it fits together:
 
@@ -440,10 +436,10 @@ How it fits together:
   the last 30 days and the last 12 months (Fill Water Today, Days, Months).
   So the card's temperature graph runs with `recorder: false` here: 7 days,
   with no range to pick; its fill water is the `water` variant on that
-  record, beside it in the page's « Contrôle ». The panel has no tabs
-  (`settings_tab: false`): the page has its own Réglages and Réglages
-  contrôleur. Nor the card's
-  light: the page's own « Connecté au contrôleur » chip is its link to the
+  record, beside it in the page's « Control » (« Contrôle »). The panel has no tabs
+  (`settings_tab: false`): the page has its own « Settings » (« Réglages ») and
+  « Controller settings » (« Réglages contrôleur »). Nor the card's
+  light: the page's own « Connected to the controller » (« Connecté au contrôleur ») chip is its link to the
   device. The page only keeps the Manual Override's changes in memory from
   the moment it opens (gone on reload), for the card's record of today's
   overrides.
@@ -495,7 +491,7 @@ same way:
   the page's login screen. Not ESPHome's `captive_portal`: that answers every page
   request itself, without login, so the page would be unreachable.
 - **Join a network from the page** (Contrôleur tab, Wi-Fi): pick one of the networks
-  nearby or type it, give the password, « Se connecter ». The device tries
+  nearby or type it, give the password, « Connect » (« Se connecter »). The device tries
   for 30 s and saves the network only if it connects; otherwise it keeps the
   current one. The password is held on the device and never sent back to a
   page or to HA. The firmware compiles in no network, so the one saved this
@@ -567,7 +563,7 @@ Wi-Fi at all.
 
 The fill meter (Fill Meter, 1.9.0) is on after the update, as it was
 before: a controller without a meter on its fill line turns it off once
-(Réglages contrôleur › Compteur d'eau on its page, or the device's
+(« Controller settings » (« Réglages contrôleur ») › « Water meter » (« Compteur d'eau ») on its page, or the device's
 Configuration in Home Assistant). See
 [POOL-CONTROLLER.md, Fill meter](POOL-CONTROLLER.md#fill-meter).
 
@@ -577,6 +573,19 @@ The interface speaks English, French and Spanish: the card, the device's
 page and its setup wizard, the install page, and the Home Assistant
 dashboard, scripts and blueprints. The plan, and how far it has got:
 [docs/plans/i18n.md](docs/plans/i18n.md).
+
+**Which language each one speaks** (any other language falls back to English):
+
+| Where | Its language | To choose another |
+|---|---|---|
+| The card in Home Assistant | The user's profile (Home Assistant's language), with its number and time formats | `language: en`, `fr` or `es` in the card's config, for every user of that dashboard |
+| The controller's page, its login screen and setup wizard | The browser's languages | EN · FR · ES in the header's top-right corner, remembered by that browser |
+| The card on the controller's page | The page's | The page's switch |
+| The install page | The browser's languages | EN · FR · ES in its header, remembered by that browser |
+| The dashboard, scripts and blueprint | One file per language | Paste or import the language's file ([home-assistant/dashboard/README.md](home-assistant/dashboard/README.md)) |
+
+UI labels in these docs are quoted in English, the French in brackets:
+« Settings » (« Réglages »).
 
 - **Everything is local.** The texts are JSON dictionaries built into what
   runs: the card's (`home-assistant/i18n/`) into the card HACS installs and
@@ -628,6 +637,32 @@ dashboard, scripts and blueprints. The plan, and how far it has got:
    into every surface's `es.json`, and lists what changed against the
    previous text. It refuses a text whose placeholders or tags changed, or a
    glossary term translated another way, and keeps the previous one. `DRY_RUN=1` only reports. Then `make i18n-check`.
+
+The Spanish (and any language added this way) is machine-translated, then
+read where possible: a correction is a pull request on the `es.json` files.
+
+**Adding a language** (German, `de`, as the example):
+
+1. Add `"de"` to `LANGS` in [home-assistant/i18n.js](home-assistant/i18n.js).
+   The language resolution, `make i18n-check`, the export and import,
+   `make ha-files` and `make ha-dashboard-check` all read it.
+2. Create every surface's `de.json` with the same keys as `en.json`: the
+   card's (`home-assistant/i18n/`), the page's (`webui/i18n-page/`), the
+   install page's (`docs/install/i18n/`) and the Home Assistant files'
+   (`home-assistant/i18n-yaml/`). The quickest: `make i18n-export`,
+   translate the file into German, `make i18n-import TO=de FILE=…`; its
+   words for the glossary's terms go into
+   [tools/i18n/glossary.json](tools/i18n/glossary.json) first.
+3. Import the new dictionaries where the texts are bundled: `DICTS` in
+   `home-assistant/piscine-card.js`, the dictionaries in
+   `webui/page-i18n.js` and in `docs/install/install-i18n.js`, and the
+   switch's language names (`NAMES` in `webui/page-i18n.js`).
+4. `make ha-files` writes the dashboard, scripts and blueprint in German;
+   add the blueprint's import link to the dashboard's README.
+5. `make i18n-check`, `make webui-test`, `make ha-dashboard-check`,
+   `make card-preview-check` (add `de` to the preview's languages in
+   `tools/card-preview/shoot.mjs` and its switch), and look at the card and
+   the page for words too long for their buttons (`make card-shots`).
 
 ## Releases
 

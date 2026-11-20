@@ -127,7 +127,24 @@
       "auto": "Instalar automáticamente",
       "auto_sub": "Una versión encontrada por la comprobación periódica se instala sola, tras una velocidad forzada o un llenado en curso. La encontrada con «Comprobar» espera a «Instalar».",
       "interval": "Comprobar actualizaciones",
-      "interval_sub": "El controlador pide a GitHub la última versión publicada."
+      "interval_sub": "El controlador pide a GitHub la última versión publicada.",
+      "steps": {
+        "requested": "Solicitada",
+        "download": "Descarga",
+        "reboot": "Reinicio",
+        "installed": "Instalada"
+      },
+      "inst": {
+        "done": "{version} instalada: el controlador se ha reiniciado con ella.",
+        "wait_fill": "Espera a que termine el llenado en curso.",
+        "wait_override": "Espera a que termine la velocidad forzada.",
+        "rebooting": "Reiniciando con {version}…",
+        "verifying": "Comprobando el firmware y reiniciando…",
+        "downloading": "Descargando {version}",
+        "connecting": "Conectando con el servidor de versiones…",
+        "failed": "Error: el controlador mantiene {version}.",
+        "its_version": "su versión"
+      }
     },
     "log": {
       "heading": "Registro",

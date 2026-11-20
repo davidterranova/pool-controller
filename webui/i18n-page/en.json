@@ -127,7 +127,24 @@
       "auto": "Install automatically",
       "auto_sub": "A version found by the periodic check installs by itself, after a forced speed or a running fill. One found with “Check” waits for “Install”.",
       "interval": "Check for updates",
-      "interval_sub": "The controller asks GitHub for the latest published version."
+      "interval_sub": "The controller asks GitHub for the latest published version.",
+      "steps": {
+        "requested": "Requested",
+        "download": "Download",
+        "reboot": "Restart",
+        "installed": "Installed"
+      },
+      "inst": {
+        "done": "{version} installed: the controller restarted on it.",
+        "wait_fill": "Waiting for the running fill to end.",
+        "wait_override": "Waiting for the forced speed to end.",
+        "rebooting": "Restarting on {version}…",
+        "verifying": "Checking the firmware, then restarting…",
+        "downloading": "Downloading {version}",
+        "connecting": "Connecting to the release server…",
+        "failed": "Failed: the controller keeps {version}.",
+        "its_version": "its version"
+      }
     },
     "log": {
       "heading": "Log",
