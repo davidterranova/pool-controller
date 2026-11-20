@@ -156,7 +156,8 @@
       "pulses_freeze": "Pulsos y antiheladas",
       "days": "Últimos 7 días",
       "position": "Posición",
-      "firmware": "Firmware"
+      "firmware": "Firmware",
+      "restart": "Reiniciar"
     },
     "pend_banner": "El tiempo de filtración ha cambiado: solo se tiene en cuenta una vez aplicado, lo que recalcula el plan de hoy.",
     "chart_range": "Período del gráfico",
@@ -260,7 +261,7 @@
       },
       "offset": {
         "label": "Ajuste de duración",
-        "sub": "Se suma a la duración calculada"
+        "sub": "Se suma a la duración calculada o se resta (de −6 h a +6 h)"
       },
       "warm": {
         "label": "Desfase del pico de calor",
@@ -468,6 +469,15 @@
       },
       "none": "Aún no hay ningún día completo.",
       "legend": "La marca indica la duración planificada; en naranja, un día que quedó por debajo de su plan. Agua: el mínimo y el máximo del día, medidos con la bomba en funcionamiento. El controlador registra cada día a medianoche."
+    },
+    "restart": {
+      "row": "Reiniciar el controlador",
+      "sub": "Se conserva todo. La bomba se detiene durante el reinicio (unos 30 s) y luego vuelve a Auto.",
+      "button": "Reiniciar",
+      "aria": "Confirmar el reinicio",
+      "confirm": "¿Reiniciar el controlador ahora?",
+      "yes": "Reiniciar",
+      "ok": "Reiniciando el controlador (unos 30 s)"
     }
   }
 }

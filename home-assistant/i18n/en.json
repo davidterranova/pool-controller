@@ -156,7 +156,8 @@
       "pulses_freeze": "Pulses and freeze protection",
       "days": "Last 7 days",
       "position": "Position",
-      "firmware": "Firmware"
+      "firmware": "Firmware",
+      "restart": "Restart"
     },
     "pend_banner": "Filtration time changed: it only counts once applied, which recomputes today's plan.",
     "chart_range": "Chart period",
@@ -260,7 +261,7 @@
       },
       "offset": {
         "label": "Filtration duration adjustment",
-        "sub": "Added to the computed duration"
+        "sub": "Added to or taken off the computed duration (−6 h to +6 h)"
       },
       "warm": {
         "label": "Warmest-hour offset",
@@ -468,6 +469,15 @@
       },
       "none": "No complete day yet.",
       "legend": "The mark shows the planned duration; in orange, a day that stayed under its plan. Water: the day's minimum and maximum, measured with the pump running. The controller records each day at midnight."
+    },
+    "restart": {
+      "row": "Restart the controller",
+      "sub": "Keeps everything. The pump stops during the restart (about 30 s), then resumes in Auto.",
+      "button": "Restart",
+      "aria": "Confirm the restart",
+      "confirm": "Restart the controller now?",
+      "yes": "Restart",
+      "ok": "Controller restarting (about 30 s)"
     }
   }
 }

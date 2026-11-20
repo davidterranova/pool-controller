@@ -128,6 +128,7 @@ export const E = {
   outdoorProbe: "select/Outdoor Probe",
   rescanProbes: "button/Rescan Probes",
   factoryReset: "button/Factory Reset",
+  restart: "button/Restart",
   logoutAll: "button/Logout All Devices", // ends every login session (docs/plans/page-login.md)
   waitingFor: "text_sensor/Schedule Waiting For",
 };

@@ -156,7 +156,8 @@
       "pulses_freeze": "Impulsions et hors gel",
       "days": "7 derniers jours",
       "position": "Position",
-      "firmware": "Firmware"
+      "firmware": "Firmware",
+      "restart": "Redémarrer"
     },
     "pend_banner": "Durée de filtration modifiée : elle ne compte qu'une fois appliquée, ce qui recalcule le plan du jour.",
     "chart_range": "Période du graphique",
@@ -260,7 +261,7 @@
       },
       "offset": {
         "label": "Ajustement de la durée de filtration",
-        "sub": "Ajouté à la durée calculée"
+        "sub": "Ajouté à la durée calculée ou retiré (de −6 h à +6 h)"
       },
       "warm": {
         "label": "Décalage du pic de chaleur",
@@ -468,6 +469,15 @@
       },
       "none": "Aucune journée complète pour l'instant.",
       "legend": "Le trait marque la durée planifiée ; en orange, une journée restée sous son plan. Eau : minimum et maximum du jour, mesurés pompe en marche. Le contrôleur enregistre chaque journée à minuit."
+    },
+    "restart": {
+      "row": "Redémarrer le contrôleur",
+      "sub": "Tout est gardé. La pompe s'arrête le temps du redémarrage (environ 30 s), puis reprend en Auto.",
+      "button": "Redémarrer",
+      "aria": "Confirmer le redémarrage",
+      "confirm": "Redémarrer le contrôleur maintenant ?",
+      "yes": "Redémarrer",
+      "ok": "Redémarrage du contrôleur (environ 30 s)"
     }
   }
 }

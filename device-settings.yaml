@@ -521,6 +521,14 @@ button:
           ESP_LOGI("settings", "Probe scan: %u on the bus", (unsigned) id(probe_bus).get_devices().size());
       - script.execute: probe_options_update
       - script.execute: probes_read
+  # Restarts the controller, keeping everything (ESPHome's safe reboot saves
+  # the restored values first). It comes back in Auto: Manual Override is
+  # never restored. The page and the card ask for a confirmation first.
+  - platform: restart
+    name: "Restart"
+    web_server: {sorting_group_id: grp_device, sorting_weight: 85}
+    icon: mdi:restart
+    entity_category: config
   # Forgets access and the network, keeps the pool's settings, reboots into
   # setup mode (see the header). The page asks for a confirmation first.
   - platform: template

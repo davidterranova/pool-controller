@@ -342,10 +342,11 @@ Re-evaluated every 30 seconds, highest priority wins:
    - **Filtration hours** = `Pool Return Temperature / 2`, clamped between
      `Min Filtration Hours` and `Max Filtration Hours` (both HA-editable,
      default 2h/16h), then `Filtration Hour Offset` (HA-editable, default 0,
-     up to 6h) is added on top. The offset is applied *after* the clamp, so
-     it's genuinely additive — useful for pushing extra turnover (e.g.
-     algae) beyond what `Max Filtration Hours` would otherwise allow, rather
-     than being absorbed by that ceiling.
+     from -6h to +6h) is added. The offset is applied *after* the clamp, so
+     it genuinely moves the day — a positive one pushes extra turnover (e.g.
+     algae) beyond what `Max Filtration Hours` would otherwise allow, a
+     negative one filters less than `Min Filtration Hours` — rather than
+     being absorbed by those bounds. The day's total stays within 0–24h.
    - **Staged, not live**: `Min`/`Max Filtration Hours`, `Warmest Part of Day
      Offset`, and `Filtration Hour Offset` don't take effect the moment you
      change them — the schedule engine reads its own internal copy of each,

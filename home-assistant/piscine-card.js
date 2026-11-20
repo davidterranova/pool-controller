@@ -128,7 +128,7 @@ const DICTS = { en, fr, es };
  */
 let T = makeT(DICTS, "en"), F = makeFmt("en");
 
-const VERSION = "1.11.0";
+const VERSION = "1.12.0";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",
@@ -180,6 +180,7 @@ const DEFAULT_ENTITIES = {
   firmware: "update.pool_controller_firmware",
   checkUpdate: "button.pool_controller_check_for_update",
   cancelUpdate: "button.pool_controller_cancel_update",
+  restart: "button.pool_controller_restart", // « Réglages » › Redémarrer (device-settings.yaml, 1.12.0)
   autoUpdate: "switch.pool_controller_auto_update",
   updateInterval: "select.pool_controller_update_check_interval",
   updateStatus: "sensor.pool_controller_update_status",
@@ -233,6 +234,17 @@ const PROBE_GLITCH_C = 12; // a day the probe spans more than this had a bad rea
 const HEALTH = { warn: 3, alert: 15, beat: 4 };
 /** Never keys: the sun and the two scripts are Home Assistant's, not the controller's. */
 const NOT_CONTROLLER = new Set(["sun", "sForce", "sAuto"]);
+/**
+ * The controller's two id prefixes: a device first named « Piscine Pool Controller » (piscine_pool_controller_…) and a
+ * fresh install (pool_controller_…). A default id Home Assistant lacks is looked up under the other one, so a default
+ * written for one install still finds the entity on the other.
+ */
+const ID_PREFIXES = [["piscine_pool_controller_", "pool_controller_"], ["pool_controller_", "piscine_pool_controller_"]];
+const otherId = (id) => {
+  const dot = id.indexOf("."), object = id.slice(dot + 1);
+  const p = ID_PREFIXES.find(([from]) => object.startsWith(from));
+  return p ? `${id.slice(0, dot + 1)}${p[1]}${object.slice(p[0].length)}` : null;
+};
 const W_RANGES = ["30d", "90d", "12m"]; // their labels: card.range.*
 const W_PERIOD = { "30d": "day", "90d": "week", "12m": "month" };
 /**
@@ -812,6 +824,14 @@ const panelHtml = (t) => `
     <div class="sp-col">
       <section class="cont"><h4 class="sp-h">${t("card.sec.pulses_freeze")}</h4><div id="rows2"></div></section>
       <section><h4 class="sp-h">${t("card.sec.days")}</h4><div class="days" id="days"></div></section>
+      <section id="restartSec" hidden><h4 class="sp-h">${t("card.sec.restart")}</h4>
+        <div class="erow"><span class="ic" id="restartIc"></span><span class="name"><span>${t("card.restart.row")}</span><small>${t("card.restart.sub")}</small></span>
+          <button class="btn" id="restartBtn">${t("card.restart.button")}</button></div>
+        <div class="confirm" id="restartCf" role="alertdialog" aria-label="${t("card.restart.aria")}" hidden>
+          <span>${t("card.restart.confirm")}</span>
+          <button class="no" id="restartNo">${t("common.cancel")}</button>
+          <button class="yes" id="restartYes">${t("card.restart.yes")}</button>
+        </div></section>
     </div>
   </div>
   <div class="ctlpane" role="tabpanel">
@@ -935,7 +955,8 @@ class PiscineCard extends HTMLElement {
       controller_light: config.controller_light !== false, health: { ...HEALTH, ...(config.controller_health || {}) }, language };
     this._localeKey = null;
     this._setLocale(this._hass);
-    this._e = { ...DEFAULT_ENTITIES, ...(config.entities || {}) };
+    this._mapped = config.entities || {};
+    this._e = { ...DEFAULT_ENTITIES, ...this._mapped };
     this.setAttribute("variant", variant);
     this._built = false;
     this._confirm = false;
@@ -968,17 +989,26 @@ class PiscineCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    this._resolveIds(hass);
     if (this._setLocale(hass) && this._built) this._rebuild(); // the user changed their language: the card follows
     this._use();
     if (!this._built) this._build();
     this.toggleAttribute("dark", !!(hass.themes && hass.themes.darkMode));
     this._update();
   }
+  /** Each default id (not one `entities:` maps) that Home Assistant lacks, under the controller's other prefix if it has that. */
+  _resolveIds(hass) {
+    for (const [k, id] of Object.entries(DEFAULT_ENTITIES)) {
+      if (k in this._mapped || NOT_CONTROLLER.has(k)) continue;
+      const alt = !hass.states[id] && otherId(id);
+      this._e[k] = alt && hass.states[alt] ? alt : id;
+    }
+  }
   connectedCallback() {
     this._timer = setInterval(() => this._hass && this._update(), 1000);
     if (this._ro && this._built) for (const el of [this._$("tChart"), this._$("wChart")]) if (el) this._ro.observe(el);
   }
-  disconnectedCallback() { clearInterval(this._timer); clearTimeout(this._toastTimer); this._ro?.disconnect(); }
+  disconnectedCallback() { clearInterval(this._timer); clearTimeout(this._toastTimer); clearTimeout(this._rsTimer); this._ro?.disconnect(); }
 
   /**
    * The card's language and formats, from the HA user's profile (or `language:`): this._t(key, vars) and
@@ -1907,7 +1937,8 @@ class PiscineCard extends HTMLElement {
   _numTxt(key, v) {
     if (!isSet(v) || !Number.isFinite(+v)) return "—";
     const step = String(this._attr(key, "step") ?? 1), dec = step.includes(".") ? step.split(".")[1].length : 0;
-    return `${fmtN(+v, dec)} ${this._attr(key, "unit_of_measurement") || ""}`.trim();
+    const sign = key === "offset" && +v > 0 ? "+" : ""; // the duration adjustment goes both ways: +1 h, −1 h
+    return `${sign}${fmtN(+v, dec)} ${this._attr(key, "unit_of_measurement") || ""}`.trim();
   }
   _wireSettings() {
     if (!customElements.get("ha-card")) this._$("setCard").classList.add("plain"); // the device's page: no HA around
@@ -2011,11 +2042,24 @@ class PiscineCard extends HTMLElement {
         this._paneRows.push(r);
       }
     }
+    this._wireRestart();
     this._wireUpdate();
     this._$("posRows").addEventListener("click", (ev) => {
       const b = ev.target.closest('button[data-act="pos-ha"]');
       if (b && !b.disabled) this._posFromHa(b);
     });
+  }
+  /** « Réglages » › Redémarrer: asks first (7 s to answer), then presses the controller's Restart. */
+  _wireRestart() {
+    const btn = this._$("restartBtn"), cf = this._$("restartCf");
+    const ask = (open) => {
+      clearTimeout(this._rsTimer);
+      cf.hidden = !open; btn.hidden = open;
+      if (open) { this._$("restartYes").focus(); this._rsTimer = setTimeout(() => ask(false), 7000); } else btn.focus({ preventScroll: true });
+    };
+    btn.addEventListener("click", () => ask(true));
+    this._$("restartNo").addEventListener("click", () => ask(false));
+    this._$("restartYes").addEventListener("click", () => { ask(false); this._press(btn, "restart", this._t("card.restart.ok")); });
   }
   _renderSetPane() {
     for (const r of this._paneRows) {
@@ -2034,6 +2078,13 @@ class PiscineCard extends HTMLElement {
     for (const r of this._paneRows) if (r.sect) r.sect.hidden = this._paneRows.every((x) => x.sect !== r.sect || x.row.hidden);
     this._updateSettings();
     this._renderDays();
+    const restart = this._st("restart");
+    this._$("restartSec").hidden = !restart;
+    if (restart) {
+      const ic = restart.attributes.icon || "restart";
+      if (this._rsIcon !== ic) { this._$("restartIc").innerHTML = this._icon(ic); this._rsIcon = ic; }
+      this._$("restartBtn").disabled = !this._online();
+    }
   }
   /**
    * Closed days from the device's Daily History, plus today so far: hours filtered, the plan's mark, the pool's

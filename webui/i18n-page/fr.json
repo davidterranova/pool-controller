@@ -382,6 +382,17 @@
       "logout": "Se déconnecter",
       "logout_all": "Déconnecter tous les appareils"
     },
+    "restart": {
+      "heading": "Redémarrer",
+      "title": "Redémarrer le contrôleur",
+      "row": "Redémarrer maintenant",
+      "row_sub": "Tout est gardé. La pompe s'arrête le temps du redémarrage (environ 30 s), puis le contrôleur reprend en Auto : une vitesse forcée prend fin.",
+      "ask": "Redémarrer…",
+      "aria": "Confirmer le redémarrage",
+      "confirm": "Redémarrer le contrôleur maintenant ? Cette page se reconnecte d'elle-même.",
+      "yes": "Redémarrer",
+      "toast": "Le contrôleur redémarre (environ 30 s)"
+    },
     "reset": {
       "heading": "Réinitialiser",
       "title": "Réglages d'usine",

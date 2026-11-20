@@ -327,6 +327,7 @@ S = {
     "outdoor_probe": "Outdoor Probe",
     "rescan": "Rescan Probes",
     "factory_reset": "Factory Reset",
+    "restart": "Restart",
     "logout_all": "Logout All Devices",
     "waiting_for": "Schedule Waiting For",
 }
@@ -1109,6 +1110,7 @@ class PoolSim:
         if temp is None or not self.settings.position_ok:
             return  # as evaluate_speed: no plan without a pool reading, a position and a timezone
         hours = min(max(temp / 2.0, self.active["min"]), self.active["max"]) + self.active["offset"]
+        hours = min(max(hours, 0.0), 24.0)  # the offset may be negative, as evaluate_speed
         midnight = int(datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
         sunrise, sunset = midnight + MOCK_SUNRISE, midnight + MOCK_SUNSET
         warmest = (sunrise + sunset) // 2 + int(self.active["warm"] * 3600)
@@ -1330,6 +1332,9 @@ class PoolSim:
             self.log(f"Probe scan: {len(self.settings.bus)} on the bus")
         elif name == S["logout_all"]:
             self.settings.login.end_all("Logout All Devices")
+        elif name == S["restart"]:
+            self.log("Restarting")
+            self.reboot()
         elif name == S["factory_reset"]:
             self.log("Factory reset: forgetting the page and OTA passwords, the API key and the saved Wi-Fi")
             self.settings.factory_reset()

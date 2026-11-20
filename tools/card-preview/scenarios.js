@@ -12,7 +12,7 @@ import { hm, dayKey, stamp, today, seasonal } from "./fake-hass.js";
 
 const BLOCKS = [[9, 30, 13, 0], [15, 0, 19, 30]]; // the plan: 8 h in two blocks
 const NUMBERS = { // the firmware's ranges (pool-controller.yaml)
-  min: [2, 0, 24, 0.5, "h"], max: [16, 0, 24, 0.5, "h"], warm: [2.5, 0, 6, 0.25, "h"], offset: [0, 0, 6, 0.5, "h"],
+  min: [2, 0, 24, 0.5, "h"], max: [16, 0, 24, 0.5, "h"], warm: [2.5, 0, 6, 0.25, "h"], offset: [-1, -6, 6, 0.5, "h"],
   boostDuration: [5, 0, 15, 1, "min"], boostInterval: [30, 5, 60, 5, "min"], highEvery: [3, 1, 10, 1, ""],
   freezeAt: [3, 0, 10, 0.5, "°C"], timeout: [60, 0, 480, 5, "min"],
   latitude: [45.76, -90, 90, 0.01, "°"], longitude: [4.84, -180, 180, 0.01, "°"],
@@ -55,6 +55,7 @@ export function base(now = new Date()) {
     volume: { s: "18342", a: { unit_of_measurement: "L", state_class: "total_increasing" } },
     nextBoostStart: hm(nextBoost), nextBoostEnd: hm(new Date(+nextBoost + 5 * 60000)),
     apply: "unknown", recompute: "unknown", updateTemps: "unknown", checkUpdate: "unknown", cancelUpdate: "unknown",
+    restart: "unknown",
     sun: { s: "above_horizon", a: { next_rising: today(7, 41, now).toISOString(), next_setting: today(17, 9, now).toISOString() } },
     clock: { s: stamp(now), seen: 0.1, ago: 0.1 },
     fwVersion: "v1.8.0",
