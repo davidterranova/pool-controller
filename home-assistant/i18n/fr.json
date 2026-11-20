@@ -35,7 +35,7 @@
   "card": {
     "picker": {
       "name": "Pompe de piscine",
-      "description": "Panneau de commande pour la pompe de piscine (Contrôleur de piscine)"
+      "description": "Panneau de commande pour la pompe de piscine (Pool Controller)"
     },
     "override": {
       "stuck": "Vitesse forcée sur {speed} depuis {duration} : la pompe ne suit plus son plan de filtration."

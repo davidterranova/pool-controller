@@ -35,7 +35,7 @@
   "card": {
     "picker": {
       "name": "Bomba de piscina",
-      "description": "Mosaico y panel de la bomba de la piscina (controlador de piscina)"
+      "description": "Mosaico y panel de la bomba de la piscina (Pool Controller)"
     },
     "override": {
       "stuck": "Velocidad forzada a {speed} desde hace {duration}: la bomba ya no sigue su plan de filtración."
