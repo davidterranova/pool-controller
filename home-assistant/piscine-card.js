@@ -180,6 +180,7 @@ const DEFAULT_ENTITIES = {
   firmware: "update.pool_controller_firmware",
   checkUpdate: "button.pool_controller_check_for_update",
   cancelUpdate: "button.pool_controller_cancel_update",
+  restart: "button.pool_controller_restart", // « Réglages » › Redémarrer (device-settings.yaml, 1.12.0)
   autoUpdate: "switch.pool_controller_auto_update",
   updateInterval: "select.pool_controller_update_check_interval",
   updateStatus: "sensor.pool_controller_update_status",
@@ -823,6 +824,14 @@ const panelHtml = (t) => `
     <div class="sp-col">
       <section class="cont"><h4 class="sp-h">${t("card.sec.pulses_freeze")}</h4><div id="rows2"></div></section>
       <section><h4 class="sp-h">${t("card.sec.days")}</h4><div class="days" id="days"></div></section>
+      <section id="restartSec" hidden><h4 class="sp-h">${t("card.sec.restart")}</h4>
+        <div class="erow"><span class="ic" id="restartIc"></span><span class="name"><span>${t("card.restart.row")}</span><small>${t("card.restart.sub")}</small></span>
+          <button class="btn" id="restartBtn">${t("card.restart.button")}</button></div>
+        <div class="confirm" id="restartCf" role="alertdialog" aria-label="${t("card.restart.aria")}" hidden>
+          <span>${t("card.restart.confirm")}</span>
+          <button class="no" id="restartNo">${t("common.cancel")}</button>
+          <button class="yes" id="restartYes">${t("card.restart.yes")}</button>
+        </div></section>
     </div>
   </div>
   <div class="ctlpane" role="tabpanel">
@@ -999,7 +1008,7 @@ class PiscineCard extends HTMLElement {
     this._timer = setInterval(() => this._hass && this._update(), 1000);
     if (this._ro && this._built) for (const el of [this._$("tChart"), this._$("wChart")]) if (el) this._ro.observe(el);
   }
-  disconnectedCallback() { clearInterval(this._timer); clearTimeout(this._toastTimer); this._ro?.disconnect(); }
+  disconnectedCallback() { clearInterval(this._timer); clearTimeout(this._toastTimer); clearTimeout(this._rsTimer); this._ro?.disconnect(); }
 
   /**
    * The card's language and formats, from the HA user's profile (or `language:`): this._t(key, vars) and
@@ -2033,11 +2042,24 @@ class PiscineCard extends HTMLElement {
         this._paneRows.push(r);
       }
     }
+    this._wireRestart();
     this._wireUpdate();
     this._$("posRows").addEventListener("click", (ev) => {
       const b = ev.target.closest('button[data-act="pos-ha"]');
       if (b && !b.disabled) this._posFromHa(b);
     });
+  }
+  /** « Réglages » › Redémarrer: asks first (7 s to answer), then presses the controller's Restart. */
+  _wireRestart() {
+    const btn = this._$("restartBtn"), cf = this._$("restartCf");
+    const ask = (open) => {
+      clearTimeout(this._rsTimer);
+      cf.hidden = !open; btn.hidden = open;
+      if (open) { this._$("restartYes").focus(); this._rsTimer = setTimeout(() => ask(false), 7000); } else btn.focus({ preventScroll: true });
+    };
+    btn.addEventListener("click", () => ask(true));
+    this._$("restartNo").addEventListener("click", () => ask(false));
+    this._$("restartYes").addEventListener("click", () => { ask(false); this._press(btn, "restart", this._t("card.restart.ok")); });
   }
   _renderSetPane() {
     for (const r of this._paneRows) {
@@ -2056,6 +2078,13 @@ class PiscineCard extends HTMLElement {
     for (const r of this._paneRows) if (r.sect) r.sect.hidden = this._paneRows.every((x) => x.sect !== r.sect || x.row.hidden);
     this._updateSettings();
     this._renderDays();
+    const restart = this._st("restart");
+    this._$("restartSec").hidden = !restart;
+    if (restart) {
+      const ic = restart.attributes.icon || "restart";
+      if (this._rsIcon !== ic) { this._$("restartIc").innerHTML = this._icon(ic); this._rsIcon = ic; }
+      this._$("restartBtn").disabled = !this._online();
+    }
   }
   /**
    * Closed days from the device's Daily History, plus today so far: hours filtered, the plan's mark, the pool's

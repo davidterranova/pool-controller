@@ -55,6 +55,7 @@ export function base(now = new Date()) {
     volume: { s: "18342", a: { unit_of_measurement: "L", state_class: "total_increasing" } },
     nextBoostStart: hm(nextBoost), nextBoostEnd: hm(new Date(+nextBoost + 5 * 60000)),
     apply: "unknown", recompute: "unknown", updateTemps: "unknown", checkUpdate: "unknown", cancelUpdate: "unknown",
+    restart: "unknown",
     sun: { s: "above_horizon", a: { next_rising: today(7, 41, now).toISOString(), next_setting: today(17, 9, now).toISOString() } },
     clock: { s: stamp(now), seen: 0.1, ago: 0.1 },
     fwVersion: "v1.8.0",
