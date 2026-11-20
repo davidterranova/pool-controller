@@ -60,7 +60,7 @@ export function mountSetup({ hass, E, login, ui }) {
   const refused = (e) => toast(t("page.refused", { error: e.message }), true);
 
   const wz = { open: false, step: 1, seen: false, afterReset: false, resetPending: false, joinedFromHotspot: false };
-  const view = { acc: null, reset: false, forget: false, paste: null, busy: false, scanUntil: 0 };
+  const view = { acc: null, reset: false, restart: false, forget: false, paste: null, busy: false, scanUntil: 0 };
   let keyOrigin = null; // "paste" | "generated": how this page set the API key, for the wording only
   const readings = new Map(); // probe address -> its last readings
   let probesSeen = "", lastMode = null;
@@ -520,6 +520,24 @@ export function mountSetup({ hass, E, login, ui }) {
         <p>${t("setup.reset.after", { ssid: AP_SSID })}</p>
         <div class="rowbtns"><button type="button" class="btn" data-act="reset-no">${t("common.cancel")}</button><button type="button" class="btn fill danger" data-act="reset-yes">${t("setup.reset.yes")}</button></div></div>` : "");
   }
+  /** Redémarrer: everything is kept; the pump stops for the restart, then the controller comes back in Auto. */
+  function restartBody() {
+    return `<div class="erow"><span class="ic">${icon("restart")}</span><span class="name"><span>${t("setup.restart.row")}</span>
+      <small>${t("setup.restart.row_sub")}</small></span>
+      ${view.restart ? "" : `<button type="button" class="btn line" data-act="restart-ask">${t("setup.restart.ask")}</button>`}</div>`
+      + (view.restart ? `<div class="inl" role="alertdialog" aria-label="${t("setup.restart.aria")}"><p class="hint">${t("setup.restart.confirm")}</p>
+        <div class="rowbtns"><button type="button" class="btn" data-act="restart-no">${t("common.cancel")}</button><button type="button" class="btn fill" data-act="restart-yes">${t("setup.restart.yes")}</button></div></div>` : "");
+  }
+  async function restart() {
+    view.restart = false;
+    try {
+      await hass.press(E.restart);
+    } catch (e) {
+      refused(e);
+      return;
+    }
+    toast(t("setup.restart.toast"));
+  }
   async function factoryReset() {
     view.reset = false;
     try {
@@ -533,13 +551,14 @@ export function mountSetup({ hass, E, login, ui }) {
     toast(t("setup.reset.toast"));
   }
   function renderSections() {
-    const sections = [["posStack", E.latitude], ["probeStack", E.detectedProbes], ["fillStack", E.fillEnabled], ["accStack", E.pagePassword], ["haStack", E.apiKey], ["resetStack", E.factoryReset]];
+    const sections = [["posStack", E.latitude], ["probeStack", E.detectedProbes], ["fillStack", E.fillEnabled], ["accStack", E.pagePassword], ["haStack", E.apiKey], ["restartStack", E.restart], ["resetStack", E.factoryReset]];
     for (const [id, entity] of sections) $(id).hidden = !st(entity);
     if (st(E.latitude)) paint($("posBody"), `${posForm(true)}<p class="posnote">${t("setup.pos.from_ha")}</p>`);
     if (st(E.detectedProbes)) paint($("probeBody"), probesHTML());
     if (hasFill()) { paint($("fillBody"), fillBody()); paint($("fillAlarm"), fillAlarm()); }
     if (st(E.pagePassword)) paint($("accBody"), accBody());
     if (st(E.apiKey)) paint($("haBody"), haBody());
+    if (st(E.restart)) paint($("restartBody"), restartBody());
     if (st(E.factoryReset)) paint($("resetBody"), resetBody());
   }
 
@@ -755,6 +774,9 @@ export function mountSetup({ hass, E, login, ui }) {
       case "fill-no": await setFill(false); break;
       case "logout": await logOut(); break;
       case "logout-all": await logOutAll(); break;
+      case "restart-ask": view.restart = true; break;
+      case "restart-no": view.restart = false; break;
+      case "restart-yes": await restart(); break;
       case "reset-ask": view.reset = true; break;
       case "reset-no": view.reset = false; break;
       case "reset-yes": await factoryReset(); break;

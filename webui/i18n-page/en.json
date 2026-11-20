@@ -382,6 +382,17 @@
       "logout": "Log out",
       "logout_all": "Log out all devices"
     },
+    "restart": {
+      "heading": "Restart",
+      "title": "Restart the controller",
+      "row": "Restart now",
+      "row_sub": "Keeps everything. The pump stops during the restart (about 30 s), then the controller resumes in Auto: a forced speed ends.",
+      "ask": "Restart…",
+      "aria": "Confirm the restart",
+      "confirm": "Restart the controller now? This page reconnects by itself.",
+      "yes": "Restart",
+      "toast": "The controller is restarting (about 30 s)"
+    },
     "reset": {
       "heading": "Reset",
       "title": "Factory settings",

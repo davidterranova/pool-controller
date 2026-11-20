@@ -382,6 +382,17 @@
       "logout": "Cerrar sesión",
       "logout_all": "Cerrar sesión en todos los dispositivos"
     },
+    "restart": {
+      "heading": "Reiniciar",
+      "title": "Reiniciar el controlador",
+      "row": "Reiniciar ahora",
+      "row_sub": "Se conserva todo. La bomba se detiene durante el reinicio (unos 30 s) y luego el controlador vuelve a Auto: una velocidad forzada termina.",
+      "ask": "Reiniciar…",
+      "aria": "Confirmar el reinicio",
+      "confirm": "¿Reiniciar el controlador ahora? Esta página se vuelve a conectar sola.",
+      "yes": "Reiniciar",
+      "toast": "El controlador se está reiniciando (unos 30 s)"
+    },
     "reset": {
       "heading": "Restablecer",
       "title": "Ajustes de fábrica",
