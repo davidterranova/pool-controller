@@ -121,7 +121,7 @@ import fr from "./i18n/fr.json" with { type: "json" };
 import es from "./i18n/es.json" with { type: "json" };
 const DICTS = { en, fr, es };
 
-const VERSION = "1.10.0";
+const VERSION = "1.11.0";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",

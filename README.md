@@ -169,8 +169,12 @@ you set `local: true` back).
   prototype a custom page before deciding to put it on the device. The
   scripts and styles next to that HTML are served too, and saving one
   reloads the page like the YAML does.
-- **No login.** Unlike the device, the mock has no auth, to keep iteration
-  quick.
+- **The same login as the device.** The simulated controller starts with no
+  Page Password (setup mode, no login). Once one is set during the run, the
+  page gets the login screen, with the device's sessions, lockout and
+  logout. `MOCK_IDLE=<seconds>` shortens the 6 h idle limit to try it.
+  `curl -X POST 'localhost:8080/__mock/reboot?version=v1.6.0'` fakes a
+  reboot onto another firmware; the page then reloads itself.
 - **The fill meter** (fill-meter.yaml) is simulated too: the valve runs 3 min
   every quarter hour, « Tester » opens it for 20 s so the pulse test passes,
   and turning Fill Meter off empties Remplissage. `MOCK_FILL=off make
@@ -463,7 +467,7 @@ same way:
 - **Fallback hotspot.** After 1 minute without Wi-Fi (no network yet, router
   down, password changed), the device opens an open network named
   `pool-controller`; its page answers at http://192.168.4.1, still behind
-  the web login. Not ESPHome's `captive_portal`: that answers every page
+  the page's login screen. Not ESPHome's `captive_portal`: that answers every page
   request itself, without login, so the page would be unreachable.
 - **Join a network from the page** (Contrôleur tab, Wi-Fi): pick one of the networks
   nearby or type it, give the password, « Se connecter ». The device tries
