@@ -22,7 +22,8 @@ The controller's interface is translated (plan: [docs/plans/i18n.md](../../docs/
 - Translate everything a person reads, product terms included: the speeds (Low/Medium/High), « Override », Auto's label. Only codes stay untranslated: what the firmware publishes, and the values sent to HA (`vitesse: Low`). A label shows the word, and the code is what's sent.
 - Write real translations in all three languages. Never copy the English into `fr` or `es`, and never leave a key empty or `TODO`.
 - Your Spanish (and any later language) is a draft. Before a release, `make i18n-export` produces a plain Markdown file that the owner runs through a translation tool, and `make i18n-import` brings it back. A key is the only context the translator gets, so name keys after where they show (`card.settings.fill.alarm_after`, not `text42`).
-- Follow the glossary (`tools/i18n/glossary.json`), so a term reads the same everywhere. A new term goes there first.
+- Follow the glossary (`tools/i18n/glossary.json`), so a term reads the same everywhere. A new term goes there first. A text that is exactly a term must be the glossary's word (`make i18n-check`, `make i18n-import`); in a sentence, use the same word.
+- Write English that a machine can't misread: a status as a status, not a bare verb (« Speed forced to {speed} for {duration} », not « Override {speed} for {duration} », which a tool translated as a command).
 - Keep `{placeholders}` and markup (`<b>`) identical across languages. A plural is an object of CLDR forms (`{"one": "{count} day", "other": "{count} days"}`), with the forms each language uses.
 - A text that is the same as English on purpose (« Auto ») goes in `SAME_AS_ENGLISH` (`tools/i18n/surfaces.mjs`); the check refuses any other copy.
 - Spanish and French run longer than English: check the card at 390 px and the page's buttons and tabs for overflow (`make card-shots`, the mock).
