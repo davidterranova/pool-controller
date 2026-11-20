@@ -660,10 +660,15 @@ reason.
 ### Suggested dashboard cards
 
 A whole dashboard, with the pool card, is in
-[home-assistant/dashboard/](home-assistant/dashboard/README.md). Its fill
-water component hides itself while Fill Meter is off, and its alerts
-component shows a fill running too long, with « Acquitter ». The cards
-below are simpler single-card alternatives.
+[home-assistant/dashboard/](home-assistant/dashboard/README.md), in
+English, French and Spanish: paste `dashboard.<language>.yaml` and the
+same language's `scripts.<language>.yaml` (`en`, `fr` or `es`). They are
+generated from one template each (`make ha-files`), so the languages only
+differ in their texts; the entity ids, the scripts' ids and their values
+are the same in all three. Its fill water component hides itself while
+Fill Meter is off, and its alerts component shows a fill running too long,
+with « Acknowledge » (« Acquitter »). The cards below are simpler
+single-card alternatives.
 
 **Schedule & status** — a single `entities` card (built-in, no HACS
 dependency):
@@ -1048,12 +1053,14 @@ Alarm** sets **Fill Alarm Acknowledged** until the fill ends: the alarm
 itself stays on while the fill runs, but Home Assistant's reminders stop.
 The next fill that runs too long alarms again.
 
-Home Assistant notifies from these through the blueprint
-[pool_fill_too_long.yaml](home-assistant/blueprints/pool_fill_too_long.yaml):
+Home Assistant notifies from these through the blueprint, in English
+([pool_fill_too_long.en.yaml](home-assistant/blueprints/pool_fill_too_long.en.yaml)),
+French ([pool_fill_too_long.yaml](home-assistant/blueprints/pool_fill_too_long.yaml))
+or Spanish ([pool_fill_too_long.es.yaml](home-assistant/blueprints/pool_fill_too_long.es.yaml)):
 a reminder every 15 min while the alarm is on and not acknowledged, each
-replacing the last, with « Acquitter » on the phone notification; cleared
-once acknowledged or once the fill ends, then an optional all-clear. Import
-it and its inputs: [the dashboard's README](home-assistant/dashboard/README.md#fill-alarm-notifications).
+replacing the last, with « Acknowledge » (« Acquitter ») on the phone
+notification; cleared once acknowledged or once the fill ends, then an
+optional all-clear. Import it and its inputs: [the dashboard's README](home-assistant/dashboard/README.md#fill-alarm-notifications).
 
 The three thresholds (the 5-min gap, 3 L and 5 min for the test) are
 constants at the top of [fill_meter.h](fill_meter.h).

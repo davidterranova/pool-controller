@@ -1,0 +1,57 @@
+# The two Home Assistant scripts piscine-card calls (see README.md here). They only set the controller's
+# Manual Override select and its timeout; the controller does the rest (freeze protection first, the
+# override's own expiry, back to Auto). Entity ids are a fresh install's: see README.md, « Entity ids ».
+#
+# Paste into Home Assistant's scripts.yaml, or create each one in Settings → Automations & scenes →
+# Scripts → ⋮ → Edit in YAML (the key below is the script's id).
+#
+# The ids, the fields and the speeds' values are the card's API: the same in every language, never translated.
+# Only the texts a person reads are.
+
+piscine_forcer_vitesse:
+  alias: {{t:scripts.force_speed.alias}}
+  description: {{t:scripts.force_speed.description}}
+  icon: mdi:pump
+  mode: queued
+  max: 3
+  fields:
+    vitesse:
+      name: {{t:scripts.force_speed.speed.name}}
+      description: {{t:scripts.force_speed.speed.description}}
+      required: true
+      selector:
+        select:
+          options:
+            - {value: "Off", label: {{t:scripts.force_speed.speed.off}}}
+            - {value: "Low", label: {{t:scripts.force_speed.speed.low}}}
+            - {value: "Medium", label: {{t:scripts.force_speed.speed.medium}}}
+            - {value: "High", label: {{t:scripts.force_speed.speed.high}}}
+    duree:
+      name: {{t:scripts.force_speed.duration.name}}
+      description: {{t:scripts.force_speed.duration.description}}
+      required: false
+      selector:
+        number: {min: 0, max: 480, step: 5, unit_of_measurement: min, mode: box}
+  sequence:
+    - if:
+        # optional field: no native condition can test whether a script variable was passed
+        - condition: template
+          value_template: "{{ duree is defined }}"
+      then:
+        - action: number.set_value
+          target: {entity_id: number.pool_controller_manual_override_timeout}
+          data: {value: "{{ duree }}"}
+    - action: select.select_option
+      target: {entity_id: select.pool_controller_manual_override}
+      data: {option: "{{ vitesse }}"}
+
+piscine_retour_auto:
+  alias: {{t:scripts.back_to_auto.alias}}
+  description: {{t:scripts.back_to_auto.description}}
+  icon: mdi:autorenew
+  mode: single
+  max_exceeded: silent
+  sequence:
+    - action: select.select_option
+      target: {entity_id: select.pool_controller_manual_override}
+      data: {option: "Auto"}

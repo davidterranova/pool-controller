@@ -1,0 +1,246 @@
+# Pool Controller — notify while a fill runs too long, until someone acknowledges it.
+#
+# The alarm and its acknowledgement live on the controller (fill-meter.yaml): Fill Running Too Long turns on
+# once a fill has run Fill Alarm After minutes, and Acknowledge Fill Alarm sets Fill Alarm Acknowledged until
+# the fill ends. This only turns them into notifications, so the card, the controller's page, HA's device page
+# and the phone all agree on whether it was acknowledged. Import it with the link in
+# home-assistant/dashboard/README.md (« Fill alarm notifications »); `make ha-dashboard-check` checks it.
+#
+# One run per alarm, restarted by every trigger (mode: restart):
+#   - the alarm turns on (also when the controller reconnects with it on), or HA starts with it on:
+#     notify, then again every `repeat` minutes while it is on and not acknowledged;
+#   - the acknowledge action on a phone (its title is the ack_title input): press the controller's button; the
+#     acknowledgement that follows is the next trigger;
+#   - acknowledged, or the alarm ends: clear the notification from the phones; the all-clear actions on the end.
+# Every reminder carries the same tag, so a phone shows one notification, replaced each time.
+#
+# One file per language, from pool_fill_too_long.tmpl.yaml (make ha-files): the French one keeps the path it had
+# before, pool_fill_too_long.yaml, since every copy imported until then re-imports from there (its source_url).
+blueprint:
+  name: {{t:blueprint.fill_too_long.name}}
+  description: {{t:blueprint.fill_too_long.description}}
+  domain: automation
+  author: Pool Controller
+  source_url: https://github.com/davidterranova/pool-controller/blob/main/home-assistant/blueprints/{{file}}
+  homeassistant:
+    min_version: "2024.10.0"
+  input:
+    controller:
+      name: {{t:blueprint.fill_too_long.controller.name}}
+      icon: mdi:pool
+      input:
+        alarm:
+          name: {{t:blueprint.fill_too_long.alarm.name}}
+          description: {{t:blueprint.fill_too_long.alarm.description}}
+          default: binary_sensor.pool_controller_fill_running_too_long
+          selector:
+            entity:
+              filter:
+                - integration: esphome
+                  domain: binary_sensor
+                  device_class: problem
+        acknowledged:
+          name: {{t:blueprint.fill_too_long.acknowledged.name}}
+          description: {{t:blueprint.fill_too_long.acknowledged.description}}
+          default: binary_sensor.pool_controller_fill_alarm_acknowledged
+          selector:
+            entity:
+              filter:
+                - integration: esphome
+                  domain: binary_sensor
+        ack_button:
+          name: {{t:blueprint.fill_too_long.ack_button.name}}
+          description: {{t:blueprint.fill_too_long.ack_button.description}}
+          default: button.pool_controller_acknowledge_fill_alarm
+          selector:
+            entity:
+              filter:
+                - integration: esphome
+                  domain: button
+    notifications:
+      name: {{t:blueprint.fill_too_long.notifications.name}}
+      icon: mdi:cellphone-message
+      input:
+        notify_devices:
+          name: {{t:blueprint.fill_too_long.notify_devices.name}}
+          description: {{t:blueprint.fill_too_long.notify_devices.description}}
+          default: []
+          selector:
+            device:
+              multiple: true
+              filter:
+                - integration: mobile_app
+        repeat:
+          name: {{t:blueprint.fill_too_long.repeat.name}}
+          description: {{t:blueprint.fill_too_long.repeat.description}}
+          default: 15
+          selector:
+            number:
+              min: 5
+              max: 240
+              step: 5
+              unit_of_measurement: min
+              mode: box
+        title:
+          name: {{t:blueprint.fill_too_long.title.name}}
+          description: {{t:blueprint.fill_too_long.title.description}}
+          default: {{t:blueprint.fill_too_long.title.default}}
+          selector:
+            text:
+        message:
+          name: {{t:blueprint.fill_too_long.message.name}}
+          description: {{t:blueprint.fill_too_long.message.description}}
+          default: {{t:blueprint.fill_too_long.message.default}}
+          selector:
+            text:
+              multiline: true
+        all_clear_message:
+          name: {{t:blueprint.fill_too_long.all_clear_message.name}}
+          description: {{t:blueprint.fill_too_long.all_clear_message.description}}
+          default: {{t:blueprint.fill_too_long.all_clear_message.default}}
+          selector:
+            text:
+        ack_title:
+          name: {{t:blueprint.fill_too_long.ack_title.name}}
+          description: {{t:blueprint.fill_too_long.ack_title.description}}
+          default: {{t:blueprint.fill_too_long.ack_title.default}}
+          selector:
+            text:
+    more:
+      name: {{t:blueprint.fill_too_long.more.name}}
+      icon: mdi:playlist-plus
+      collapsed: true
+      input:
+        extra_actions:
+          name: {{t:blueprint.fill_too_long.extra_actions.name}}
+          description: {{t:blueprint.fill_too_long.extra_actions.description}}
+          default: []
+          selector:
+            action:
+        all_clear_actions:
+          name: {{t:blueprint.fill_too_long.all_clear_actions.name}}
+          description: {{t:blueprint.fill_too_long.all_clear_actions.description}}
+          default: []
+          selector:
+            action:
+
+mode: restart
+
+variables:
+  alarm: !input alarm
+  acknowledged: !input acknowledged
+  ack_button: !input ack_button
+  phones: !input notify_devices
+  all_clear_message: !input all_clear_message
+  # one tag and one action per alarm entity, so two controllers don't clear or acknowledge each other's
+  tag: "{{ 'pool_fill_' ~ alarm | replace('.', '_') }}"
+  ack_action: "{{ 'POOL_FILL_ACK_' ~ (alarm | replace('.', '_') | upper) }}"
+  # mobile_app's notify action is named after the device's own name (not one the user gave it)
+  notifiers: "{{ phones | map('device_attr', 'name') | map('slugify') | map('regex_replace', '^', 'notify.mobile_app_') | list }}"
+
+triggers:
+  - trigger: state
+    entity_id: !input alarm
+    to: "on"
+    id: alarm
+  - trigger: homeassistant
+    event: start
+    id: alarm
+  - trigger: event
+    event_type: mobile_app_notification_action
+    id: action
+  - trigger: state
+    entity_id: !input acknowledged
+    to: "on"
+    id: acknowledged
+  - trigger: state
+    entity_id: !input alarm
+    from: "on"
+    to: "off"
+    id: ended
+
+# Checked before the run restarts: another notification's action must not stop the reminders.
+conditions:
+  - condition: template
+    value_template: "{{ trigger.id != 'action' or trigger.event.data.action == ack_action }}"
+
+actions:
+  - choose:
+      - alias: {{t:blueprint.fill_too_long.alias.ack_on_phone}}
+        conditions:
+          - condition: trigger
+            id: action
+        sequence:
+          - action: button.press
+            target:
+              entity_id: "{{ ack_button }}"
+
+      - alias: {{t:blueprint.fill_too_long.alias.ended}}
+        conditions:
+          - condition: trigger
+            id: [acknowledged, ended]
+        sequence:
+          - repeat:
+              for_each: "{{ notifiers }}"
+              sequence:
+                - action: "{{ repeat.item }}"
+                  continue_on_error: true
+                  data:
+                    message: clear_notification
+                    data:
+                      tag: "{{ tag }}"
+          - if:
+              - condition: trigger
+                id: ended
+            then:
+              - if:
+                  - condition: template
+                    value_template: "{{ all_clear_message | length > 0 }}"
+                then:
+                  - repeat:
+                      for_each: "{{ notifiers }}"
+                      sequence:
+                        - action: "{{ repeat.item }}"
+                          continue_on_error: true
+                          data:
+                            message: "{{ all_clear_message }}"
+                            data:
+                              tag: "{{ tag }}"
+              - choose: []
+                default: !input all_clear_actions
+
+    default:
+      - alias: {{t:blueprint.fill_too_long.alias.remind}}
+        repeat:
+          while:
+            - condition: state
+              entity_id: !input alarm
+              state: "on"
+            - condition: not
+              conditions:
+                - condition: state
+                  entity_id: !input acknowledged
+                  state: "on"
+          sequence:
+            - variables:
+                since: "{{ as_timestamp(states[alarm].last_changed) | timestamp_custom('%H:%M') }}"
+                minutes: "{{ ((now() - states[alarm].last_changed).total_seconds() / 60) | round(0) | int }}"
+            - repeat:
+                for_each: "{{ notifiers }}"
+                sequence:
+                  - action: "{{ repeat.item }}"
+                    continue_on_error: true
+                    data:
+                      title: !input title
+                      message: !input message
+                      data:
+                        tag: "{{ tag }}"
+                        actions:
+                          - action: "{{ ack_action }}"
+                            title: !input ack_title
+                        push:
+                          interruption-level: time-sensitive
+            - choose: []
+              default: !input extra_actions
+            - delay:
+                minutes: !input repeat
