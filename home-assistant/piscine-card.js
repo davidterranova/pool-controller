@@ -233,6 +233,17 @@ const PROBE_GLITCH_C = 12; // a day the probe spans more than this had a bad rea
 const HEALTH = { warn: 3, alert: 15, beat: 4 };
 /** Never keys: the sun and the two scripts are Home Assistant's, not the controller's. */
 const NOT_CONTROLLER = new Set(["sun", "sForce", "sAuto"]);
+/**
+ * The controller's two id prefixes: a device first named « Piscine Pool Controller » (piscine_pool_controller_…) and a
+ * fresh install (pool_controller_…). A default id Home Assistant lacks is looked up under the other one, so a default
+ * written for one install still finds the entity on the other.
+ */
+const ID_PREFIXES = [["piscine_pool_controller_", "pool_controller_"], ["pool_controller_", "piscine_pool_controller_"]];
+const otherId = (id) => {
+  const dot = id.indexOf("."), object = id.slice(dot + 1);
+  const p = ID_PREFIXES.find(([from]) => object.startsWith(from));
+  return p ? `${id.slice(0, dot + 1)}${p[1]}${object.slice(p[0].length)}` : null;
+};
 const W_RANGES = ["30d", "90d", "12m"]; // their labels: card.range.*
 const W_PERIOD = { "30d": "day", "90d": "week", "12m": "month" };
 /**
@@ -935,7 +946,8 @@ class PiscineCard extends HTMLElement {
       controller_light: config.controller_light !== false, health: { ...HEALTH, ...(config.controller_health || {}) }, language };
     this._localeKey = null;
     this._setLocale(this._hass);
-    this._e = { ...DEFAULT_ENTITIES, ...(config.entities || {}) };
+    this._mapped = config.entities || {};
+    this._e = { ...DEFAULT_ENTITIES, ...this._mapped };
     this.setAttribute("variant", variant);
     this._built = false;
     this._confirm = false;
@@ -968,11 +980,20 @@ class PiscineCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    this._resolveIds(hass);
     if (this._setLocale(hass) && this._built) this._rebuild(); // the user changed their language: the card follows
     this._use();
     if (!this._built) this._build();
     this.toggleAttribute("dark", !!(hass.themes && hass.themes.darkMode));
     this._update();
+  }
+  /** Each default id (not one `entities:` maps) that Home Assistant lacks, under the controller's other prefix if it has that. */
+  _resolveIds(hass) {
+    for (const [k, id] of Object.entries(DEFAULT_ENTITIES)) {
+      if (k in this._mapped || NOT_CONTROLLER.has(k)) continue;
+      const alt = !hass.states[id] && otherId(id);
+      this._e[k] = alt && hass.states[alt] ? alt : id;
+    }
   }
   connectedCallback() {
     this._timer = setInterval(() => this._hass && this._update(), 1000);
