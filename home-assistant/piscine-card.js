@@ -94,8 +94,9 @@
  * manifest): installed version (with ESPHome's version and build time), latest version and its release notes,
  * « Vérifier » (Check for Update) and « Installer » (update.install, with its progress), Auto Update and Update Check
  * Interval. A tap on a version row opens Home Assistant's own dialog for that entity (its release notes, « Ignorer »).
- * The firmware holds every install while a manual override or a fill runs, whoever asked (Update Status says « en
- * attente »): the card asks first when « Installer » would wait, and says so while it waits, with « Annuler la demande »
+ * The firmware holds every install while a manual override or a fill runs, whoever asked (Update Status says
+ * `pending:override` or `pending:fill`; a firmware before 1.11.0 said it in French, which LEGACY_STATUS reads until no
+ * supported firmware is that old): the card asks first when « Installer » would wait, and says so while it waits, with « Annuler la demande »
  * (Cancel Update). Auto Update installs only what a scheduled check finds, never after « Vérifier ». Whether a newer
  * firmware exists is the controller's to say, and the card's own version is HACS's: the card asks GitHub nothing. A
  * firmware without the entity (before the update entity, v1.4) has no Firmware section. The tabs are the way in:
