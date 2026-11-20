@@ -89,14 +89,17 @@ export function listSources(root, globs) {
 
 /** The keys a source uses: { keys: Set, prefixes: Set } (a prefix from t(`card.speed.${v}`)). */
 export function scanUsage(text, usage) {
-  const keys = new Set(), prefixes = new Set();
+  const keys = new Set(), prefixes = new Set(), mentions = new Set();
   if (usage === "template") {
     for (const m of text.matchAll(/\{\{\s*t:([\w.:-]+)\s*\}\}/g)) keys.add(m[1]);
-    return { keys, prefixes };
+    return { keys, prefixes, mentions };
   }
-  for (const m of text.matchAll(/(?:^|[^\w$])_?t\(\s*(["'`])([\w.:-]+)\1/g)) keys.add(m[2]);
-  for (const m of text.matchAll(/(?:^|[^\w$])_?t\(\s*`([\w.:-]*)\$\{/g)) prefixes.add(m[1]);
-  return { keys, prefixes };
+  // t("key"), this._t("key"), and T("key") (a module-level translator, as the card's helpers outside its class use)
+  for (const m of text.matchAll(/(?:^|[^\w$])(?:_?t|T)\(\s*(["'`])([\w.:-]+)\1/g)) keys.add(m[2]);
+  for (const m of text.matchAll(/(?:^|[^\w$])(?:_?t|T)\(\s*`([\w.:-]*)\$\{/g)) prefixes.add(m[1]);
+  // a key handed over another way (t(cond ? "a" : "b")): any dotted literal; it only counts as used, it is never required
+  for (const m of text.matchAll(/(["'`])([a-z]\w*(?:\.[\w:-]+)+)\1/g)) mentions.add(m[2]);
+  return { keys, prefixes, mentions };
 }
 
 /**
@@ -107,6 +110,7 @@ export function frenchLiterals(text) {
   const found = [];
   const noBlocks = text.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, " ")).replace(/<!--[\s\S]*?-->/g, (c) => c.replace(/[^\n]/g, " "));
   noBlocks.split("\n").forEach((line, i) => {
+    if (/\bi18n-ignore\b/.test(line)) return; // French on purpose: what an older firmware sends, matched as is
     const code = line.replace(/(^|[^:"'`\\])\/\/.*$/, "$1").replace(/^\s*#.*$/, "");
     for (const m of code.matchAll(/(["'`])((?:\\.|(?!\1).)*)\1|>([^<>]*[A-Za-zÀ-ÿ][^<>]*)</g)) {
       const s = m[2] ?? m[3];
@@ -127,11 +131,12 @@ export function check(root, { surfaces = SURFACES, langs = LANGS, sameAsEnglish 
   const loaded = Object.fromEntries(surfaces.map((s) => [s.id, loadSurface(root, s, langs)]));
   const usage = {}; // surface id -> { keys: Map(key -> files), prefixes: Map(prefix -> files) }
   for (const s of surfaces) {
-    const u = { keys: new Map(), prefixes: new Map(), files: listSources(root, s.sources) };
+    const u = { keys: new Map(), prefixes: new Map(), mentions: new Set(), files: listSources(root, s.sources) };
     for (const f of u.files) {
       const found = scanUsage(readFileSync(path.join(root, f), "utf8"), s.usage);
       for (const k of found.keys) u.keys.set(k, [...(u.keys.get(k) || []), f]);
       for (const p of found.prefixes) u.prefixes.set(p, [...(u.prefixes.get(p) || []), f]);
+      for (const k of found.mentions) u.mentions.add(k);
     }
     usage[s.id] = u;
   }
@@ -181,7 +186,7 @@ export function check(root, { surfaces = SURFACES, langs = LANGS, sameAsEnglish 
     const known = (k) => [s.id, ...s.reads].some((id) => loaded[id]?.flat[FALLBACK]?.has(k));
     for (const [k, files] of usage[s.id].keys) if (!known(k)) errors.push(`${s.id}: ${files[0]} uses ${k}, which isn't in ${s.dir}/${FALLBACK}.json`);
     const users = [s, ...surfaces.filter((o) => o.reads.includes(s.id))];
-    const used = (k) => users.some((o) => usage[o.id].keys.has(k) || [...usage[o.id].prefixes.keys()].some((p) => p && k.startsWith(p)));
+    const used = (k) => users.some((o) => usage[o.id].keys.has(k) || usage[o.id].mentions.has(k) || [...usage[o.id].prefixes.keys()].some((p) => p && k.startsWith(p)));
     const unused = [...en.keys()].filter((k) => !used(k));
     if (unused.length) (s.strict ? errors : warnings).push(`${s.id}: ${unused.length} key(s) no source uses yet: ${unused.slice(0, 8).join(", ")}${unused.length > 8 ? ", …" : ""}`);
 

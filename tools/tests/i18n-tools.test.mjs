@@ -218,3 +218,18 @@ test("glossary: a text that is a glossary term must be the glossary's word, in t
   assert.deepEqual(i.refused.map((x) => [x.id, x.why]), [["ui:speed.Low", "the glossary (tools/i18n/glossary.json) says « Baja »"]]);
   assert.deepEqual(i.changed.map((x) => x.id), ["ui:speed.note"], "only exact terms are held to the glossary");
 });
+
+test("scanUsage: T(\"key\") is a use; any dotted literal naming a key is a mention, never required", () => {
+  const u = scanUsage('const a = T("g.hi"); x = t(ok ? "g.b" : "g.n"); T(`g.${k}`);', "code");
+  assert.deepEqual([...u.keys], ["g.hi"]);
+  assert.deepEqual([...u.prefixes], ["g."]);
+  assert.ok(u.mentions.has("g.b") && u.mentions.has("g.n"));
+  const r = run(repo({ en: EN, fr: FR, es: ES, sources: { "a.js": 'T("g.hi"); t(x ? "g.b" : "g.n"); "no.such.key";' } }));
+  assert.deepEqual(r.errors, [], "a mention of an unknown key is not an error");
+  assert.deepEqual(r.warnings, [], "keys only mentioned count as used");
+});
+
+test("frenchLiterals: a line marked i18n-ignore is skipped", () => {
+  assert.deepEqual(frenchLiterals('const a = { "à jour": "up_to_date" }; // i18n-ignore: an old firmware\'s words'), []);
+  assert.equal(frenchLiterals('const a = { "à jour": "up_to_date" };').length, 1);
+});
