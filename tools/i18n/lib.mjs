@@ -8,6 +8,18 @@ import { SURFACES, SAME_AS_ENGLISH } from "./surfaces.mjs";
 
 export { LANGS, FALLBACK, SURFACES, SAME_AS_ENGLISH };
 
+// ------------------------------------------------------------------ glossary
+
+/** tools/i18n/glossary.json as Map(English term → { fr, es, … }); empty when the file isn't there. */
+export function loadGlossary(root) {
+  const file = path.join(root, "tools/i18n/glossary.json");
+  if (!existsSync(file)) return new Map();
+  return new Map(JSON.parse(readFileSync(file, "utf8")).terms.map((t) => [t.en, t]));
+}
+
+/** What the glossary says `english` is in `lang`, when `english` is exactly one of its terms. */
+const glossed = (glossary, english, lang) => (typeof english === "string" ? glossary.get(english)?.[lang] : undefined);
+
 // ------------------------------------------------------------------ dictionaries
 
 /** A dictionary → Map(key → string | plural object), or the problems that kept it from flattening. */
@@ -110,7 +122,7 @@ export function frenchLiterals(text) {
  * Every surface's dictionaries against each other and against their sources. Returns
  * { errors: [], warnings: [], summary: [] }: errors fail make i18n-check.
  */
-export function check(root, { surfaces = SURFACES, langs = LANGS, sameAsEnglish = SAME_AS_ENGLISH } = {}) {
+export function check(root, { surfaces = SURFACES, langs = LANGS, sameAsEnglish = SAME_AS_ENGLISH, glossary = loadGlossary(root) } = {}) {
   const errors = [], warnings = [], summary = [];
   const loaded = Object.fromEntries(surfaces.map((s) => [s.id, loadSurface(root, s, langs)]));
   const usage = {}; // surface id -> { keys: Map(key -> files), prefixes: Map(prefix -> files) }
@@ -153,6 +165,8 @@ export function check(root, { surfaces = SURFACES, langs = LANGS, sameAsEnglish 
         for (const [f, t] of forms(tv)) {
           if (!t.trim() || /^\s*TODO\b/i.test(t)) errors.push(`${where}${f ? `#${f}` : ""}: empty or TODO`);
         }
+        const term = glossed(glossary, ev, lang);
+        if (term !== undefined && tv !== term) errors.push(`${where}: « ${tv} », but the glossary (tools/i18n/glossary.json) says « ${term} »`);
         const letters = (t) => t.replace(/\{\w+\}|<[^>]*>/g, "").match(/\p{L}/u);
         if (allText(tv) === allText(ev) && letters(allText(ev)) && !sameAsEnglish.includes(`${s.id}:${key}`))
           errors.push(`${where}: same text as ${FALLBACK}, an untranslated copy? (or list it in SAME_AS_ENGLISH, tools/i18n/surfaces.mjs)`);
@@ -249,10 +263,11 @@ export function parseMarkdown(md) {
 
 /**
  * Writes a translated file's texts into each surface's `to` dictionary, in English's order. A text whose
- * placeholders or markup differ from English's is refused, and the draft kept. Returns
+ * placeholders or markup differ from English's, or that is a glossary term translated otherwise, is refused,
+ * and the draft kept. Returns
  * { changed: [{id, from, to}], refused: [{id, why}], missing: [id], unknown: [id], written: [file] }.
  */
-export function importEntries(root, entries, { to, surfaces = SURFACES, dryRun = false } = {}) {
+export function importEntries(root, entries, { to, surfaces = SURFACES, dryRun = false, glossary = loadGlossary(root) } = {}) {
   const report = { changed: [], refused: [], missing: [], unknown: [], written: [] };
   const seen = new Set();
   for (const s of surfaces) {
@@ -267,7 +282,9 @@ export function importEntries(root, entries, { to, surfaces = SURFACES, dryRun =
       const t = entries.get(id);
       const why = !t.trim() ? "empty"
         : !same(placeholders(t), placeholders(ref)) ? `placeholders ${JSON.stringify(placeholders(t))} instead of ${JSON.stringify(placeholders(ref))}`
-        : !same(tags(t), tags(ref)) ? `markup ${JSON.stringify(tags(t))} instead of ${JSON.stringify(tags(ref))}` : null;
+        : !same(tags(t), tags(ref)) ? `markup ${JSON.stringify(tags(t))} instead of ${JSON.stringify(tags(ref))}`
+        : glossed(glossary, ref, to) !== undefined && t !== glossed(glossary, ref, to) ? `the glossary (tools/i18n/glossary.json) says « ${glossed(glossary, ref, to)} »`
+        : null;
       if (why) { report.refused.push({ id, why, text: t }); if (old === undefined) report.missing.push(id); return old; }
       if (t !== old) report.changed.push({ id, from: old, to: t });
       return t;

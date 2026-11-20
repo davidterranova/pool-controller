@@ -200,3 +200,21 @@ test("import: a changed placeholder or tag is refused and the draft kept; missin
   const fresh = importEntries(root, new Map([["ui:g.hi", "Hola {name}"]]), { to: "es", surfaces: [SURFACE], dryRun: true });
   assert.deepEqual(fresh.missing, ["ui:g.n#one", "ui:g.n#other", "ui:g.b"]);
 });
+
+test("glossary: a text that is a glossary term must be the glossary's word, in the check and on import", () => {
+  const en = { ...EN, speed: { Low: "Low", note: "Low water" } };
+  const glossary = new Map([["Low", { en: "Low", fr: "Basse", es: "Baja" }]]);
+  const root = repo({
+    en,
+    fr: { ...FR, speed: { Low: "Faible", note: "Eau basse" } },
+    es: { ...ES, speed: { Low: "Baja", note: "Agua baja" } },
+    sources: { ...USES, "b.js": 't("speed.Low"); t("speed.note");' },
+  });
+  const r = run(root, { glossary });
+  assert.deepEqual(r.errors, ["ui: speed.Low (fr): « Faible », but the glossary (tools/i18n/glossary.json) says « Basse »"]);
+
+  const entries = new Map([["ui:speed.Low", "Bajo"], ["ui:speed.note", "Poca agua"]]);
+  const i = importEntries(root, entries, { to: "es", surfaces: [SURFACE], glossary, dryRun: true });
+  assert.deepEqual(i.refused.map((x) => [x.id, x.why]), [["ui:speed.Low", "the glossary (tools/i18n/glossary.json) says « Baja »"]]);
+  assert.deepEqual(i.changed.map((x) => x.id), ["ui:speed.note"], "only exact terms are held to the glossary");
+});

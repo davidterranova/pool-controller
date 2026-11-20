@@ -552,7 +552,9 @@ dashboard, scripts and blueprints. The plan, and how far it has got:
   sources. `strict: true` in
   [tools/i18n/surfaces.mjs](tools/i18n/surfaces.mjs) makes them errors.
 - **Terms** every language uses are in
-  [tools/i18n/glossary.json](tools/i18n/glossary.json).
+  [tools/i18n/glossary.json](tools/i18n/glossary.json). A text that is
+  exactly one of its terms (a speed, « Override ») must be the glossary's
+  word: `make i18n-check` and `make i18n-import` hold it to it.
 
 **Translating with a tool (any that translates Markdown):**
 
@@ -568,8 +570,8 @@ dashboard, scripts and blueprints. The plan, and how far it has got:
    tags such as `<b>`.
 3. `make i18n-import TO=es FILE=<the translated file>` writes the texts back
    into every surface's `es.json`, and lists what changed against the
-   previous text. It refuses a text whose placeholders or tags changed and
-   keeps the previous one. `DRY_RUN=1` only reports. Then `make i18n-check`.
+   previous text. It refuses a text whose placeholders or tags changed, or a
+   glossary term translated another way, and keeps the previous one. `DRY_RUN=1` only reports. Then `make i18n-check`.
 
 ## Releases
 
