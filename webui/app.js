@@ -101,6 +101,8 @@ function route() {
   if (tab === "reglages-controleur") scrollLogToEnd();
   scrollTo({ top: 0 });
   if (want === "remplissage" && !fillOff()) scrollToWater();
+  // #wifi: Réglages contrôleur at its Wi-Fi, which comes after Accès and Home Assistant
+  if (want === "wifi") requestAnimationFrame(() => $("wifiStack").scrollIntoView({ block: "start" }));
 }
 addEventListener("hashchange", route);
 addEventListener("popstate", route);
@@ -591,7 +593,7 @@ const orDash = (id) => () => s(id) || "—";
     const d = new Date();
     return run(hass.setDateTime(E.clock, localStamp(d)), `Horloge du contrôleur réglée sur ce navigateur (${clock(d)})`);
   };
-  const goWifi = () => (location.hash = "#reglages-controleur");
+  const goWifi = () => (location.hash = "#wifi");
   updaters.push(() => {
     // No internet, no SNTP: the device can't place today's plan. This page has a clock; hand it over,
     // once per page load, and only when the device has none at all.
