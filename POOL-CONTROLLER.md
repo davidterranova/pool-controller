@@ -142,7 +142,9 @@ can come after.
 3. **Its page.** Open http://pool-controller.local (or **Visit Device** in
    the install window; or the address your router gives `pool-controller`).
    With no page password yet it opens without a login screen, on the
-   **setup wizard**: Mot de passe → Wi-Fi → Position → Sondes → Home Assistant, one
+   **setup wizard**, in the browser's language (EN | FR | ES at its top
+   right to change it): Password → Wi-Fi → Position → Probes → Home Assistant
+   (« Mot de passe » → « Wi-Fi » → « Position » → « Sondes » → « Home Assistant »), one
    step per item Setup State lists (see
    [Controller settings](#controller-settings)). Set the page password
    first: until then anyone on the network can open the page. Setting it
@@ -821,7 +823,10 @@ the device's IP), via ESPHome's
 no Home Assistant involved. Once a Page Password is set, the page opens on
 its own **login screen**, which asks for that password only (no user name).
 Until one is set, the page opens without a login (setup mode, see
-[Controller settings](#controller-settings)).
+[Controller settings](#controller-settings)). The page, its login screen and
+its wizard speak English, French or Spanish: the browser's language, or the
+EN | FR | ES switch at the top right, which the browser remembers. Nothing
+is fetched to translate: the texts are in the firmware.
 
 How the login works ([components/page_login](components/page_login),
 [docs/plans/page-login.md](docs/plans/page-login.md)):

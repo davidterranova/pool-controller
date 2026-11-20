@@ -10,6 +10,7 @@
  * logs in again with the one just typed (changePassword), and no login screen flashes in between.
  */
 import { hmacSha256Hex } from "./hmac.js";
+import { t, onLang } from "./page-i18n.js";
 
 /**
  * Logs in: {ok: true}, or {ok: false, locked, retryAfter}, `locked` when the controller refused to try (too many
@@ -51,7 +52,7 @@ export function waitText(seconds) {
 export function mountLogin({ ui: { icon }, onLogin, onLogout }) {
   const $ = (id) => document.getElementById(id);
   const screen = $("login"), form = $("loginForm"), input = $("loginPw"), msg = $("loginMsg"), button = $("loginBtn");
-  let note = "", until = 0, busy = false, timer = 0;
+  let note = "", until = 0, busy = false, timer = 0; // note: a key
   let pending = null, wanted = false; // a login under way; whether the screen was asked for meanwhile
 
   /** The message under the field and the button, the lockout's countdown with them, every second while it runs. */
@@ -59,7 +60,7 @@ export function mountLogin({ ui: { icon }, onLogin, onLogout }) {
     const left = (until - Date.now()) / 1000, locked = left > 0;
     button.disabled = locked;
     button.classList.toggle("busy", busy);
-    msg.textContent = [note, locked ? `Trop d'essais : nouvel essai possible dans ${waitText(left)}.` : ""].filter(Boolean).join(" ");
+    msg.textContent = [note && t(note), locked ? t("login.locked", { wait: waitText(left) }) : ""].filter(Boolean).join(" ");
     msg.hidden = !msg.textContent;
     if (locked && !timer) timer = setInterval(paint, 1000);
     if (!locked && timer) {
@@ -91,10 +92,10 @@ export function mountLogin({ ui: { icon }, onLogin, onLogout }) {
     try {
       const r = await logIn(password);
       ok = r.ok;
-      note = ok || r.locked ? "" : "Mot de passe incorrect.";
+      note = ok || r.locked ? "" : "login.wrong";
       if (r.retryAfter) until = Date.now() + r.retryAfter * 1000;
     } catch {
-      note = "Le contrôleur ne répond pas : réessayez dans un instant.";
+      note = "login.no_answer";
     }
     busy = false;
     if (ok) {
@@ -134,8 +135,9 @@ export function mountLogin({ ui: { icon }, onLogin, onLogout }) {
     const b = ev.currentTarget, show = input.type === "password";
     input.type = show ? "text" : "password";
     b.innerHTML = icon(show ? "eye-off" : "eye");
-    b.title = show ? "Masquer" : "Afficher";
+    b.title = t(show ? "page.pw.hide" : "page.pw.show");
   });
+  onLang(paint); // the message, in the new language
 
   return {
     get shown() {

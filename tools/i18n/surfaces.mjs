@@ -17,7 +17,7 @@ export const SURFACES = [
   },
   {
     id: "page", title: "The controller's own page and its setup wizard",
-    dir: "webui/i18n-page", sources: ["webui/*.js", "webui/index.html"], usage: "code", reads: ["card"], strict: false,
+    dir: "webui/i18n-page", sources: ["webui/*.js", "webui/index.html"], usage: "code", reads: ["card"], strict: true,
   },
   {
     id: "install", title: "The install page",
@@ -42,4 +42,8 @@ export const SAME_AS_ENGLISH = [
   "yaml:dashboard.fill.per_day.volume", // fr « Volume »
   "yaml:blueprint.fill_too_long.notifications.name", // fr « Notifications »
   "yaml:blueprint.fill_too_long.message.name", // fr « Message »
+  // the page: names and units every language writes alike (Wi-Fi, Home Assistant, Position, Version, Pause, dBm)
+  "page:page.fw.version", "page:page.log.pause", "page:page.wifi.signal_line", "page:setup.wz2.signal", "page:setup.pos.lat",
+  "page:setup.pos.lon", "page:setup.step.wifi.name", "page:setup.step.wifi.title", "page:setup.step.position.name",
+  "page:setup.step.api_key.name", "page:setup.step.api_key.title", "page:page.no", "page:page.uptime.d",
 ];

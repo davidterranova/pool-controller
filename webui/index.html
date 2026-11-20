@@ -1,44 +1,45 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="data:,">
-  <title>Piscine</title>
+  <title data-i18n="page.title">Pool</title>
   <link rel="stylesheet" href="app.css">
   <!-- The Home Assistant card (home-assistant/piscine-card.js, linked here), unchanged; app.js feeds it
-       a hass object built from /events. -->
-  <script src="piscine-card.js"></script>
+       a hass object built from /events. A module, as the card imports its texts; it runs before app.js. -->
+  <script type="module" src="piscine-card.js"></script>
   <script type="module" src="app.js"></script>
 </head>
 <body>
   <header class="top">
     <div class="title">
-      <h1>Piscine</h1>
+      <h1 data-i18n="page.title">Pool</h1>
       <p id="subtitle" class="num">–</p>
     </div>
-    <span class="chip" id="conn">Connexion…</span>
+    <span class="chip" id="conn" data-i18n="page.conn.connecting">Connecting…</span>
+    <span data-langs></span>
   </header>
   <nav class="tabs" role="tablist">
-    <a role="tab" href="#controle" data-tab="controle" data-icon="pump">Contrôle</a>
-    <a role="tab" href="#reglages" data-tab="reglages" data-icon="tune-vertical">Réglages</a>
-    <a role="tab" href="#reglages-controleur" data-tab="reglages-controleur" data-icon="chip">Réglages contrôleur</a>
+    <a role="tab" href="#controle" data-tab="controle" data-icon="pump"><span data-i18n="card.tab.pump">Control</span></a>
+    <a role="tab" href="#reglages" data-tab="reglages" data-icon="tune-vertical"><span data-i18n="card.tab.settings">Settings</span></a>
+    <a role="tab" href="#reglages-controleur" data-tab="reglages-controleur" data-icon="chip"><span data-i18n="card.tab.controller">Controller settings</span></a>
   </nav>
 
   <!-- Login screen (login.js): the page, the wizard included, while the controller asks for its Page Password -->
   <div class="login" id="login" hidden>
-    <header class="wz-top"><div><h1>Piscine</h1><p>Contrôleur de la piscine</p></div></header>
+    <header class="wz-top"><div><h1 data-i18n="page.title">Pool</h1><p data-i18n="login.sub">Pool controller</p></div><span data-langs></span></header>
     <div class="card">
-      <h2 data-icon="lock">Connexion</h2>
+      <h2 data-icon="lock"><span data-i18n="login.title">Log in</span></h2>
       <div class="body">
         <form class="form" id="loginForm">
-          <label>Mot de passe de cette page
+          <label><span data-i18n="login.password">This page's password</span>
             <span class="pw"><input id="loginPw" name="password" type="password" maxlength="64" autocomplete="current-password" required>
-              <button type="button" class="btn" id="loginEye" title="Afficher" aria-label="Afficher le mot de passe" data-icon="eye"></button></span></label>
+              <button type="button" class="btn" id="loginEye" data-i18n-title="page.pw.show" data-i18n-aria-label="page.pw.show_aria" data-icon="eye"></button></span></label>
           <p class="hint badl" id="loginMsg" role="alert" hidden></p>
-          <div class="rowbtns"><button class="btn fill" id="loginBtn">Se connecter</button></div>
-          <p class="hint">Celui choisi à l'installation. Ce navigateur reste ensuite connecté ; après 6 h sans s'en servir, la page le redemande.</p>
+          <div class="rowbtns"><button class="btn fill" id="loginBtn" data-i18n="login.button">Log in</button></div>
+          <p class="hint" data-i18n="login.hint">The one chosen at setup. This browser then stays logged in; after 6 h without use, the page asks again.</p>
         </form>
       </div>
     </div>
@@ -47,8 +48,9 @@
   <!-- Setup wizard (setup.js): the page while Setup State isn't `configured`, one step per missing item -->
   <div class="wizard" id="wizard" hidden>
     <header class="wz-top">
-      <div><h1>Piscine</h1><p id="wzSub"></p></div>
+      <div><h1 data-i18n="page.title">Pool</h1><p id="wzSub"></p></div>
       <span class="chip" id="wzChip"></span>
+      <span data-langs></span>
     </header>
     <ol class="wz-steps" id="wzSteps"></ol>
     <p class="wz-state" id="wzState"></p>
@@ -66,11 +68,11 @@
     <!-- Filtration (piscine-card's panel) and Remplissage, side by side from 1000px, Remplissage below on a phone -->
     <section id="tab-controle" class="cols control" role="tabpanel">
       <div class="stack">
-        <h2 class="heading" data-icon="pump">Filtration</h2>
+        <h2 class="heading" data-icon="pump"><span data-i18n="card.sec.filtration">Filtration</span></h2>
         <div class="card panel-host" id="cardHost"></div>
       </div>
       <div class="stack" id="waterStack">
-        <h2 class="heading" data-icon="water">Remplissage</h2>
+        <h2 class="heading" data-icon="water"><span data-i18n="page.fill.heading">Filling</span></h2>
         <!-- piscine-card's water variant (app.js) on the controller's own record: today, 30 days, 12 months -->
         <div id="waterHost"></div>
       </div>
@@ -83,11 +85,11 @@
            below that the columns dissolve and o1..o4 keep the order. -->
       <div class="stack">
         <div class="card o1">
-          <h2 data-icon="calendar-clock">Plan du jour</h2>
+          <h2 data-icon="calendar-clock"><span data-i18n="card.sec.plan">Today's plan</span></h2>
           <div class="body"><div class="rows" id="planRows"></div></div>
         </div>
         <div class="card o2">
-          <h2 data-icon="chip">Capteurs internes</h2>
+          <h2 data-icon="chip"><span data-i18n="page.device.title">Internal sensors</span></h2>
           <div class="body"><div class="rows" id="deviceRows"></div></div>
         </div>
       </div>
@@ -97,7 +99,7 @@
              card (Réglages) -->
         <div id="settingsHost"></div>
         <div class="card o4">
-          <h2 data-icon="calendar-check">7 derniers jours</h2>
+          <h2 data-icon="calendar-check"><span data-i18n="card.sec.days">Last 7 days</span></h2>
           <div class="body"><div class="days" id="days"></div></div>
         </div>
       </div>
@@ -112,7 +114,7 @@
       <div class="stack" id="wifiStack">
       <h2 class="heading" data-icon="wifi">Wi-Fi</h2>
       <div class="card">
-        <h2 data-icon="wifi">Connexion <span class="chip" id="wifiChip"></span></h2>
+        <h2 data-icon="wifi"><span data-i18n="page.wifi.connection">Connection</span> <span class="chip" id="wifiChip"></span></h2>
         <div class="body">
           <div class="wifi-hero" id="wifiHero"></div>
           <div class="rows" id="wifiRows"></div>
@@ -120,17 +122,17 @@
       </div>
 
       <div class="card">
-        <h2 data-icon="wifi-arrow-right">Rejoindre un réseau</h2>
+        <h2 data-icon="wifi-arrow-right"><span data-i18n="page.wifi.join_title">Join a network</span></h2>
         <div class="body">
           <div class="nets" id="nets"></div>
           <form class="join" id="joinForm" autocomplete="off">
-            <label>Réseau <input id="joinSsid" maxlength="32" required autocomplete="off" spellcheck="false" autocapitalize="off"></label>
-            <label>Mot de passe
+            <label><span data-i18n="page.wifi.network">Network</span> <input id="joinSsid" maxlength="32" required autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+            <label><span data-i18n="page.pw.label">Password</span>
               <span class="pw"><input id="joinPw" type="password" maxlength="64" autocomplete="new-password">
-                <button type="button" class="btn" id="pwShow" title="Afficher" aria-label="Afficher le mot de passe" data-icon="eye"></button></span>
+                <button type="button" class="btn" id="pwShow" data-i18n-title="page.pw.show" data-i18n-aria-label="page.pw.show_aria" data-icon="eye"></button></span>
             </label>
             <p class="hint" id="joinHint"></p>
-            <button class="btn fill" id="joinBtn">Se connecter</button>
+            <button class="btn fill" id="joinBtn" data-i18n="page.wifi.join">Connect</button>
           </form>
         </div>
       </div>
@@ -138,24 +140,24 @@
 
       <!-- Position and Sondes (setup.js, device-settings.yaml): the wizard's steps 3 and 4, at hand -->
       <div class="stack" id="posStack" hidden>
-        <h2 class="heading" data-icon="map-marker-outline">Position</h2>
+        <h2 class="heading" data-icon="map-marker-outline"><span data-i18n="card.sec.position">Position</span></h2>
         <div class="card">
-          <h2 data-icon="white-balance-sunny">Soleil et heure locale</h2>
+          <h2 data-icon="white-balance-sunny"><span data-i18n="page.pos.title">Sun and local time</span></h2>
           <div class="body" id="posBody"></div>
         </div>
       </div>
       <div class="stack" id="probeStack" hidden>
-        <h2 class="heading" data-icon="thermometer-lines">Sondes</h2>
+        <h2 class="heading" data-icon="thermometer-lines"><span data-i18n="card.sec.probes">Probes</span></h2>
         <div class="card">
-          <h2 data-icon="thermometer">Rôle de chaque sonde</h2>
+          <h2 data-icon="thermometer"><span data-i18n="page.probes.title">Each probe's role</span></h2>
           <div class="body" id="probeBody"></div>
         </div>
       </div>
       <!-- Compteur d'eau (setup.js, fill-meter.yaml): the meter on the fill line, its test and its alarm -->
       <div class="stack" id="fillStack" hidden>
-        <h2 class="heading" data-icon="water">Compteur d'eau</h2>
+        <h2 class="heading" data-icon="water"><span data-i18n="setup.fill.heading">Water meter</span></h2>
         <div class="card">
-          <h2 data-icon="water-check">Remplissage</h2>
+          <h2 data-icon="water-check"><span data-i18n="page.fill.heading">Filling</span></h2>
           <div class="body"><div id="fillBody"></div><div id="fillAlarm"></div></div>
         </div>
       </div>
@@ -163,9 +165,9 @@
 
       <!-- Firmware: the version it runs, ESPHome's, and its updates (the controller's own update entity, updates.yaml) -->
       <div class="stack">
-        <h2 class="heading" data-icon="chip">Firmware</h2>
+        <h2 class="heading" data-icon="chip"><span data-i18n="card.sec.firmware">Firmware</span></h2>
         <div class="card">
-          <h2 data-icon="tag-outline">Version</h2>
+          <h2 data-icon="tag-outline"><span data-i18n="page.fw.version">Version</span></h2>
           <div class="body"><div class="rows" id="fwRows"></div></div>
         </div>
       </div>
@@ -173,40 +175,40 @@
       <!-- Accès, Home Assistant, Réinitialiser (setup.js, device-settings.yaml), then the Journal: below Firmware -->
       <div class="stack col">
         <div class="stack" id="accStack" hidden>
-          <h2 class="heading" data-icon="shield-key-outline">Accès</h2>
+          <h2 class="heading" data-icon="shield-key-outline"><span data-i18n="setup.acc.heading">Access</span></h2>
           <div class="card">
-            <h2 data-icon="lock">Mots de passe</h2>
+            <h2 data-icon="lock"><span data-i18n="setup.acc.title">Passwords</span></h2>
             <div class="body" id="accBody"></div>
           </div>
         </div>
         <div class="stack" id="haStack" hidden>
           <h2 class="heading" data-icon="home-assistant">Home Assistant</h2>
           <div class="card">
-            <h2 data-icon="key-variant">Clé de chiffrement</h2>
+            <h2 data-icon="key-variant"><span data-i18n="setup.ha.title">Encryption key</span></h2>
             <div class="body" id="haBody"></div>
           </div>
         </div>
         <div class="stack" id="resetStack" hidden>
-          <h2 class="heading" data-icon="restore">Réinitialiser</h2>
+          <h2 class="heading" data-icon="restore"><span data-i18n="setup.reset.heading">Reset</span></h2>
           <div class="card">
-            <h2 data-icon="restart-alert">Réglages d'usine</h2>
+            <h2 data-icon="restart-alert"><span data-i18n="setup.reset.title">Factory settings</span></h2>
             <div class="body" id="resetBody"></div>
           </div>
         </div>
         <!-- Journal: what the controller logs while this page is open (app.js), last: the right column is the shorter -->
         <div class="stack">
-          <h2 class="heading" data-icon="console">Journal</h2>
+          <h2 class="heading" data-icon="console"><span data-i18n="page.log.heading">Log</span></h2>
           <div class="card">
-            <h2>Messages du contrôleur <span class="chip" id="logCount">0 ligne</span></h2>
+            <h2><span data-i18n="page.log.title">Controller messages</span> <span class="chip" id="logCount"></span></h2>
             <div class="logbar">
-              <div class="seg" id="logSeg" role="radiogroup" aria-label="Niveau">
-                <button role="radio" data-f="all" aria-checked="true">Tout</button>
-                <button role="radio" data-f="warn" aria-checked="false">Avertissements</button>
-                <button role="radio" data-f="error" aria-checked="false">Erreurs</button>
+              <div class="seg" id="logSeg" role="radiogroup" data-i18n-aria-label="page.log.level">
+                <button role="radio" data-f="all" aria-checked="true" data-i18n="page.log.all">All</button>
+                <button role="radio" data-f="warn" aria-checked="false" data-i18n="page.log.warn">Warnings</button>
+                <button role="radio" data-f="error" aria-checked="false" data-i18n="page.log.error">Errors</button>
               </div>
               <span class="grow"></span>
-              <button class="btn" id="logPause" title="Pause" aria-label="Pause" data-icon="pause"></button>
-              <button class="btn" id="logClear" title="Vider" aria-label="Vider" data-icon="delete-outline"></button>
+              <button class="btn" id="logPause" data-i18n-title="page.log.pause" data-i18n-aria-label="page.log.pause" data-icon="pause"></button>
+              <button class="btn" id="logClear" data-i18n-title="page.log.clear" data-i18n-aria-label="page.log.clear" data-icon="delete-outline"></button>
             </div>
             <div class="log" id="log" role="log" aria-live="off"></div>
           </div>

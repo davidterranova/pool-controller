@@ -380,7 +380,13 @@ really keeps).
 ## The device's page (`webui/`)
 
 The device serves a page of our own instead of ESPHome's stock one, with the
-look of the Home Assistant dashboard. It has three tabs, the card's own:
+look of the Home Assistant dashboard. It speaks English, French and Spanish:
+the browser's language, or the one picked with the EN | FR | ES switch in its
+header (also on the login screen and the setup wizard), which this browser
+remembers. A change redraws the page in place, the card and the wizard
+included, on the step it was on. Its texts are bundled into the firmware
+(`webui/i18n-page/`, and the card's), so the hotspot works with no internet
+(see [Languages](#languages)). It has three tabs, the card's own:
 
 - **Contrôle** (`#controle`), for daily use: Home Assistant's `piscine-card`
   panel (the pump's state, today's plan timeline, the pool's last 7 days,
@@ -410,6 +416,10 @@ Links from before keep working: `#avance` opens Réglages, `#controleur` and
 
 How it fits together:
 
+- **[page-i18n.js](webui/page-i18n.js) is the page's language:** `t()` on
+  the page's keys and the card's, the switch, the `data-i18n` attributes of
+  `index.html`. The page hands its language to the card through
+  `hass.locale`, as Home Assistant would.
 - **The card is Home Assistant's, unchanged.** The page loads
   [home-assistant/piscine-card.js](home-assistant/piscine-card.js) (see
   above) through the `webui/piscine-card.js` symlink. It runs anywhere it
