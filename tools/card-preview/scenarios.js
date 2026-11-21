@@ -69,6 +69,9 @@ export function base(now = new Date()) {
     // codes, as the firmware publishes them from 1.11.0 (updates.h); « update-legacy » keeps the French before it
     updateInterval: { s: "24h", a: { options: ["on_request", "6h", "24h", "7d"] } },
     updateStatus: "up_to_date",
+    // the controller's health (1.15.0): up 3 d 4 h, its chip warm
+    uptime: { s: "274020", a: { unit_of_measurement: "s", device_class: "duration" }, seen: 0.5, ago: 0.5 },
+    chipTemp: { s: "48.6", a: { unit_of_measurement: "°C", device_class: "temperature" }, seen: 0.5, ago: 0.5 },
     timezone: "CET-1CEST,M3.5.0,M10.5.0/3", timezoneName: "Europe/Paris",
     sForce: "off", sAuto: "off",
     // the fill meter (fill-meter.yaml): on, nothing running
@@ -118,11 +121,14 @@ export const SCENARIOS = [
     states: { flow: { s: "14.8", a: { unit_of_measurement: "L/min" }, ago: 12 }, fillRunning: { s: "on", ago: 12 },
       updateStatus: "en attente (remplissage)", updateInterval: { s: "À la demande", a: { options: ["À la demande", "6 h", "24 h", "7 j"] } },
       firmware: { s: "on", a: { installed_version: "1.10.0", latest_version: "1.11.0", in_progress: false, title: "Pool Controller" } } } },
+  // Some ESP32s never give their chip's temperature (ESPHome drops the reading): the row says so. Restarted 7 min ago.
+  { id: "chip-no-reading", name: "Redémarré, sans température de puce", note: "Uptime 7 min ; cet ESP32 ne mesure pas sa température",
+    tab: "controller", states: { uptime: { s: "420", a: { unit_of_measurement: "s" }, seen: 0.5, ago: 0.5 }, chipTemp: "unknown" } },
   { id: "installing", name: "Installation en cours", note: "Téléchargement à 42 %", tab: "controller",
     states: { updateStatus: "installing", firmware:{ s: "on", a: { installed_version: "1.8.0", latest_version: "1.9.0", in_progress: true, update_percentage: 42, title: "Pool Controller" } } } },
   { id: "old-firmware", name: "Firmware ancien", note: "Sans mises à jour, position ni horloge (avant v1.4) : ni « Réglages contrôleur », ni battement",
     states: { firmware: null, checkUpdate: null, cancelUpdate: null, autoUpdate: null, updateInterval: null, updateStatus: null,
-      latitude: null, longitude: null, timezone: null, timezoneName: null, clock: null, planHistory: null,
+      latitude: null, longitude: null, timezone: null, timezoneName: null, clock: null, planHistory: null, uptime: null, chipTemp: null,
       fillEnabled: null, fillAlarmAfter: null, fillRunning: null, fillTooLong: null, fillAck: null, fillAcked: null } },
   { id: "no-stats", name: "Pas encore de statistiques", note: "Le recorder n'a rien compilé : graphiques vides", recorder: "empty" },
   { id: "no-meter", name: "Sans compteur d'eau", note: "Pas d'entité de volume : pas de section remplissage",
