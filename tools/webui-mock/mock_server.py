@@ -257,6 +257,9 @@ N = {
     "plan_history": "Daily Plan History",
     "water_min": "Pool Water Min Today",
     "water_max": "Pool Water Max Today",
+    "outdoor_min": "Outdoor Min Today",
+    "outdoor_max": "Outdoor Max Today",
+    "outdoor_history": "Daily Outdoor History",
     "b1s": "Schedule Block 1 Start",
     "b1e": "Schedule Block 1 End",
     "b2s": "Schedule Block 2 Start",
@@ -1025,6 +1028,9 @@ class PoolSim:
         # Today's water min/max (pumping readings only, as on the device), and when the pump started.
         self.water_lo: float | None = None
         self.water_hi: float | None = None
+        # Today's outdoor min/max: every reading of the probe holding the Outdoor role (as Outdoor Min/Max Today).
+        self.outdoor_lo: float | None = None
+        self.outdoor_hi: float | None = None
         self.run_started: float | None = None
         # The last 7 closed days, newest first: (date, seconds, water min, water max, planned seconds or
         # None). Seeded with a plausible week -- one day missing as if the device had been off, one with
@@ -1042,6 +1048,11 @@ class PoolSim:
             self.history.append((today - timedelta(days=d), ran,
                                  lo if measured else None, round(lo + random.uniform(0.3, 0.9), 1) if measured else None,
                                  planned if d < 6 else None))
+        # The same days' outdoors (Daily Outdoor History), newest first: (date, min, max), a cold night and a mild day.
+        self.outdoor_history = []
+        for day, *_ in self.history:
+            lo = round(random.uniform(2.0, 9.0), 1)
+            self.outdoor_history.append((day, lo, round(lo + random.uniform(5.0, 11.0), 1)))
         # Fill water: the last 30 closed days and 12 months, newest first (None = unknown), seeded with a real
         # summer (~950 L every three days, then next to nothing); a fill of a few minutes every quarter hour, so
         # the page's Contrôle › Remplissage counts live.
@@ -1051,6 +1062,7 @@ class PoolSim:
         self.fill_months = [23, 30, 9538, 2913, None, None, None, None, None, None, None, None]  # this month's closed days first
         if fresh:  # straight out of the install: no day closed yet
             self.history = []
+            self.outdoor_history = []
             self.fill_days, self.fill_months = [None] * 30, [None] * 12
         self.fill_today = 0.0
         self.fill_import_state = ""  # Fill Water Import: what the last import did, never the line
@@ -1215,6 +1227,7 @@ class PoolSim:
             b1s, b1e, b2s, b2e = self.blocks
             self.history = [(self.counted_day, self.filtration_s, self.water_lo, self.water_hi,
                              b1e - b1s + b2e - b2s)] + self.history[:6]
+            self.outdoor_history = [(self.counted_day, self.outdoor_lo, self.outdoor_hi)] + self.outdoor_history[:6]
             # A day the meter was off all day is unknown, not 0 L (fill-meter.yaml)
             measured = self.fill.day_measured
             self.fill_days = [round(self.fill_today) if measured else None] + self.fill_days[:29]
@@ -1227,6 +1240,7 @@ class PoolSim:
             self.filtration_s = 0.0
             self.counted_day = today
             self.water_lo = self.water_hi = None
+            self.outdoor_lo = self.outdoor_hi = None
         elif self.commanded != "Off":
             self.filtration_s += now - self.last_tick
         # The fill valve: 3 min at 14 L/min every quarter hour, or the mock's own tap (FillSim.tap_open). With the meter
@@ -1248,6 +1262,11 @@ class PoolSim:
             self.last_drift = now
             self.temps["pool_temp"] = min(29.5, max(24.0, self.temps["pool_temp"] + random.uniform(-0.05, 0.05)))
             self.temps["outdoor_temp"] += random.uniform(-0.1, 0.1)
+            out = self.reading("outdoor_temp")
+            if out is not None:
+                v = round(out, 1)
+                self.outdoor_lo = v if self.outdoor_lo is None else min(self.outdoor_lo, v)
+                self.outdoor_hi = v if self.outdoor_hi is None else max(self.outdoor_hi, v)
             # Today's min/max: only readings after 10 min of pumping (the sensor is on the return pipe).
             if self.run_started is not None and now - self.run_started >= 600:
                 v = round(self.temps["pool_temp"], 1)
@@ -1402,6 +1421,10 @@ class PoolSim:
             N["plan_history"]: ", ".join(_plan_day(day[0], day[4]) for day in self.history if day[4] is not None) or "--",
             N["water_min"]: self.water_lo,
             N["water_max"]: self.water_hi,
+            N["outdoor_min"]: self.outdoor_lo,
+            N["outdoor_max"]: self.outdoor_hi,
+            N["outdoor_history"]: ", ".join(f"{d.isoformat()}: {lo:.1f}/{hi:.1f} °C" for d, lo, hi in self.outdoor_history
+                                            if lo is not None and hi is not None) or "--",
             N["b1s"]: _hhmm(b1s), N["b1e"]: _hhmm(b1e), N["b2s"]: _hhmm(b2s), N["b2e"]: _hhmm(b2e),
             N["next_change"]: _hhmm(nxt),
             N["next_speed"]: nxt_speed if nxt else "--",
