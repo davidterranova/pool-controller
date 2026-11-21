@@ -387,7 +387,7 @@
       "check": "Comprobar",
       "install": "Instalar",
       "version": "Versión del firmware",
-      "card_version": "Versión de la tarjeta",
+      "card_version": "Versión de Home Assistant",
       "uptime": "En marcha desde hace",
       "uptime_d": "{d} d {h} h",
       "restarted": "Último reinicio: {when}",
