@@ -99,7 +99,9 @@
  * manifest): one version row (installed, « → latest » when one is available, ESPHome's version and build time, the
  * release notes), the card's own version (in Home Assistant only),
  * « Vérifier » (Check for Update) and « Installer » (update.install, with its progress), Auto Update and Update Check
- * Interval. A tap on a version row opens Home Assistant's own dialog for that entity (its release notes, « Ignorer »).
+ * Interval, then the controller's health (1.15.0): Uptime, how long since its last restart and when that was, and Chip
+ * Temperature, the ESP32's own sensor (some chips never give a reading: the row says so). A tap on a version row opens
+ * Home Assistant's own dialog for that entity (its release notes, « Ignorer »).
  * The firmware holds every install while a manual override or a fill runs, whoever asked (Update Status says
  * `pending:override` or `pending:fill`; a firmware before 1.11.0 said it in French, which LEGACY_STATUS reads until no
  * supported firmware is that old): the card asks first when « Installer » would wait, and says so while it waits, with « Annuler la demande »
@@ -134,7 +136,7 @@ const DICTS = { en, fr, es };
  */
 let T = makeT(DICTS, "en"), F = makeFmt("en");
 
-const VERSION = "1.14.1";
+const VERSION = "1.15.0";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",
@@ -190,6 +192,9 @@ const DEFAULT_ENTITIES = {
   checkUpdate: "button.pool_controller_check_for_update",
   cancelUpdate: "button.pool_controller_cancel_update",
   restart: "button.pool_controller_restart", // « Réglages contrôleur » › Redémarrer (device-settings.yaml, 1.12.0)
+  // « Réglages contrôleur » › Firmware, under the updates (1.15.0): how long the controller has run, and its chip's temperature
+  uptime: "sensor.pool_controller_uptime",
+  chipTemp: "sensor.pool_controller_chip_temperature",
   autoUpdate: "switch.pool_controller_auto_update",
   updateInterval: "select.pool_controller_update_check_interval",
   updateStatus: "sensor.pool_controller_update_status",
@@ -340,6 +345,8 @@ const fmtD = (min) => {
   const m = Math.max(0, Math.round(min)), h = Math.floor(m / 60), r = m % 60;
   return h ? (r ? `${h} h ${pad(r)}` : `${h} h`) : `${r} min`;
 };
+/** How long the controller has run, from seconds: « 3 j 4 h », « 4 h 05 », « 12 min ». */
+const upTxt = (sec) => (sec >= 86400 ? T("card.fw.uptime_d", { d: Math.floor(sec / 86400), h: Math.floor((sec % 86400) / 3600) }) : fmtD(Math.floor(sec / 60)));
 /** Minutes ago -> « à l'instant », « il y a 3 min », « il y a 2 h », « il y a 4 j ». */
 const agoTxt = (m) => (!(m >= 1) ? T("common.ago.now") : m < 90 ? T("common.ago.min", { n: Math.round(m) })
   : m < 36 * 60 ? T("common.ago.h", { n: Math.round(m / 60) }) : T("common.ago.d", { n: Math.round(m / 1440) }));
@@ -857,7 +864,7 @@ const panelHtml = (t) => `
         <p class="posnote">${t("card.pos.note")}</p></section>
     </div>
     <div class="sp-col">
-      <section id="fwSec" hidden><h4 class="sp-h">${t("card.sec.firmware")}</h4><div id="updRows"></div></section>
+      <section id="fwSec" hidden><h4 class="sp-h">${t("card.sec.firmware")}</h4><div id="updRows"></div><div id="fwDiag"></div></section>
       <section id="restartSec" hidden><h4 class="sp-h">${t("card.sec.restart")}</h4>
         <div class="erow"><span class="ic" id="restartIc"></span><span class="name"><span>${t("card.restart.row")}</span><small>${t("card.restart.sub")}</small></span>
           <button class="btn" id="restartBtn">${t("card.restart.button")}</button></div>
@@ -1001,6 +1008,7 @@ class PiscineCard extends HTMLElement {
     // (until, since: ms), an install seen running (so an unavailable entity next reads as its reboot), what is drawn
     this._upd = { ask: false, checkUntil: 0, checkFrom: 0, wasBusy: false, drawn: "" };
     this._posDrawn = "";
+    this._fwDiagDrawn = "";
     this._beatSeen = null; this._beatAt = -1e9; // the light's last heartbeat: the message it was for, when (performance.now)
     this._statsAt = 0; this._statsLoading = false; this._statsErr = false;
     this._tVer = 0; this._tDrawn = "";
@@ -1054,7 +1062,7 @@ class PiscineCard extends HTMLElement {
   _use() { T = this._t; F = this._fmt; }
   /** Draws everything again, in a new language: the HTML and every cache of what was drawn. */
   _rebuild() {
-    Object.assign(this, { _built: false, _setRows: [], _paneRows: [], _sects: [], _posDrawn: "", _tDrawn: "", _wDrawn: "", _daysDrawn: "" });
+    Object.assign(this, { _built: false, _setRows: [], _paneRows: [], _sects: [], _posDrawn: "", _fwDiagDrawn: "", _tDrawn: "", _wDrawn: "", _daysDrawn: "" });
     this._upd.drawn = "";
   }
 
@@ -1357,7 +1365,9 @@ class PiscineCard extends HTMLElement {
   /** Draws « Réglages contrôleur » › Firmware when the update entity exists; says how a « Vérifier » ended. */
   _renderUpdate() {
     const host = this._$("updRows"), m = this._updModel(), U = this._upd;
-    this._$("fwSec").hidden = !m; // no update entity (a firmware before v1.4): nothing to show
+    this._renderFwDiag();
+    this._$("fwSec").hidden = !m && !this._st("uptime") && !this._st("chipTemp"); // a firmware before v1.4: nothing to show
+    host.hidden = !m;
     if (!m) return;
     if (m.busy) U.wasBusy = true; else if (!m.off) U.wasBusy = false;
     m.rebooting = m.off && U.wasBusy;
@@ -1372,6 +1382,30 @@ class PiscineCard extends HTMLElement {
     if (U.ask && (!m.hold || !m.avail || m.busy)) U.ask = m.ask = false; // nothing holds it any more: « Installer » is enough
     const html = this._updHtml(m);
     if (html !== U.drawn) { U.drawn = html; host.innerHTML = html; } // only on a change: a link rebuilt every second loses its hover
+  }
+  /**
+   * « Réglages contrôleur » › Firmware, under the updates: Uptime (how long since the last restart, and when that was)
+   * and Chip Temperature (the ESP32's own sensor; some chips never give a reading). Its own rows, so a value that moves
+   * every minute never redraws the update's buttons and select.
+   */
+  _renderFwDiag() {
+    const t = this._t, up = this._st("uptime"), chip = this._st("chipTemp");
+    const row = (icon, label, sub, value) => `<div class="erow"><span class="ic">${this._icon(icon)}</span><span class="name"><span>${label}</span>`
+      + `${sub ? `<small>${sub}</small>` : ""}</span><span class="val num">${esc(value)}</span></div>`;
+    let html = "";
+    if (up) {
+      // seconds when Home Assistant last heard it, carried on to now
+      const at = Date.parse(up.last_updated), sec = isSet(up.state) && Number.isFinite(at) ? num(up.state) + Math.max(0, Date.now() - at) / 1000 : NaN;
+      html += row("clock-outline", t("card.fw.uptime"), Number.isFinite(sec) ? esc(t("card.fw.restarted", { when: stampMs(Date.now() - sec * 1000) })) : "",
+        Number.isFinite(sec) ? upTxt(sec) : "—");
+    }
+    if (chip) {
+      const c = isSet(chip.state) ? num(chip.state) : NaN;
+      html += row("thermometer-lines", t("card.fw.chip_temp"),
+        Number.isFinite(c) ? t("card.fw.chip_temp_sub") : chip.state === "unknown" ? t("card.fw.chip_temp_none") : "",
+        Number.isFinite(c) ? `${fmt1(c)} °C` : "—");
+    }
+    if (html !== this._fwDiagDrawn) { this._fwDiagDrawn = html; this._$("fwDiag").innerHTML = html; }
   }
   _wireUpdate() {
     const host = this._$("updRows"), U = this._upd;

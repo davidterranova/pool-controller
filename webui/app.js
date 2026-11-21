@@ -485,10 +485,10 @@ const orDash = (id) => () => s(id) || "—";
   });
 }
 
-/* ---- Firmware: the version it runs (Firmware Version: the commit `make` compiled, or a release's tag), ESPHome's, and
-   its updates (updates.yaml): the Firmware update entity behind the controller's own gate, « Vérifier » (Check for
-   Update), « Installer », « Annuler la demande » while an install waits (Cancel Update), Auto Update (scheduled checks
-   only) and Update Check Interval. Whether a newer firmware exists is the controller's to say: the page asks GitHub
+/* ---- Firmware: the version it runs (Firmware Version: the commit `make` compiled, or a release's tag), ESPHome's, its
+   updates (updates.yaml), then how long it has run and its chip's temperature. Updates: the Firmware update entity
+   behind the controller's own gate, « Vérifier » (Check for Update), « Installer », « Annuler la demande » while an
+   install waits (Cancel Update), Auto Update (scheduled checks only) and Update Check Interval. Whether a newer firmware exists is the controller's to say: the page asks GitHub
    nothing (a firmware without updates.yaml just has no « Mise à jour » row). */
 {
   const Card = customElements.get("piscine-card"), host = $("fwRows");
@@ -668,6 +668,16 @@ const orDash = (id) => () => s(id) || "—";
       options: () => (st(E.updateInterval)?.attributes.options || []).map((o) => [intervalLabel(o), o]),
       set: (v) => hass.select(E.updateInterval, v) });
   }
+
+  /* -- the controller's health: how long it has run (the event stream's pings, every second, with or without the Uptime
+     sensor) and since when, and Chip Temperature (the ESP32's own sensor; some chips never give a reading) */
+  const upSec = () => (hass.uptime === null ? NaN : hass.uptime + (Date.now() - hass.uptimeAt) / 1000);
+  valueRow(host, { label: "card.fw.uptime", iconName: "clock-outline", value: () => duration(upSec()),
+    sub: () => (Number.isFinite(upSec()) ? t("card.fw.restarted", { when: clock(hass.uptimeAt - hass.uptime * 1000) }) : "") });
+  const chipC = () => n(E.chipTemp);
+  valueRow(host, { id: E.chipTemp, label: "card.fw.chip_temp", iconName: "thermometer-lines",
+    value: () => (Number.isFinite(chipC()) ? `${fmt1(chipC())} °C` : "—"),
+    sub: () => t(Number.isFinite(chipC()) ? "card.fw.chip_temp_sub" : "card.fw.chip_temp_none") });
 }
 
 /* ---- Alerts above both tabs: on the hotspot, and a clock that was never set */
@@ -732,8 +742,6 @@ const KNOWN = new Set(Object.values(E));
   const host = $("deviceRows");
   valueRow(host, { label: "page.device.link", iconName: "lan-connect",
     value: () => t(hass.connected ? "page.device.link_ok" : "page.device.link_lost") });
-  valueRow(host, { label: "page.device.uptime", iconName: "clock-outline",
-    value: () => duration(hass.uptime === null ? NaN : hass.uptime + (Date.now() - hass.uptimeAt) / 1000) });
   valueRow(host, { label: "page.device.last_event", iconName: "information-outline",
     value: () => (hass.lastEventAt ? t("page.device.ago_s", { s: Math.round((Date.now() - hass.lastEventAt) / 1000) }) : "—") });
   valueRow(host, { label: "page.device.controller", iconName: "chip",

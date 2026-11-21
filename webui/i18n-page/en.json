@@ -30,7 +30,6 @@
       "link": "Controller connection",
       "link_ok": "Connected",
       "link_lost": "Lost, trying again…",
-      "uptime": "Controller running for",
       "last_event": "Last data received",
       "ago_s": "{s} s ago",
       "controller": "Controller name",

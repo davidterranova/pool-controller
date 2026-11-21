@@ -421,6 +421,25 @@ sensor:
       // yesterday's runtime.
       id(filtration_accrue).execute();
       return id(filtration_ms_today) / 3600000.0f;
+  # The controller's own health, shown under Firmware (the pool card's
+  # « Réglages contrôleur » and the device's page): how long it has run
+  # since its last restart, in seconds (the platform's default: it needs no
+  # clock, so it reads right on the hotspot too), and the ESP32's die
+  # temperature. That one is the chip's undocumented sensor: rough (a few
+  # degrees off, warmer than the box), and on some ESP32 revisions it reads
+  # nothing at all -- ESPHome drops that raw value and the sensor stays
+  # unknown, which the UIs say rather than hide.
+  - platform: uptime
+    name: "Uptime"
+    web_server: {sorting_group_id: grp_sensors, sorting_weight: 92}
+    id: uptime_sensor
+    update_interval: 60s
+  - platform: internal_temperature
+    name: "Chip Temperature"
+    web_server: {sorting_group_id: grp_sensors, sorting_weight: 93}
+    id: chip_temperature
+    icon: mdi:thermometer-lines
+    update_interval: 60s
 
 text_sensor:
   - platform: template

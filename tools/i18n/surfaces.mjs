@@ -37,6 +37,7 @@ export const SAME_AS_ENGLISH = [
   "card:card.range.24h", "card:card.pos.lat", "card:card.pos.lon",
   // Spanish that happens to be written like the English
   "card:common.mode.manual", "card:card.range.7d", "card:card.range.30d", "card:card.range.90d", "card:card.pos.ha", "card:card.days.tip_plan",
+  "card:card.fw.uptime_d", // « {d} d {h} h » (French: « j »)
   "install:firmware.chip", // « Firmware {version} »: the word is the same in French and Spanish
   "install:wiring.pin", // « Pin »: the Spanish word too (French: « Broche »)
   "yaml:dashboard.fill.per_day.volume", // fr « Volume »
