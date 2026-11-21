@@ -38,6 +38,7 @@ export const E = {
   hoursToday: "sensor/Filtration Hours Today",
   history: "text_sensor/Daily History",
   planHistory: "text_sensor/Daily Plan History",
+  outdoorHistory: "text_sensor/Daily Outdoor History",
   b1s: "text_sensor/Schedule Block 1 Start",
   b1e: "text_sensor/Schedule Block 1 End",
   b2s: "text_sensor/Schedule Block 2 Start",
@@ -64,6 +65,8 @@ export const E = {
   waterMax: "sensor/Pool Water Max Today",
   pad: "sensor/Equipment Pad Temperature",
   outdoor: "sensor/Outdoor Temperature",
+  outdoorMin: "sensor/Outdoor Min Today",
+  outdoorMax: "sensor/Outdoor Max Today",
   updateTemps: "button/Update Temperature Sensors Now",
   haLink: "binary_sensor/Status", // the device's link to Home Assistant's API, not to this page
   online: "page/connected", // synthetic: this page's own link to the device (see _setLink)
