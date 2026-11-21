@@ -96,7 +96,8 @@
  * position et le fuseau de Home Assistant », which writes hass.config's, rounded to 0.01°, the zone as its IANA name
  * (Timezone Name) and its POSIX string (Timezone, from TZ_POSIX); then « Firmware » (mock-up 2026-11-18, plan WP4).
  * The section runs on the controller's update entity, « Firmware » (ESPHome's `update` platform on the release
- * manifest): installed version (with ESPHome's version and build time), latest version and its release notes,
+ * manifest): one version row (installed, « → latest » when one is available, ESPHome's version and build time, the
+ * release notes), the card's own version (in Home Assistant only),
  * « Vérifier » (Check for Update) and « Installer » (update.install, with its progress), Auto Update and Update Check
  * Interval. A tap on a version row opens Home Assistant's own dialog for that entity (its release notes, « Ignorer »).
  * The firmware holds every install while a manual override or a fill runs, whoever asked (Update Status says
@@ -133,7 +134,7 @@ const DICTS = { en, fr, es };
  */
 let T = makeT(DICTS, "en"), F = makeFmt("en");
 
-const VERSION = "1.13.0";
+const VERSION = "1.14.0";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",
@@ -731,8 +732,8 @@ ha-card.set-card.plain { background:var(--card); border:1px solid var(--ha-card-
 .erow .name { flex:1; min-width:0; overflow-wrap:anywhere; }
 .erow .name span { display:block; }
 .erow .name small { display:block; font-size:12px; line-height:1.35; color:var(--muted); margin-top:1px; }
-.erow .name small.fw-up { color:var(--acc); }
-.erow .name small.fw-ok { color:var(--good); }
+.erow .name small .fw-up { display:inline; color:var(--acc); }
+.erow .name small .fw-ok { display:inline; color:var(--good); }
 .erow .name small a { color:var(--acc); font-weight:500; text-decoration:none; }
 .erow .ctl { display:flex; align-items:center; gap:10px; flex:0 1 260px; min-width:150px; }
 .erow .ctl input { flex:1; min-width:0; accent-color:var(--acc); margin:0; }
@@ -1331,9 +1332,16 @@ class PiscineCard extends HTMLElement {
       + (m.avail ? `<button class="btn" data-act="install"${idle && !deferred && !m.ask ? "" : " disabled"}>${deferred ? t("common.pending") : t("card.fw.install")}</button>` : "");
     const auto = m.auto, iv = m.interval, opts = (iv && iv.attributes.options) || [];
     const onRequest = iv && (iv.state === "on_request" || /demande/i.test(iv.state)); // the code, or an older firmware's option
-    return row("tag-outline", t("card.fw.installed"), m.esphome ? esc(`ESPHome ${m.esphome.version}${m.esphome.built ? ` · ${m.esphome.built.charAt(0).toLowerCase()}${m.esphome.built.slice(1)}` : ""}`) : "", val(m.installed), "", !m.off)
-      + (m.latest ? row("cloud-sync-outline", t("card.fw.latest"), (m.avail ? t("card.fw.upd_avail") : t("card.fw.up_to_date"))
-        + (/^https?:\/\//.test(m.notes || "") ? ` · <a href="${esc(m.notes)}" target="_blank" rel="noopener">${t("card.fw.notes")}</a>` : ""), val(m.latest, m.avail ? " acc" : ""), m.avail ? "fw-up" : "fw-ok", true) : "")
+    // one row for the firmware: the installed version, « → latest » when one is available, then whether it's up to
+    // date, ESPHome's version and build time, and the release notes
+    const fwSub = [
+      m.latest ? `<span class="${m.avail ? "fw-up" : "fw-ok"}">${m.avail ? t("card.fw.upd_avail") : t("card.fw.up_to_date")}</span>` : "",
+      m.esphome ? esc(`ESPHome ${m.esphome.version}${m.esphome.built ? ` · ${m.esphome.built.charAt(0).toLowerCase()}${m.esphome.built.slice(1)}` : ""}`) : "",
+      m.latest && /^https?:\/\//.test(m.notes || "") ? `<a href="${esc(m.notes)}" target="_blank" rel="noopener">${t("card.fw.notes")}</a>` : "",
+    ].filter(Boolean).join(" · ");
+    return row("tag-outline", t("card.fw.version"), fwSub, m.avail && m.latest ? val(`${m.installed} → ${m.latest}`, " acc") : val(m.installed), "", !m.off)
+      // the card's own version, as HACS installed it; not on the controller's page, whose card ships with the firmware
+      + (this._config.icons ? "" : row("view-dashboard-outline", t("card.fw.card_version"), "", val(VERSION)))
       + row("download", t("card.fw.update"), status, btns ? `<span class="btns">${btns}</span>` : "", st.kind === "failed" && !m.busy && !m.off ? "bad" : "")
       + (m.busy && m.pct !== null ? `<div class="prog"><i style="width:${m.pct}%"></i></div>` : m.busy || m.rebooting || m.checking ? `<div class="prog ind"><i></i></div>` : "")
       + (m.ask && m.hold && m.avail ? `<div class="banner">${svg("alert")}<span>${t("card.fw.ask", { hold: esc(cap(m.hold.long)), version: latest })}${m.hold.ovr ? ` ${t("card.fw.ask_ovr")}` : ""}</span>`
