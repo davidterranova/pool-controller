@@ -517,6 +517,14 @@ Re-evaluated every 30 seconds, highest priority wins:
      other way it is `dev`. **ESPHome Version** is ESPHome's version and the
      build time. Whether a newer firmware exists is the Firmware update
      entity's to say (see [Updates](#updates)).
+   - **Uptime** (diagnostic, seconds since the last restart) and **Chip
+     Temperature** (diagnostic, the ESP32's die temperature, every 60 s)
+     show under Firmware, on the controller's page and in the card's
+     « Controller settings » (« Réglages contrôleur »), with the time of the
+     last restart. Chip Temperature is the chip's own undocumented sensor:
+     a few degrees off, and on some ESP32 revisions it reads nothing at all
+     (the entity stays `unknown`; the UIs say « No reading » (« Aucune
+     mesure »)).
 4. **Hot-night keep-alive** — only reached when the autonomous schedule
    above says `Off` (i.e. outside both blocks) and only overnight, before
    today's sunrise or after today's sunset: if `Pool Return Temperature` is
@@ -875,7 +883,7 @@ card's own:
 |---|---|
 | **Control** (« Contrôle », `#controle`) | The pool card's panel (pump state, today's plan timeline, the pool's temperature over the last 7 days, Auto/Manual (« Auto » / « Manuel »), forced speed and duration, and the long-fill alarm's banner with « Acknowledge » (« Acquitter »)), and « Filling » (« Remplissage »): the fill water from the device's own record (Fill Water Today, Days, Months): today, this month, the flow, litres by day over 30 days or by month over 12 (the pool card's water variant). With Fill Meter off, no « Filling » (« Remplissage »): Filtration takes the width |
 | **Settings** (« Réglages », `#reglages`) | Today's plan in detail, the device's sensors, « Filtration and freeze protection » (« Filtration et hors gel »): the filtration settings with their Apply gate, boost pulses and freeze-protection threshold (the pool card's settings variant, as in Home Assistant), the last 7 days (Daily History) |
-| **Controller settings** (« Réglages contrôleur », `#reglages-controleur`) | Wi-Fi: the connection and its statistics, joining another network (see "Wi-Fi and the fallback hotspot" below). Position, « Probes » (« Sondes »), « Water meter » (« Compteur d'eau ») (Fill Meter « Yes » (« Oui ») | « No » (« Non »); while on, the pulse test « Test » (« Tester ») with Fill Meter Status, the last pulse, « Alarm after » (« Alarme après ») in minutes, 0 = never; see [Fill meter](#fill-meter)). Firmware: the version it runs, ESPHome's, and its updates (« Check » (« Vérifier »), « Install » (« Installer »), Auto Update, the check interval, Update Status, « Cancel the request » (« Annuler la demande »); see [Updates](#updates)). « Access » (« Accès ») (page and OTA passwords), Home Assistant, « Reset » (« Réinitialiser ») (see [Controller settings](#controller-settings)). Its live log (« Log » (« Journal »)). |
+| **Controller settings** (« Réglages contrôleur », `#reglages-controleur`) | Wi-Fi: the connection and its statistics, joining another network (see "Wi-Fi and the fallback hotspot" below). Position, « Probes » (« Sondes »), « Water meter » (« Compteur d'eau ») (Fill Meter « Yes » (« Oui ») | « No » (« Non »); while on, the pulse test « Test » (« Tester ») with Fill Meter Status, the last pulse, « Alarm after » (« Alarme après ») in minutes, 0 = never; see [Fill meter](#fill-meter)). Firmware: the version it runs, ESPHome's, its updates (« Check » (« Vérifier »), « Install » (« Installer »), Auto Update, the check interval, Update Status, « Cancel the request » (« Annuler la demande »); see [Updates](#updates)), then « Running for » (« En marche depuis ») with the last restart, and the « Microcontroller temperature » (« Température du microcontrôleur »). « Access » (« Accès ») (page and OTA passwords), Home Assistant, « Reset » (« Réinitialiser ») (see [Controller settings](#controller-settings)). Its live log (« Log » (« Journal »)). |
 
 The tabs' old addresses still land: `#avance` on Settings (Réglages), `#controleur` and
 `#wifi` on Controller settings (Réglages contrôleur), `#remplissage` on Control (Contrôle) at its Filling (Remplissage).
