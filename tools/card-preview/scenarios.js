@@ -44,6 +44,9 @@ export function base(now = new Date()) {
     water: { s: water, a: { unit_of_measurement: "°C", device_class: "temperature" }, ago: 3 },
     waterMin: (water - 0.6).toFixed(1), waterMax: (water + 0.3).toFixed(1),
     outdoor: (water + 2.4).toFixed(1), pad: (water + 4.1).toFixed(1),
+    outdoorMin: (water - 4.6).toFixed(1), outdoorMax: (water + 3.1).toFixed(1),
+    // the last 7 closed days' outdoors, the oldest before the firmware kept them (from HA's statistics instead)
+    outdoorHistory: days(5, (d, i) => `${d}: ${(water - 5 - i * 0.6).toFixed(1)}/${(water + 3 - i * 0.4).toFixed(1)} °C`),
     // the last 7 closed days, one of them short of its plan
     history: days(7, (d, i) => `${d}: ${i === 3 ? "6.20" : (7.9 + (i % 3) * 0.05).toFixed(2)} h ${(water - 0.8 - i * 0.1).toFixed(1)}/${(water + 0.2 - i * 0.1).toFixed(1)} °C`),
     planHistory: days(7, (d) => `${d}: 8.00 h`),
@@ -85,7 +88,8 @@ export const SCENARIOS = [
   { id: "stuck", name: "Override sans limite", note: "Arrêt forcé depuis 45 min, sans retour automatique : l'alerte",
     states: { override: { s: "Off", ago: 45 }, commanded: "Off", stuck: { s: "on", ago: 15 }, timeout: { s: 0, a: { min: 0, max: 480, step: 5, unit_of_measurement: "min" } } } },
   { id: "freeze", name: "Hors gel", note: "Bassin à 2,1 °C : Low imposé",
-    states: { water: { s: 2.1, a: { unit_of_measurement: "°C" } }, waterMin: "1.8", waterMax: "2.6", outdoor: "-4.0", commanded: "Low" } },
+    states: { water: { s: 2.1, a: { unit_of_measurement: "°C" } }, waterMin: "1.8", waterMax: "2.6", outdoor: "-4.0", outdoorMin: "-6.2", outdoorMax: "1.4",
+      outdoorHistory: "--", commanded: "Low" } },
   { id: "not-computed", name: "Plan non calculé", note: "Pas de température ni de lever du soleil au matin",
     states: { notComputed: "on", b1s: "--", b1e: "--", b2s: "--", b2e: "--", nextAt: "--", hoursPlanned: "unknown", commanded: "Off", planned: "Off" } },
   { id: "quiet", name: "Contrôleur muet", note: "Plus aucun message depuis 6 min : lumière ambre", quiet: 6 },

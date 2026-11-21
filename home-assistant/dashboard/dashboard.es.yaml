@@ -52,6 +52,9 @@ views:
               history: sensor.pool_controller_daily_history
               planHistory: sensor.pool_controller_daily_plan_history
               outdoor: sensor.pool_controller_outdoor_temperature
+              outdoorMin: sensor.pool_controller_outdoor_min_today
+              outdoorMax: sensor.pool_controller_outdoor_max_today
+              outdoorHistory: sensor.pool_controller_daily_outdoor_history
               online: binary_sensor.pool_controller_status
               stuck: binary_sensor.pool_controller_manual_override_active
               notComputed: binary_sensor.pool_controller_schedule_not_computed

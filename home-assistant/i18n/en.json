@@ -120,7 +120,18 @@
       "aria": "Pool temperature, {span}: {items}",
       "aria_range": "{when} {lo} to {hi} °C",
       "aria_mean": "{when} about {temp} °C (probe)",
-      "aria_none": "{when} no reading"
+      "aria_none": "{when} no reading",
+      "out_24h": "Outdoor: {lo} – {hi} °C over 24 h",
+      "out_span": "Outdoor: {lo} – {hi} °C over {span}",
+      "leg_out": "Outdoor temperature",
+      "leg_out_rng": {
+        "day": "Outdoor, daily min – max",
+        "week": "Outdoor, weekly min – max"
+      },
+      "tip_out": "outdoor temperature {temp} °C",
+      "tip_out_rng": "outdoor temperature {lo} – {hi} °C",
+      "aria_out24": "Outdoor temperature from {lo} to {hi} °C",
+      "aria_out": "Outdoor temperature over {span}: from {lo} to {hi} °C"
     },
     "fill": {
       "alarm_since": "Fill running since {time} ({duration}): check the fill tap.",
@@ -172,6 +183,7 @@
     "read": {
       "pool": "Pool",
       "outdoor": "Outdoor",
+      "pad": "Equipment pad {temp} °C",
       "hours": "Filtration today",
       "next": "Next change",
       "nothing_today": "nothing more today"
