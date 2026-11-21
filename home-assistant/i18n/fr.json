@@ -120,7 +120,18 @@
       "aria": "Température du bassin, {span} : {items}",
       "aria_range": "{when} {lo} à {hi} °C",
       "aria_mean": "{when} environ {temp} °C (sonde)",
-      "aria_none": "{when} pas de mesure"
+      "aria_none": "{when} pas de mesure",
+      "out_24h": "Extérieur : {lo} – {hi} °C sur 24 h",
+      "out_span": "Extérieur : {lo} – {hi} °C sur {span}",
+      "leg_out": "Température extérieure",
+      "leg_out_rng": {
+        "day": "Extérieur, min – max du jour",
+        "week": "Extérieur, min – max de la semaine"
+      },
+      "tip_out": "température extérieure {temp} °C",
+      "tip_out_rng": "température extérieure {lo} – {hi} °C",
+      "aria_out24": "Température extérieure de {lo} à {hi} °C",
+      "aria_out": "Température extérieure sur {span} : de {lo} à {hi} °C"
     },
     "fill": {
       "alarm_since": "Remplissage en cours depuis {time} ({duration}) : vérifiez le robinet de remplissage.",
@@ -172,6 +183,7 @@
     "read": {
       "pool": "Bassin",
       "outdoor": "Extérieur",
+      "pad": "Local technique {temp} °C",
       "hours": "Filtration aujourd'hui",
       "next": "Prochain changement",
       "nothing_today": "plus rien aujourd'hui"

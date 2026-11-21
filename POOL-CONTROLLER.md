@@ -465,6 +465,17 @@ Re-evaluated every 30 seconds, highest priority wins:
      card's 30-day view reads each day's final values from the 23:00 hourly
      row, since HA's 00:00 hour still holds the previous day's value until
      the reset.
+   - **Outdoor Min Today / Outdoor Max Today** are the same for Outdoor
+     Temperature, from every reading (the probe is in the air: the pump
+     changes nothing), a reading outside -40..60 °C left out as a bad one.
+     Unknown until a first reading today, and without an Outdoor Probe;
+     kept across reboots; `state_class: measurement` too. **Daily Outdoor
+     History** (diagnostic) closes them at midnight, for the same 7 days as
+     Daily History — `2026-11-13: -1.4/9.8 °C, 2026-11-12: 2.0/11.5 °C`, a
+     day with no outdoor reading left out. The pool card's temperature
+     graph draws them as a band behind the pool's bars (on 30 days and
+     beyond from Outdoor Temperature's own daily statistics, exact for a
+     probe in the air), and on 24 h Outdoor Temperature's line.
    - **Fill Water Today** is the litres the fill-line meter counted since
      midnight, kept across reboots (the meter's own total restarts at 0 on
      boot). **Fill Water Days** (diagnostic) lists the last 30 completed
@@ -594,7 +605,8 @@ reason.
    way (API Key, Generate API Key) asks HA for it like any ESPHome device.
 3. Once paired, these entities show up:
    - **Sensors**: Pool Return Temperature, Pool Water Min/Max Today,
-     Equipment Pad Temperature, Outdoor Temperature, Planned Filtration Hours
+     Equipment Pad Temperature, Outdoor Temperature, Outdoor Min/Max Today,
+     Planned Filtration Hours
    - **Text sensors**: Pump Commanded Speed (what's actually applied), Pump
      Planned Speed (what the autonomous schedule alone says right now),
      Schedule Block 1/2 Start/End (today's computed windows), Next Boost

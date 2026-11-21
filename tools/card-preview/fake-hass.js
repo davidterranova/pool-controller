@@ -134,7 +134,7 @@ export class FakeHass {
     return new Promise((ok) => setTimeout(() => ok(out), 200));
   }
 
-  /** The last 24 h: the water sensor every 5 min, the commanded speed by the plan's blocks, the override's states. */
+  /** The last 24 h: the water and outdoor sensors every 5 min, the commanded speed by the plan's blocks, the override's states. */
   _history(msg) {
     const now = Date.now(), from = now - D, out = {};
     for (const id of msg.entity_ids) {
@@ -147,6 +147,16 @@ export class FakeHass {
         for (let t = from; t <= until; t += 5 * M) {
           const d = new Date(t), h = d.getHours() + d.getMinutes() / 60;
           rows.push({ s: (v - 0.4 + 0.6 * Math.sin(((h - 10) / 24) * 2 * Math.PI) + (r() - 0.5) * 0.1).toFixed(2), lu: t / 1000 });
+        }
+        out[id] = rows;
+      } else if (k === "outdoor") {
+        // the air: cold at dawn, warmest mid-afternoon, around the live value
+        const spec = this.specs.outdoor, r = rand(11), rows = [];
+        const v = parseFloat(spec !== null && typeof spec === "object" ? spec.s : spec);
+        const until = this.scenario.offline ? now - this.scenario.offline * M : now;
+        for (let t = from; t <= until; t += 5 * M) {
+          const d = new Date(t), h = d.getHours() + d.getMinutes() / 60;
+          rows.push({ s: (v - 2 + 4.5 * Math.sin(((h - 9) / 24) * 2 * Math.PI) + (r() - 0.5) * 0.4).toFixed(1), lu: t / 1000 });
         }
         out[id] = rows;
       } else if (k === "commanded") {
@@ -188,6 +198,11 @@ export class FakeHass {
         const day = new Date(d); day.setHours(0, 0, 0, 0);
         if (now - day.getTime() < D) continue; // today has no closed statistics
         const r = rand(day.getTime() / D), t = seasonal(day) + (r() - 0.5) * 0.8;
+        if (k === "outdoor") { // the air: a wider day, a few degrees under the water
+          const lo = t - 7 + (r() - 0.5) * 3, hi = lo + 7 + r() * 6;
+          rows.push({ start: d.getTime(), end: d.getTime() + D, min: +lo.toFixed(2), max: +hi.toFixed(2), mean: +((lo + hi) / 2).toFixed(2) });
+          continue;
+        }
         rows.push({ start: d.getTime(), end: d.getTime() + (msg.period === "hour" ? H : D), min: +(t - 0.5).toFixed(2), max: +(t + 0.6).toFixed(2), mean: +(t + 0.1).toFixed(2) });
       }
       out[id] = rows;

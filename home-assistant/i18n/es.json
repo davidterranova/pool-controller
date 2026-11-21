@@ -120,7 +120,18 @@
       "aria": "Temperatura de la piscina, {span}: {items}",
       "aria_range": "{when}, de {lo} a {hi} °C",
       "aria_mean": "{when}, aproximadamente {temp} °C (sonda)",
-      "aria_none": "{when}, sin lectura"
+      "aria_none": "{when}, sin lectura",
+      "out_24h": "Exterior: {lo} – {hi} °C en 24 h",
+      "out_span": "Exterior: {lo} – {hi} °C en {span}",
+      "leg_out": "Temperatura exterior",
+      "leg_out_rng": {
+        "day": "Exterior, mín. – máx. del día",
+        "week": "Exterior, mín. – máx. de la semana"
+      },
+      "tip_out": "temperatura exterior {temp} °C",
+      "tip_out_rng": "temperatura exterior {lo} – {hi} °C",
+      "aria_out24": "Temperatura exterior de {lo} a {hi} °C",
+      "aria_out": "Temperatura exterior en {span}: de {lo} a {hi} °C"
     },
     "fill": {
       "alarm_since": "Llenado en curso desde las {time} ({duration}): comprueba el grifo de llenado.",
@@ -172,6 +183,7 @@
     "read": {
       "pool": "Piscina",
       "outdoor": "Exterior",
+      "pad": "Cuarto técnico {temp} °C",
       "hours": "Filtración de hoy",
       "next": "Próximo cambio",
       "nothing_today": "nada más hoy"
