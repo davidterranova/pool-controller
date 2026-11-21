@@ -30,7 +30,6 @@
       "link": "Liaison avec cette page",
       "link_ok": "Connectée",
       "link_lost": "Perdue, nouvelle tentative…",
-      "uptime": "En marche depuis",
       "last_event": "Dernière donnée reçue",
       "ago_s": "il y a {s} s",
       "controller": "Contrôleur",

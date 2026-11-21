@@ -91,6 +91,9 @@ export const E = {
   fillAcked: "binary_sensor/Fill Alarm Acknowledged",
   fwVersion: "text_sensor/Firmware Version",
   esphomeVersion: "text_sensor/ESPHome Version",
+  // The controller's health, under Firmware (1.15.0); the page's uptime is the event stream's, Uptime is Home Assistant's.
+  uptime: "sensor/Uptime",
+  chipTemp: "sensor/Chip Temperature",
   // From updates.yaml: the page falls back to comparing with GitHub on a firmware without them.
   fwUpdate: "update/Firmware",
   updateStatus: "text_sensor/Update Status",
