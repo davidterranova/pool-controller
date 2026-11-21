@@ -387,7 +387,7 @@
       "check": "Comprobar",
       "install": "Instalar",
       "version": "Versión del firmware",
-      "card_version": "Versión de la tarjeta",
+      "card_version": "Versión de Home Assistant",
       "upd_avail": "Actualización disponible",
       "up_to_date": "Al día",
       "notes": "Notas de la versión",
