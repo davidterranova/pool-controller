@@ -136,7 +136,7 @@ const DICTS = { en, fr, es };
  */
 let T = makeT(DICTS, "en"), F = makeFmt("en");
 
-const VERSION = "1.14.0";
+const VERSION = "1.15.0";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",
