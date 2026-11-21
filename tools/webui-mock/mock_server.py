@@ -98,6 +98,8 @@ SENSOR_DEFAULTS = {
     "dallas_temp": {"unit_of_measurement": "°C", "accuracy_decimals": 1},
     "pulse_meter": {"unit_of_measurement": "pulses/min", "accuracy_decimals": 2},
     "wifi_signal": {"unit_of_measurement": "dBm", "accuracy_decimals": 0},
+    "uptime": {"unit_of_measurement": "s", "accuracy_decimals": 0},
+    "internal_temperature": {"unit_of_measurement": "°C", "accuracy_decimals": 1},
 }
 
 # Mock sun times (seconds after local midnight). The real ones come from the
@@ -294,6 +296,8 @@ N = {
     "fill_import": "Fill Water Import",
     "fw_version": "Firmware Version",
     "esphome_version": "ESPHome Version",
+    "uptime": "Uptime",
+    "chip_temp": "Chip Temperature",
 }
 # The Wi-Fi entities (wifi-setup.yaml, a package of the config).
 W = {
@@ -1449,6 +1453,9 @@ class PoolSim:
             # The release it runs: Firmware below updates it (updates.yaml).
             N["fw_version"]: self.updates.installed,
             N["esphome_version"]: "2026.7.2 2026-11-17 18:05:00 +0000",
+            # The controller's health (Firmware): seconds since it started, and its chip drifting a few degrees.
+            N["uptime"]: int(now - self.started),
+            N["chip_temp"]: round(47.0 + 2.5 * math.sin((now - self.started) / 600), 1),
         }
         values.update(self.wifi.snapshot())
         values.update(self.settings.snapshot(self.wifi.saved, self.temps))
