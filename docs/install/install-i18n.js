@@ -82,9 +82,12 @@ export function snippets(t, { site, ext = "" }) {
     make_flash: mono("make flash"),
     make_migrate: mono("make migrate"),
     yaml: mono("pool-controller.yaml"),
+    esptool_chip_id: mono("esptool.py chip_id"),
+    chip_rev: mono("revision v3.1"),
     // Links to the page's own sections, by their title in this language, and out.
     updates_link: `<a href="#maj">${esc(t("updates.title"))}</a>`,
     after_link: `<a href="#apres">${esc(t("after.title"))}</a>`,
+    hw_link: `<a href="#cablage">${esc(t("hw.title"))}</a>`,
     hardware_link: `<a class="ext" href="${REPO}/blob/main/POOL-CONTROLLER.md#hardware">POOL-CONTROLLER.md${ext}</a>`,
     ewt_link: `<a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a>`,
   };

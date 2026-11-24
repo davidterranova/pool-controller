@@ -90,16 +90,16 @@
     "title": "Ce qu'il faut",
     "optional": "facultatif",
     "board": {
-      "name": "Une carte ESP32",
-      "note": "De développement, à ESP32-WROOM (« ESP32 DevKit »), avec son port USB."
+      "name": "Une carte ESP32 DevKit V1",
+      "note": "30 broches, à module ESP32-WROOM-32 dont la puce est en révision v3.1 ou plus, avec son port USB."
     },
     "relay": {
       "name": "Un module relais 5 V, 4 canaux au moins",
-      "note": "À optocoupleurs, commandé à l'état bas (les modules 8 canaux courants conviennent : 4 servent). Il ferme les entrées de la pompe."
+      "note": "À optocoupleurs, commandé à l'état bas, comme le module 8 canaux d'Elegoo (4 servent). Il ferme les entrées de la pompe."
     },
     "pump": {
       "name": "Une pompe à vitesse variable",
-      "note": "Avec des entrées de commande à contact sec : trois vitesses et marche/arrêt (DI1 à DI4)."
+      "note": "Une Hayward de la gamme VSTD, ou une autre à entrées à contact sec : trois vitesses et marche/arrêt (DI1 à DI4)."
     },
     "probes": {
       "name": "Des sondes DS18B20",
@@ -107,7 +107,7 @@
     },
     "meter": {
       "name": "Un compteur d'eau à impulsions",
-      "note": "Sur l'arrivée de remplissage, à contact sec, 1 impulsion par litre : le contrôleur compte l'eau ajoutée."
+      "note": "Un AJN15TI sur l'arrivée de remplissage : contact sec, 1 impulsion par litre. Le contrôleur compte l'eau ajoutée."
     },
     "power": {
       "name": "Une alimentation 5 V",
@@ -120,10 +120,10 @@
     "computer": {
       "name": "Un ordinateur avec Chrome ou Edge",
       "note": "Windows, macOS ou Linux. Un téléphone suffit ensuite pour régler le contrôleur."
-    }
+    },
+    "wiring": "Comment chaque élément se branche, avec son schéma : {hw_link}."
   },
   "wiring": {
-    "summary": "Branchements (fixés dans le firmware publié)",
     "pin": "Broche",
     "goes_to": "Va à",
     "relay1": "Relais 1 → DI1, vitesse 1 (lente)",
@@ -133,6 +133,72 @@
     "probes": "Sondes DS18B20 (bus 1-Wire), 4,7 kΩ vers le 3,3 V",
     "meter": "Compteur d'eau ; son autre fil à GND",
     "note": "Relais sur COM/NO : carte éteinte, tout s'ouvre et la pompe s'arrête. D'autres broches ? Elles sont compilées : changez-les dans {yaml} et compilez vous-même. Le détail : {hardware_link}."
+  },
+  "hw": {
+    "title": "Matériel et branchements",
+    "intro": "Les broches du firmware publié sont fixes : branchez-le comme ci-dessous. Coupez l'alimentation, celle de la pompe aussi, avant de toucher un fil.",
+    "board": {
+      "title": "La carte : ESP32 DevKit V1",
+      "aria": "Brochage de l'ESP32 DevKit V1, les broches utilisées par le contrôleur en couleur",
+      "ref": "ESP32 DevKit V1, 30 broches (brochage DOIT) : un module ESP32-WROOM-32, 4 Mo de flash, l'USB par une puce CP2102 ou CH340.",
+      "rev": "Sa puce doit être en révision v3.1 ou plus (ESP32-D0WD-V3) : le firmware est compilé pour elle et ne démarre pas sur une plus ancienne. {esptool_chip_id} l'affiche : {chip_rev}.",
+      "power": "Alimentée en 5 V sur VIN et GND, par la même alimentation que le module relais. Pour l'installation, l'USB seul suffit."
+    },
+    "probes": {
+      "title": "Sondes de température : DS18B20 sur un bus",
+      "aria": "Trois sondes DS18B20 en chaîne sur GPIO4, avec une résistance de 4,7 kΩ entre la ligne de données et le 3,3 V",
+      "resistor": "4,7 kΩ",
+      "wires": "Trois fils par sonde : rouge (VDD) au 3V3, jaune (données) à GPIO4, noir à GND. Certains câbles ont d'autres couleurs : vérifiez la fiche du vendeur.",
+      "pullup": "Une résistance de 4,7 kΩ entre la ligne de données et le 3V3, pour tout le bus : le tirage interne de GPIO4 n'est pas utilisé, et sans la résistance aucune sonde ne répond.",
+      "chain": "Une chaîne, pas une étoile : chaque sonde rejoint le bus après la précédente. Chaque sonde est alimentée par son fil VDD (pas d'alimentation parasite).",
+      "roles": "Jusqu'à trois : le retour piscine (sur le tuyau qui revient au bassin), le local technique, l'extérieur (à l'ombre). Laquelle est laquelle est un réglage : l'étape Sondes de l'assistant liste chacune avec sa mesure ; chauffez-en une dans la main pour la reconnaître.",
+      "genuine": "Des sondes d'origine seulement : une DS18B20 contrefaite peut marcher seule, puis bloquer tout le bus dès qu'une autre sonde le rejoint."
+    },
+    "relays": {
+      "title": "Module relais",
+      "aria": "L'ESP32 vers le module relais : 5 V et GND, puis GPIO26, GPIO25, GPIO14 et GPIO27 vers IN1 à IN4",
+      "ref": "Le module 8 canaux 5 V à optocoupleurs d'Elegoo, ou la même carte de type SainSmart sous un autre nom : 4 canaux servent, les autres restent libres.",
+      "wires": "VCC au 5 V de l'alimentation (avec le VIN de la carte), GND à GND, IN1 à IN4 à GPIO26, GPIO25, GPIO14 et GPIO27.",
+      "low": "Commandé à l'état bas : une broche à 0 V ferme son relais. Le firmware en tient compte : un relais allumé est fermé.",
+      "jumper": "Laissez le cavalier entre JD-VCC et VCC : une seule alimentation 5 V alimente les optocoupleurs et les bobines. Les relais ne commutent que les entrées basse tension de la pompe, jamais le secteur."
+    },
+    "pump": {
+      "title": "Pompe Hayward : ses entrées numériques",
+      "aria": "Les contacts des relais vers le câble 5 fils de la pompe : le NO de chaque relais vers DI1 à DI4, tous les COM vers C",
+      "relay": "Relais",
+      "wire": "Fil de la pompe",
+      "does": "Fonction",
+      "v1": "Vitesse V1, Basse",
+      "v2": "Vitesse V2, Moyenne",
+      "v3": "Vitesse V3, Haute",
+      "run": "Marche/arrêt",
+      "common": "Commun, les quatre COM ensemble",
+      "ref": "Une pompe à vitesse variable Hayward de la gamme VSTD, par son câble 5 fils d'entrées numériques. Une autre pompe à entrées à contact sec se branche de la même façon : vérifiez ses bornes dans sa notice.",
+      "dry": "Contacts secs : la pompe alimente ses propres entrées, aucune tension du contrôleur ne lui parvient. NC reste libre : contrôleur éteint, tous les relais s'ouvrent et la pompe s'arrête.",
+      "di4": "DI4 doit être fermée pour que les entrées agissent ; ouverte, la pompe reste arrêtée (elle affiche dSTOP). Tant qu'une entrée de vitesse est fermée, elle passe avant le programme de la pompe.",
+      "sequence": "Le contrôleur ne ferme jamais deux vitesses à la fois : il ouvre DI4, puis toutes les vitesses, ferme la nouvelle vitesse, puis referme DI4.",
+      "safety": "Débranchez la pompe et attendez 5 minutes avant de l'ouvrir. Isolez les fils du câble qui ne servent pas."
+    },
+    "color": {
+      "brown": "marron",
+      "green": "vert",
+      "white": "blanc",
+      "red": "rouge",
+      "black": "noir"
+    },
+    "meter": {
+      "title": "Eau de remplissage : un compteur à impulsions",
+      "aria": "Le compteur d'eau AJN15TI sur l'arrivée de remplissage, son fil vert à GPIO33 et son fil noir à GND",
+      "ref": "Un compteur d'eau AJN15TI sur l'arrivée de remplissage : un contact à lame souple se ferme à chaque litre (1 impulsion = 1 L). Il est passif et n'a pas besoin d'alimentation.",
+      "wires": "Fil vert à GPIO33 (le firmware active son tirage interne), fil noir à GND. C'est un contact : pas de polarité, pas de résistance.",
+      "counts": "Le contrôleur mesure le débit (L/min) et compte les litres : un remplissage commence au premier litre et finit 5 minutes après le dernier ; une alarme prévient s'il dure trop longtemps.",
+      "test": "Pour le vérifier : sur la page du contrôleur, Réglages contrôleur › Compteur d'eau › Tester, puis ouvrez le robinet de remplissage ; 3 L en 5 minutes prouvent le câblage. Sans compteur, désactivez-y Fill Meter."
+    },
+    "svg": {
+      "relays": "Relais",
+      "fill": "arrivée de remplissage",
+      "pulse": "1 impulsion = 1 L"
+    }
   },
   "after": {
     "title": "Après l'installation",

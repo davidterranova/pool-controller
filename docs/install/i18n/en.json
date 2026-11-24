@@ -90,16 +90,16 @@
     "title": "What you need",
     "optional": "optional",
     "board": {
-      "name": "An ESP32 board",
-      "note": "A development board with an ESP32-WROOM (“ESP32 DevKit”), and its USB port."
+      "name": "An ESP32 DevKit V1 board",
+      "note": "30 pins, with an ESP32-WROOM-32 module whose chip is revision v3.1 or later, and its USB port."
     },
     "relay": {
       "name": "A 5 V relay module, with 4 channels or more",
-      "note": "Optocoupled and active-low (the common 8-channel modules work: 4 are used). It closes the pump's inputs."
+      "note": "Optocoupled and active-low, such as Elegoo's 8-channel module (4 are used). It closes the pump's inputs."
     },
     "pump": {
       "name": "A variable-speed pump",
-      "note": "With dry-contact control inputs: three speeds and on/off (DI1 to DI4)."
+      "note": "A Hayward of the VSTD range, or another with dry-contact inputs: three speeds and run/stop (DI1 to DI4)."
     },
     "probes": {
       "name": "DS18B20 probes",
@@ -107,7 +107,7 @@
     },
     "meter": {
       "name": "A pulse water meter",
-      "note": "On the fill inlet, dry contact, 1 pulse per litre: the controller counts the water added."
+      "note": "An AJN15TI on the fill inlet: dry contact, 1 pulse per litre. The controller counts the water added."
     },
     "power": {
       "name": "A 5 V power supply",
@@ -120,10 +120,10 @@
     "computer": {
       "name": "A computer with Chrome or Edge",
       "note": "Windows, macOS or Linux. A phone is then enough to set up the controller."
-    }
+    },
+    "wiring": "How each part is wired, with its diagram: {hw_link}."
   },
   "wiring": {
-    "summary": "Wiring (fixed in the published firmware)",
     "pin": "Pin",
     "goes_to": "Goes to",
     "relay1": "Relay 1 → DI1, speed 1 (slow)",
@@ -133,6 +133,72 @@
     "probes": "DS18B20 probes (1-Wire bus), 4.7 kΩ to 3.3 V",
     "meter": "Water meter; its other wire to GND",
     "note": "Relays on COM/NO: with the board off, they all open and the pump stops. Other pins? They are compiled in: change them in {yaml} and build the firmware yourself. The details: {hardware_link}."
+  },
+  "hw": {
+    "title": "Hardware and wiring",
+    "intro": "The published firmware's pins are fixed: wire it as below. Cut the power, the pump's too, before touching any wire.",
+    "board": {
+      "title": "The board: ESP32 DevKit V1",
+      "aria": "ESP32 DevKit V1 pinout, with the pins the controller uses highlighted",
+      "ref": "ESP32 DevKit V1, 30 pins (DOIT layout): an ESP32-WROOM-32 module, 4 MB of flash, USB through a CP2102 or CH340 chip.",
+      "rev": "Its chip must be revision v3.1 or later (ESP32-D0WD-V3): the firmware is built for it and does not start on an older one. {esptool_chip_id} shows it: {chip_rev}.",
+      "power": "Powered with 5 V on VIN and GND, from the same supply as the relay module. To install, USB alone is enough."
+    },
+    "probes": {
+      "title": "Temperature probes: DS18B20 on one bus",
+      "aria": "Three DS18B20 probes chained on GPIO4, with a 4.7 kΩ resistor between the data line and 3.3 V",
+      "resistor": "4.7 kΩ",
+      "wires": "Three wires per probe: red (VDD) to 3V3, yellow (data) to GPIO4, black to GND. Some cables use other colours: check the seller's sheet.",
+      "pullup": "One 4.7 kΩ resistor between the data line and 3V3, for the whole bus: GPIO4's internal pull-up is not used, and without the resistor no probe answers.",
+      "chain": "A chain, not a star: each probe joins the bus after the previous one. Each probe is powered by its VDD wire (no parasite power).",
+      "roles": "Up to three: the pool return (on the pipe back to the pool), the equipment pad, outdoors (in the shade). Which is which is a setting: the wizard's Probes step lists each one with its reading; warm one in your hand to tell it apart.",
+      "genuine": "Genuine probes only: a counterfeit DS18B20 can work alone, then block the whole bus as soon as another probe joins it."
+    },
+    "relays": {
+      "title": "Relay module",
+      "aria": "The ESP32 to the relay module: 5 V and GND, then GPIO26, GPIO25, GPIO14 and GPIO27 to IN1 to IN4",
+      "ref": "Elegoo's 8-channel 5 V module with optocouplers, or the same SainSmart-style board under another name: 4 channels are used, the others stay free.",
+      "wires": "VCC to the 5 V supply (with the board's VIN), GND to GND, IN1 to IN4 to GPIO26, GPIO25, GPIO14 and GPIO27.",
+      "low": "Active-low: a pin at 0 V closes its relay. The firmware takes it into account, so a relay that is on is closed.",
+      "jumper": "Leave the jumper between JD-VCC and VCC: one 5 V supply powers the optocouplers and the coils. The relays only switch the pump's low-voltage inputs, never mains."
+    },
+    "pump": {
+      "title": "Hayward pump: its digital inputs",
+      "aria": "The relays' contacts to the pump's 5-wire cord: each relay's NO to DI1 to DI4, every COM to C",
+      "relay": "Relay",
+      "wire": "Pump wire",
+      "does": "Function",
+      "v1": "Speed V1, Low",
+      "v2": "Speed V2, Medium",
+      "v3": "Speed V3, High",
+      "run": "Run/stop",
+      "common": "Common, all four COMs together",
+      "ref": "A Hayward variable-speed pump of the VSTD range, through its 5-wire digital-input cord. Another pump with dry-contact inputs is wired the same way: check its manual for the terminals.",
+      "dry": "Dry contacts: the pump powers its own inputs, and no voltage from the controller reaches it. NC stays unused, so with the controller off every relay opens and the pump stops.",
+      "di4": "DI4 must be closed for the inputs to act; open, the pump stays stopped (it shows dSTOP). While a speed input is closed, it takes priority over the pump's own program.",
+      "sequence": "The controller never closes two speeds at once: it opens DI4, then every speed, closes the new speed, then closes DI4 again.",
+      "safety": "Unplug the pump and wait 5 minutes before opening it. Insulate the cord's unused wires."
+    },
+    "color": {
+      "brown": "brown",
+      "green": "green",
+      "white": "white",
+      "red": "red",
+      "black": "black"
+    },
+    "meter": {
+      "title": "Fill water: a pulse meter",
+      "aria": "The AJN15TI water meter on the fill line, its green wire to GPIO33 and its black wire to GND",
+      "ref": "An AJN15TI water meter on the fill inlet: a reed switch closes once per litre (1 pulse = 1 L). It is passive and needs no power.",
+      "wires": "Green wire to GPIO33 (the firmware turns on its internal pull-up), black wire to GND. It is a contact: no polarity, no resistor.",
+      "counts": "The controller measures the flow (L/min) and counts the litres: a fill starts with the first litre and ends 5 minutes after the last one; an alarm warns when it lasts too long.",
+      "test": "To check it: on the controller's page, Controller settings › Water meter › Test, then open the fill tap; 3 L within 5 minutes proves the wiring. Without a meter, turn Fill Meter off there."
+    },
+    "svg": {
+      "relays": "Relays",
+      "fill": "fill inlet",
+      "pulse": "1 pulse = 1 L"
+    }
   },
   "after": {
     "title": "After the install",
