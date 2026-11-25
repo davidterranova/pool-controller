@@ -130,7 +130,9 @@
       },
       "tip_out": "outdoor temperature {temp} °C",
       "tip_out_rng": "outdoor temperature {lo} – {hi} °C",
+      "tip_pad": "equipment pad {temp} °C",
       "aria_out24": "Outdoor temperature from {lo} to {hi} °C",
+      "aria_pad24": "Equipment pad from {lo} to {hi} °C",
       "aria_out": "Outdoor temperature over {span}: from {lo} to {hi} °C"
     },
     "fill": {

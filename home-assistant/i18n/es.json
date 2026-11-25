@@ -130,7 +130,9 @@
       },
       "tip_out": "temperatura exterior {temp} °C",
       "tip_out_rng": "temperatura exterior {lo} – {hi} °C",
+      "tip_pad": "cuarto técnico {temp} °C",
       "aria_out24": "Temperatura exterior de {lo} a {hi} °C",
+      "aria_pad24": "Cuarto técnico de {lo} a {hi} °C",
       "aria_out": "Temperatura exterior en {span}: de {lo} a {hi} °C"
     },
     "fill": {

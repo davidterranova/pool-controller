@@ -134,7 +134,7 @@ export class FakeHass {
     return new Promise((ok) => setTimeout(() => ok(out), 200));
   }
 
-  /** The last 24 h: the water and outdoor sensors every 5 min, the commanded speed by the plan's blocks, the override's states. */
+  /** The last 24 h: the water, outdoor and equipment pad sensors every 5 min, the commanded speed by the plan's blocks, the override's states. */
   _history(msg) {
     const now = Date.now(), from = now - D, out = {};
     for (const id of msg.entity_ids) {
@@ -157,6 +157,16 @@ export class FakeHass {
         for (let t = from; t <= until; t += 5 * M) {
           const d = new Date(t), h = d.getHours() + d.getMinutes() / 60;
           rows.push({ s: (v - 2 + 4.5 * Math.sin(((h - 9) / 24) * 2 * Math.PI) + (r() - 0.5) * 0.4).toFixed(1), lu: t / 1000 });
+        }
+        out[id] = rows;
+      } else if (k === "pad") {
+        // the equipment pad: sheltered, it follows the air from afar, a little later
+        const spec = this.specs.pad, r = rand(13), rows = [];
+        const v = parseFloat(spec !== null && typeof spec === "object" ? spec.s : spec);
+        const until = this.scenario.offline ? now - this.scenario.offline * M : now;
+        for (let t = from; t <= until; t += 5 * M) {
+          const d = new Date(t), h = d.getHours() + d.getMinutes() / 60;
+          rows.push({ s: (v - 0.8 + 1.5 * Math.sin(((h - 11) / 24) * 2 * Math.PI) + (r() - 0.5) * 0.2).toFixed(1), lu: t / 1000 });
         }
         out[id] = rows;
       } else if (k === "commanded") {

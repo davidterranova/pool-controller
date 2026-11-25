@@ -53,6 +53,8 @@
  * Outdoor Min/Max Today closed at midnight), else the outdoor sensor's own daily statistics (in the air every reading
  * counts, so HA's day is exact and goes back as far as the sensor); today from Outdoor Min/Max Today, or with a firmware
  * before them the sensor's states since midnight. It widens the scale, never the freeze threshold's place.
+ * On 24 h the equipment pad too (1.17.0): its sensor's line from the recorder, thin and light violet, in the tooltip
+ * and the legend (« Local technique »); it widens the scale like the outdoors.
  * Every view draws the freeze-protection threshold (number Freeze Protection Temperature, 3 °C by default), in
  * red: a dotted line over the zone where Low is forced once the water comes within FREEZE_NEAR_C of it, else a
  * tag at the foot of the axis, so a 13 °C curve isn't squashed to show 3 °C.
@@ -137,7 +139,7 @@ const DICTS = { en, fr, es };
  */
 let T = makeT(DICTS, "en"), F = makeFmt("en");
 
-const VERSION = "1.16.0";
+const VERSION = "1.17.0";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",
@@ -409,6 +411,7 @@ const STYLE = `
   --danger:#cc3a2f; --danger-soft:rgba(204,58,47,.12);
   --good:#2e9a4a;
   --out:#c2672a;
+  --pad:#8e7cc3;
   --idle:#858c94; --idle-soft:rgba(133,140,148,.17);
   --raised:rgba(127,135,145,.12); --line:rgba(127,135,145,.28);
   --fg:var(--primary-text-color,#1b1e22); --muted:var(--secondary-text-color,#626a73);
@@ -426,6 +429,7 @@ const STYLE = `
   --danger:#ff6b60; --danger-soft:rgba(255,107,96,.15);
   --good:#4cc26a;
   --out:#f0955a;
+  --pad:#b3a4e6;
   --idle:#8f969e; --idle-soft:rgba(143,150,158,.17);
   --raised:rgba(255,255,255,.07); --line:rgba(255,255,255,.12);
   --shadow:0 1px 2px rgba(0,0,0,.35);
@@ -652,6 +656,9 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .chart .out-band { fill:var(--out); opacity:.16; }
 .chart .out-edge { stroke:var(--out); stroke-width:1; opacity:.7; stroke-linejoin:round; }
 .chart .pt.out-pt { fill:var(--out); }
+/* the equipment pad on 24 h: a thin, light line, context rather than a reading to compare */
+.chart .padl { stroke:var(--pad); stroke-width:1.2; opacity:.65; stroke-linejoin:round; stroke-linecap:round; }
+.chart .pt.pad-pt { fill:var(--pad); }
 /* freeze-protection threshold, in red: dotted line and the zone where Low is forced, or a tag at the foot of the axis */
 .chart .fz { stroke:var(--danger); stroke-width:1.5; stroke-dasharray:1 3; stroke-linecap:round; }
 .chart .fz-zone { fill:var(--danger); opacity:.07; }
@@ -664,12 +671,14 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .ttip i { display:inline-block; width:12px; height:0; border-top:2px solid var(--acc); vertical-align:3px; margin-right:5px; }
 .ttip i.no { border-top-style:dashed; border-top-color:var(--muted); }
 .ttip i.o { border-top-color:var(--out); }
+.ttip i.pd { border-top-color:var(--pad); }
 .ttip .o-l { display:block; }
 .tl-leg i.k-pool, .tl-leg i.k-pipe { width:14px; height:0; border-radius:0; border-top:2px solid var(--acc); vertical-align:3px; }
 .tl-leg i.k-pipe { border-top:2px dashed var(--muted); }
 .tl-leg i.k-band { background:var(--acc); opacity:.2; }
 .tl-leg i.k-rng { width:6px; height:11px; background:var(--acc); border-radius:2px; }
 .tl-leg i.k-out { width:14px; height:0; border-radius:0; border-top:2px solid var(--out); vertical-align:3px; }
+.tl-leg i.k-pad { width:14px; height:0; border-radius:0; border-top:2px solid var(--pad); opacity:.75; vertical-align:3px; }
 .tl-leg i.k-out-band { width:14px; height:10px; background:color-mix(in srgb, var(--out) 22%, transparent); border-top:1px solid var(--out); border-bottom:1px solid var(--out); border-radius:0; }
 
 /* tabs « Contrôle » (pump) / « Réglages » (settings) / « Réglages contrôleur » (controller), the controller page's own:
@@ -1097,16 +1106,16 @@ class PiscineCard extends HTMLElement {
     const day = new Date().toDateString();
     if (this._histDay === day && Date.now() - this._histAt < 15 * M_MS) return;
     this._histLoading = true;
-    const { override, water, commanded, outdoor } = this._e;
-    const ids = this._config.recorder ? [override, water, commanded, outdoor] : [override];
+    const { override, water, commanded, outdoor, pad } = this._e;
+    const ids = this._config.recorder ? [override, water, commanded, outdoor, pad] : [override];
     const rows = (r, id) => ((r && r[id]) || []).map((x) => ({ s: x.s, t: (x.lc ?? x.lu) * 1000 })).filter((x) => Number.isFinite(x.t));
     this._hass.callWS({ type: "history/history_during_period", start_time: new Date(Date.now() - 24 * H_MS).toISOString(), entity_ids: ids,
       minimal_response: true, no_attributes: true, significant_changes_only: false })
       .then((r) => {
         this._hist = rows(r, override);
-        if (this._config.recorder) { this._wHist = rows(r, water); this._cHist = rows(r, commanded); this._oHist = rows(r, outdoor); }
+        if (this._config.recorder) { this._wHist = rows(r, water); this._cHist = rows(r, commanded); this._oHist = rows(r, outdoor); this._pHist = rows(r, pad); }
       })
-      .catch((err) => { console.warn("piscine-card: history unavailable", err); if (this._config.recorder) { this._wHist = []; this._cHist = []; this._oHist = []; } })
+      .catch((err) => { console.warn("piscine-card: history unavailable", err); if (this._config.recorder) { this._wHist = []; this._cHist = []; this._oHist = []; this._pHist = []; } })
       .finally(() => { this._histDay = day; this._histAt = Date.now(); this._histLoading = false; this._tVer++; this._update(); });
   }
   /** Appends live changes the loaded history does not have yet. */
@@ -1121,6 +1130,7 @@ class PiscineCard extends HTMLElement {
     track(this._wHist, "water");
     track(this._cHist, "commanded");
     track(this._oHist, "outdoor");
+    track(this._pHist, "pad");
   }
   /** 1 an's first day: the Monday 52 weeks before this week's (HA's weeks start on Monday). */
   _weekStart() { const d = dayAgo(0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - 52 * 7); return d; }
@@ -1654,8 +1664,8 @@ class PiscineCard extends HTMLElement {
     return v.length ? { lo: Math.min(...v), hi: Math.max(...v) } : { lo: NaN, hi: NaN };
   }
   /** 24 h: the outdoor sensor's readings, {t, v (NaN: unavailable or a bad reading)}, the last one held until now. */
-  _outSeries(now) {
-    const from = now - 24 * H_MS, out = (this._oHist || []).map((p) => {
+  _outSeries(now, hist = this._oHist) {
+    const from = now - 24 * H_MS, out = (hist || []).map((p) => {
       const v = parseFloat(p.s);
       return { t: Math.max(p.t, from), v: Number.isFinite(v) && v >= OUT_SANE[0] && v <= OUT_SANE[1] ? v : NaN };
     });
@@ -1736,7 +1746,8 @@ class PiscineCard extends HTMLElement {
       if (!vals.length) return showEmpty(t("card.temp.none_24h"), nowTxt);
       const from = now - 24 * H_MS, x = (t) => L + ((t - from) / (24 * H_MS)) * (R - L), mid = midnight(now);
       const opts = this._outSeries(now), ovals = opts.filter((p) => Number.isFinite(p.v)).map((p) => p.v);
-      const sc = yScale(vals, TOP, BOT, ovals);
+      const ppts = this._outSeries(now, this._pHist), pvals = ppts.filter((p) => Number.isFinite(p.v)).map((p) => p.v); // the equipment pad
+      const sc = yScale(vals, TOP, BOT, [...ovals, ...pvals]);
       g += sc.grid;
       let s0 = null; // filtration periods behind the curve
       pts.forEach((p, i) => {
@@ -1757,6 +1768,13 @@ class PiscineCard extends HTMLElement {
         od += `${pen ? "L" : "M"}${x(p.t).toFixed(1)},${sc.y(p.v).toFixed(1)}`; pen = true;
       }
       if (od) g += `<path class="out" d="${od}"/>`;
+      // the equipment pad, lighter still, under the pool's line
+      let pd = ""; pen = false;
+      for (const p of ppts) {
+        if (!Number.isFinite(p.v)) { pen = false; continue; }
+        pd += `${pen ? "L" : "M"}${x(p.t).toFixed(1)},${sc.y(p.v).toFixed(1)}`; pen = true;
+      }
+      if (pd) g += `<path class="padl" d="${pd}"/>`;
       // runs of pool / pipe readings, each joined to the point before so the line only breaks where HA has no value
       const runs = [];
       let prev = null;
@@ -1786,6 +1804,12 @@ class PiscineCard extends HTMLElement {
           tip.insertAdjacentHTML("beforeend", `<span class="o-l"><i class="o"></i><span class="ov"></span></span>`);
           tip.querySelector(".ov").textContent = t("card.temp.tip_out", { temp: fmt1(oAt.v) });
         }
+        const pAt = [...ppts].reverse().find((p) => p.t <= hov.t);
+        if (pAt && Number.isFinite(pAt.v)) {
+          g += `<circle class="pt pad-pt" cx="${x(hov.t)}" cy="${sc.y(pAt.v)}" r="3"/>`;
+          tip.insertAdjacentHTML("beforeend", `<span class="o-l"><i class="pd"></i><span class="pv"></span></span>`);
+          tip.querySelector(".pv").textContent = t("card.temp.tip_pad", { temp: fmt1(pAt.v) });
+        }
         hovX = x(hov.t);
       }
       const dot = hov || last;
@@ -1803,9 +1827,11 @@ class PiscineCard extends HTMLElement {
       sum.innerHTML = s;
       leg.innerHTML = `<span><i class="k-pool"></i>${t("card.temp.leg_pool", { min: POOL_AFTER_MIN })}</span><span><i class="k-pipe"></i>${t("card.temp.leg_pipe")}</span>`
         + (oRange ? `<span><i class="k-out"></i>${t("card.temp.leg_out")}</span>` : "")
+        + (pvals.length ? `<span><i class="k-pad"></i>${t("card.row.pad.label")}</span>` : "")
         + `<span><i class="k-band"></i>${t("card.sec.filtration")}</span>${sc.legend}`;
       box.setAttribute("aria-label", t("card.temp.aria24", { lo: fmt1(Math.min(...vals)), hi: fmt1(Math.max(...vals)) })
-        + (oRange ? `. ${t("card.temp.aria_out24", oRange)}` : ""));
+        + (oRange ? `. ${t("card.temp.aria_out24", oRange)}` : "")
+        + (pvals.length ? `. ${t("card.temp.aria_pad24", { lo: fmt1(Math.min(...pvals)), hi: fmt1(Math.max(...pvals)) })}` : ""));
     } else {
       // 7 / 30 / 90 j: a bar a day; 1 an: a bar a week. The pool's min–max where it is known; elsewhere (before Min/Max
       // Today had statistics) the probe's mean, dashed: the pipe is in it, as on the 24 h curve.
