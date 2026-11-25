@@ -494,6 +494,14 @@ Re-evaluated every 30 seconds, highest priority wins:
      graph draws them as a band behind the pool's bars (on 30 days and
      beyond from Outdoor Temperature's own daily statistics, exact for a
      probe in the air), and on 24 h Outdoor Temperature's line.
+   - **Equipment Pad Min Today / Equipment Pad Max Today** and **Daily
+     Equipment Pad History** (diagnostic) are the same for Equipment Pad
+     Temperature (every reading, the same -40..60 °C check, the same 7 days
+     and format), without an Equipment Pad Probe unknown and `--`. The pool
+     card's graph draws the pad lighter than the outdoors: a light violet
+     line on 24 h, a band of each day's (week's) min – max on the other
+     ranges (beyond the 7 days from Equipment Pad Temperature's own daily
+     statistics), the device's page included.
    - **Fill Water Today** is the litres the fill-line meter counted since
      midnight, kept across reboots (the meter's own total restarts at 0 on
      boot). **Fill Water Days** (diagnostic) lists the last 30 completed
@@ -631,7 +639,8 @@ reason.
    way (API Key, Generate API Key) asks HA for it like any ESPHome device.
 3. Once paired, these entities show up:
    - **Sensors**: Pool Return Temperature, Pool Water Min/Max Today,
-     Equipment Pad Temperature, Outdoor Temperature, Outdoor Min/Max Today,
+     Equipment Pad Temperature, Equipment Pad Min/Max Today, Outdoor
+     Temperature, Outdoor Min/Max Today,
      Planned Filtration Hours
    - **Text sensors**: Pump Commanded Speed (what's actually applied), Pump
      Planned Speed (what the autonomous schedule alone says right now),
