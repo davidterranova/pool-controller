@@ -187,7 +187,9 @@ firmware) is flashed with `make flash` and set up the same way, from step 3
 An installed controller never goes back to the install page: it updates
 itself from the published releases (`firmware/manifest.json` on the same
 site), over HTTPS, and keeps every setting (they live in its own storage,
-which an update doesn't touch).
+which an update doesn't touch). Not every release carries a firmware: one
+that changes only the Home Assistant card leaves the controller alone, so its
+version can trail the card's.
 
 - **Automatic, by default.** **Auto Update** is on; **Update Check
   Interval** (`on_request`, `6h`, `24h`, `7d`; 24 h by default; see
@@ -492,6 +494,14 @@ Re-evaluated every 30 seconds, highest priority wins:
      graph draws them as a band behind the pool's bars (on 30 days and
      beyond from Outdoor Temperature's own daily statistics, exact for a
      probe in the air), and on 24 h Outdoor Temperature's line.
+   - **Equipment Pad Min Today / Equipment Pad Max Today** and **Daily
+     Equipment Pad History** (diagnostic) are the same for Equipment Pad
+     Temperature (every reading, the same -40..60 °C check, the same 7 days
+     and format), without an Equipment Pad Probe unknown and `--`. The pool
+     card's temperature graph doesn't draw the pad; a line under its summary
+     gives the pad's min – max over the range shown (beyond the 7 days from
+     Equipment Pad Temperature's own daily statistics), the device's page
+     included.
    - **Fill Water Today** is the litres the fill-line meter counted since
      midnight, kept across reboots (the meter's own total restarts at 0 on
      boot). **Fill Water Days** (diagnostic) lists the last 30 completed
@@ -629,7 +639,8 @@ reason.
    way (API Key, Generate API Key) asks HA for it like any ESPHome device.
 3. Once paired, these entities show up:
    - **Sensors**: Pool Return Temperature, Pool Water Min/Max Today,
-     Equipment Pad Temperature, Outdoor Temperature, Outdoor Min/Max Today,
+     Equipment Pad Temperature, Equipment Pad Min/Max Today, Outdoor
+     Temperature, Outdoor Min/Max Today,
      Planned Filtration Hours
    - **Text sensors**: Pump Commanded Speed (what's actually applied), Pump
      Planned Speed (what the autonomous schedule alone says right now),

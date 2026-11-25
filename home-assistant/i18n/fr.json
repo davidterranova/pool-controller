@@ -123,6 +123,8 @@
       "aria_none": "{when} pas de mesure",
       "out_24h": "Extérieur : {lo} – {hi} °C sur 24 h",
       "out_span": "Extérieur : {lo} – {hi} °C sur {span}",
+      "pad_24h": "Local technique : {lo} – {hi} °C sur 24 h",
+      "pad_span": "Local technique : {lo} – {hi} °C sur {span}",
       "leg_out": "Température extérieure",
       "leg_out_rng": {
         "day": "Extérieur, min – max du jour",

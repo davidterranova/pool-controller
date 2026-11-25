@@ -21,6 +21,11 @@ jobs:
       - name: Release manifest tests
         run: python3 -I tools/release/test_manifest.py
 
+      # Whether a release carries a new firmware (tools/release/firmware_release.py),
+      # on made-up paths and a made-up git repo.
+      - name: Firmware-or-not tests
+        run: python3 -I tools/release/test_firmware_release.py
+
       # With the Makefile's pinned ESPHome (ESPHOME_VERSION).
       - name: make validate
         run: make validate

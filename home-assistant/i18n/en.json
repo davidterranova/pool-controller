@@ -123,6 +123,8 @@
       "aria_none": "{when} no reading",
       "out_24h": "Outdoor: {lo} – {hi} °C over 24 h",
       "out_span": "Outdoor: {lo} – {hi} °C over {span}",
+      "pad_24h": "Equipment pad: {lo} – {hi} °C over 24 h",
+      "pad_span": "Equipment pad: {lo} – {hi} °C over {span}",
       "leg_out": "Outdoor temperature",
       "leg_out_rng": {
         "day": "Outdoor, daily min – max",

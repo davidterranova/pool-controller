@@ -123,6 +123,8 @@
       "aria_none": "{when}, sin lectura",
       "out_24h": "Exterior: {lo} – {hi} °C en 24 h",
       "out_span": "Exterior: {lo} – {hi} °C en {span}",
+      "pad_24h": "Cuarto técnico: {lo} – {hi} °C en 24 h",
+      "pad_span": "Cuarto técnico: {lo} – {hi} °C en {span}",
       "leg_out": "Temperatura exterior",
       "leg_out_rng": {
         "day": "Exterior, mín. – máx. del día",

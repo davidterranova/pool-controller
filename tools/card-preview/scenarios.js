@@ -47,6 +47,9 @@ export function base(now = new Date()) {
     outdoorMin: (water - 4.6).toFixed(1), outdoorMax: (water + 3.1).toFixed(1),
     // the last 7 closed days' outdoors, the oldest before the firmware kept them (from HA's statistics instead)
     outdoorHistory: days(5, (d, i) => `${d}: ${(water - 5 - i * 0.6).toFixed(1)}/${(water + 3 - i * 0.4).toFixed(1)} °C`),
+    // the equipment pad: today's min – max and its last closed days, the oldest from HA's statistics too
+    padMin: (water + 2.9).toFixed(1), padMax: (water + 4.6).toFixed(1),
+    padHistory: days(5, (d, i) => `${d}: ${(water + 2.6 - i * 0.3).toFixed(1)}/${(water + 5.2 - i * 0.2).toFixed(1)} °C`),
     // the last 7 closed days, one of them short of its plan
     history: days(7, (d, i) => `${d}: ${i === 3 ? "6.20" : (7.9 + (i % 3) * 0.05).toFixed(2)} h ${(water - 0.8 - i * 0.1).toFixed(1)}/${(water + 0.2 - i * 0.1).toFixed(1)} °C`),
     planHistory: days(7, (d) => `${d}: 8.00 h`),

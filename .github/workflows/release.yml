@@ -1,7 +1,13 @@
 name: Release
 
-# One project version for the card and the firmware: the card's
-# `const VERSION = "x.y.z"` in home-assistant/piscine-card.js.
+# One version sequence for the card and the firmware: the card's
+# `const VERSION = "x.y.z"` in home-assistant/piscine-card.js, one tag per
+# release. Every release carries the card; it carries a firmware only when
+# something in the firmware changed since the last release that carried one
+# (tools/release/firmware_release.py), so a card-only release doesn't make
+# every controller download, flash and reboot an identical firmware. The
+# controllers then run the last firmware release's version, which may lag
+# the card's.
 #
 # home-assistant/piscine-card.js reaches Home Assistant through HACS, which
 # installs this repo's GitHub releases (see hacs.json): each release carries
@@ -12,11 +18,14 @@ name: Release
 #     come with a new VERSION;
 #   - push to main: a VERSION with no release yet gets one, which HACS then
 #     offers as an update; then HACS's own checks run against it.
-# A release also carries the controller's firmware (firmware.yml), once its
-# sources hold no secret: firmware.ota.bin, firmware.factory.bin and
-# manifest.json, also published on GitHub Pages under /firmware/, beside the
-# install page at the site's root, when the repository variable
-# PUBLISH_FIRMWARE_PAGES is true.
+# A release with a firmware (firmware.yml) also carries firmware.ota.bin,
+# firmware.factory.bin and manifest.json, published on GitHub Pages under
+# /firmware/, beside the install page at the site's root, when the
+# repository variable PUBLISH_FIRMWARE_PAGES is true. A card-only release
+# redeploys the site with the last firmware release's files.
+# A firmware can be asked for: a commit with the trailer `Firmware: rebuild`
+# (a card change meant for the device's page too), or a manual run with
+# `firmware` ticked.
 
 on:
   pull_request:
@@ -36,6 +45,11 @@ on:
       - .github/workflows/firmware.yml
       - tools/release/**
   workflow_dispatch:
+    inputs:
+      firmware:
+        description: Build the firmware for this release even if nothing in it changed.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -48,6 +62,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # The card as the release ships it: built with its texts, then parsed.
       - name: Card builds and parses
@@ -74,6 +90,18 @@ jobs:
           fi
           echo "Will be released as v$version."
 
+      # Says, before the merge, whether the release will carry a firmware.
+      - name: Firmware in this release?
+        run: |
+          since=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[] | select(.draft | not) | select(any(.assets[]; .name == "firmware.ota.bin"))][0].tag_name // ""')
+          out=$(python3 tools/release/firmware_release.py --since "$since" --head HEAD)
+          echo "$out"
+          if [ "$(echo "$out" | tail -n1)" = firmware=true ]; then
+            echo "::notice title=With a firmware::The release will carry a new firmware: controllers with Auto Update install it."
+          else
+            echo "::notice title=Card only::Nothing in the firmware changed since $since: the release will carry the card only, controllers stay on $since. Add a commit trailer 'Firmware: rebuild' to ship one anyway."
+          fi
+
   # On main: is VERSION released yet?
   version:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -84,8 +112,12 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
       new: ${{ steps.version.outputs.new }}
+      firmware: ${{ steps.firmware.outputs.firmware }}
+      since: ${{ steps.firmware.outputs.since }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - id: version
         run: |
@@ -103,19 +135,34 @@ jobs:
             echo "new=true" >> "$GITHUB_OUTPUT"
           fi
 
-  # The firmware for that release (firmware.yml). While the firmware still
-  # reads secrets.yaml it builds nothing and says why: the release then
-  # carries the card only, as before.
+      # Does this release carry a new firmware? Against the last release that
+      # carried one (`since`, '' when none does yet).
+      - id: firmware
+        if: steps.version.outputs.new == 'true'
+        env:
+          FORCE: ${{ inputs.firmware == true }}
+        run: |
+          since=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[] | select(.draft | not) | select(any(.assets[]; .name == "firmware.ota.bin"))][0].tag_name // ""')
+          echo "since=$since" >> "$GITHUB_OUTPUT"
+          args=(--since "$since" --head HEAD)
+          if [ "$FORCE" = true ]; then args+=(--force); fi
+          python3 tools/release/firmware_release.py "${args[@]}" | tee firmware.out
+          tail -n1 firmware.out >> "$GITHUB_OUTPUT"
+
+  # The firmware for that release (firmware.yml), when it carries one. While
+  # the firmware still reads secrets.yaml it builds nothing and says why: the
+  # release then carries the card only.
   firmware:
     needs: version
-    if: needs.version.outputs.new == 'true'
+    if: needs.version.outputs.new == 'true' && needs.version.outputs.firmware == 'true'
     uses: ./.github/workflows/firmware.yml
     with:
       version: ${{ needs.version.outputs.tag }}
 
+  # Also when the firmware job was skipped (a card-only release), not when it failed.
   release:
     needs: [version, firmware]
-    if: needs.version.outputs.new == 'true'
+    if: ${{ !cancelled() && needs.version.outputs.new == 'true' && needs.firmware.result != 'failure' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -125,6 +172,8 @@ jobs:
       TAG: ${{ needs.version.outputs.tag }}
       FIRMWARE: ${{ needs.firmware.outputs.publishable == 'true' && needs.firmware.outputs.artifact || '' }}
       PAGES: ${{ vars.PUBLISH_FIRMWARE_PAGES }}
+      WANTED: ${{ needs.version.outputs.firmware }}
+      SINCE: ${{ needs.version.outputs.since }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -148,7 +197,12 @@ jobs:
 
       - name: No firmware in this release
         if: env.FIRMWARE == ''
-        run: echo "::notice title=$TAG carries the card only::The firmware still reads secrets.yaml (!secret), so no firmware was built for this release; see the Firmware job's summary."
+        run: |
+          if [ "$WANTED" = true ]; then
+            echo "::notice title=$TAG carries the card only::The firmware still reads secrets.yaml (!secret), so no firmware was built for this release; see the Firmware job's summary."
+          else
+            echo "::notice title=$TAG carries the card only::Nothing in the firmware changed since $SINCE, so controllers stay on $SINCE."
+          fi
 
       - name: Release VERSION
         run: |
@@ -160,19 +214,21 @@ jobs:
           title="piscine-card $VERSION"
           {
             echo "piscine-card $VERSION, for Home Assistant (install or update through HACS)."
-            if [ -n "$FIRMWARE" ]; then
-              echo
-              echo "Pool Controller firmware $TAG: firmware.ota.bin updates an installed controller, firmware.factory.bin is a whole image for a first install, manifest.json describes both."
-            fi
             echo
+            if [ -n "$FIRMWARE" ]; then
+              echo "Pool Controller firmware $TAG: firmware.ota.bin updates an installed controller, firmware.factory.bin is a whole image for a first install, manifest.json describes both."
+            elif [ -n "$SINCE" ]; then
+              echo "No new firmware: nothing in it changed, controllers stay on $SINCE."
+            fi
             if [ -n "$previous" ]; then
+              echo
               echo "Changes to the card since $previous:"
-              git log --format='- %s' "$previous..HEAD" -- "$card"
-              if [ -n "$FIRMWARE" ]; then
-                echo
-                echo "Changes to the firmware since $previous:"
-                git log --format='- %s' "$previous..HEAD" -- webui components ':(glob)*.yaml' ':(glob)*.h'
-              fi
+              git log --format='- %s' "$previous..HEAD" -- home-assistant/piscine-card.js home-assistant/i18n.js home-assistant/i18n
+            fi
+            if [ -n "$FIRMWARE" ] && [ -n "$SINCE" ]; then
+              echo
+              echo "Changes to the firmware since $SINCE:"
+              git log --format='- %s' "$SINCE..HEAD" -- webui components ':(glob)*.yaml' ':(glob)*.h'
             fi
           } > notes.md
           if [ -n "$FIRMWARE" ]; then
@@ -193,11 +249,16 @@ jobs:
   # the whole site, so both are put together here, on every release that
   # carries the firmware. The custom domain is a repository setting (Pages
   # deployed by Actions ignore a CNAME file), so the site holds none.
+  # A card-only release redeploys it too (the install page may have changed),
+  # with the last firmware release's files, so /firmware/ never goes back or
+  # goes away.
   # Off until the owner enables Pages (source: GitHub Actions) and sets the
   # repository variable PUBLISH_FIRMWARE_PAGES to true.
   pages:
-    needs: [firmware, release]
-    if: needs.firmware.outputs.publishable == 'true' && vars.PUBLISH_FIRMWARE_PAGES == 'true'
+    needs: [version, firmware, release]
+    if: >-
+      ${{ !cancelled() && needs.release.result == 'success' && vars.PUBLISH_FIRMWARE_PAGES == 'true'
+      && (needs.firmware.outputs.publishable == 'true' || needs.version.outputs.since != '') }}
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -212,9 +273,20 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
+        if: needs.firmware.outputs.publishable == 'true'
         with:
           name: ${{ needs.firmware.outputs.artifact }}
           path: _site/firmware
+
+      - name: The last firmware release's files (a card-only release)
+        if: needs.firmware.outputs.publishable != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SINCE: ${{ needs.version.outputs.since }}
+        run: |
+          gh release download "$SINCE" --dir _site/firmware \
+            --pattern firmware.ota.bin --pattern firmware.factory.bin --pattern manifest.json
+          test "$(jq -r .version _site/firmware/manifest.json)" = "$SINCE"
 
       - name: Site
         run: |

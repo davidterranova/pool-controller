@@ -31,7 +31,7 @@ tooling, and building the firmware yourself.
 | `tools/i18n/` | The languages' tooling: `make i18n-check`, and the Markdown export and import for machine translation (see [Languages](#languages)). `surfaces.mjs` lists what is translated, `glossary.json` the terms every language uses. |
 | `tools/card-preview/` | The pool card against a stand-in for Home Assistant, in named situations, with screenshots and a check (see [Previewing the card](#previewing-the-card)). |
 | `tools/tz-posix.py` | Regenerates the card's IANA → POSIX time-zone table from tzdata (« Utiliser la position et le fuseau de Home Assistant »). |
-| `tools/release/` | Release helpers for CI: the guard that keeps secrets out of a published firmware, and the firmware's `manifest.json` (see [Releases](#releases)), with its tests (`python3 -I tools/release/test_manifest.py`). |
+| `tools/release/` | Release helpers for CI: the guard that keeps secrets out of a published firmware, the firmware's `manifest.json`, and whether a release carries a new firmware (see [Releases](#releases)), with their tests (`python3 -I tools/release/test_manifest.py`, `python3 -I tools/release/test_firmware_release.py`). |
 | `tools/migrate/` | `make migrate`: moves a controller built with `secrets.yaml` to this firmware in one OTA (see [Coming from a secrets.yaml build](#coming-from-a-secretsyaml-build)). |
 | `docs/install/` | The install page, served at the root of <https://pool-controller.kitesize.fr/> (see [The install page](#the-install-page-docsinstall)). |
 | `webui/` | The device's own web page, built around the same `piscine-card` (see below). `make webui` bundles it into `webui/dist/` (gitignored), which the firmware embeds. `i18n-page/`: its own texts; `piscine-card.js`, `i18n.js` and `i18n/` are symlinks to the card's. |
@@ -308,7 +308,8 @@ releases), as a custom repository:
 
 Each release carries `piscine-card.js` as an asset, which is what the
 Marketplace installs ([hacs.json](hacs.json)), and its tag is the card's
-`VERSION`. See [Releases](#releases) for what else it carries.
+`VERSION`. A card-only release doesn't touch the controllers: their
+firmware keeps the version of the last release that carried one. See [Releases](#releases) for what else it carries.
 
 ### Shipping a change to the card
 
@@ -317,7 +318,10 @@ Marketplace installs ([hacs.json](hacs.json)), and its tag is the card's
    ([.github/workflows/release.yml](.github/workflows/release.yml)).
 2. Look at it in the preview (`make card-preview`, below) and run `make
    card-preview-check`; check the panel on the device's page against the mock
-   (`make mock-webui`) too, since the page runs the same file.
+   (`make mock-webui`) too, since the page runs the same file. The device's
+   page gets the change with the next release that carries a firmware; to
+   ship one now, give a commit the trailer `Firmware: rebuild` (see
+   [Releases](#releases)).
 3. Merge. The workflow builds the card with its texts (`make card`),
    publishes release `v<VERSION>` with it, then runs the Marketplace's
    (HACS's) own checks against the repo.
@@ -558,8 +562,8 @@ manifest state) are in `install-model.js`, tested by `make webui-test`;
   `.json` as `application/json` (a secure context, so Web Serial works),
   with a `firmware/` folder beside it holding a release's three files, or
   none for the 404 state.
-- It reaches the site with the next release that carries the firmware (see
-  below); a change to the page alone waits for that release.
+- It reaches the site with the next release (see below), with or without a
+  firmware; a change to the page alone waits for that release.
 
 ## Updating firmware after the first flash
 
@@ -674,18 +678,38 @@ read where possible: a correction is a pull request on the `es.json` files.
 
 ## Releases
 
-One version for the whole project: the card's `const VERSION = "x.y.z"`
-(`home-assistant/piscine-card.js`). A pull request that changes the card,
-the firmware (`pool-controller.yaml` or any `*.yaml` package beside it) or
-the device's page (`webui/`) needs a `VERSION` that isn't released yet; on
+One version sequence for the whole project: the card's `const VERSION =
+"x.y.z"` (`home-assistant/piscine-card.js`). A pull request that changes the
+card, the firmware (`pool-controller.yaml` or any `*.yaml` package beside it)
+or the device's page (`webui/`) needs a `VERSION` that isn't released yet; on
 merge, [.github/workflows/release.yml](.github/workflows/release.yml)
 publishes release `v<VERSION>`. Nobody tags or releases by hand.
+
+**A firmware only when it changed.** Every release carries the card; it
+carries a firmware only when something in the firmware changed since the
+last release that carried one
+([tools/release/firmware_release.py](tools/release/firmware_release.py)):
+the `*.yaml` and `*.h` at the root (`secrets.yaml` aside), `components/`,
+`webui/` (its tests aside), or the Makefile's `ESPHOME_VERSION`. A card-only
+release leaves the controllers alone: no download, no restart of the box that
+drives the pump. Their firmware then reports the last firmware release's
+version (say v1.15.0 under a v1.17.0 card), which is expected. The device's
+page bundles the card through symlinks, so a change to the card alone reaches
+the page with the next firmware. To ship one anyway:
+
+- a commit with the trailer `Firmware: rebuild` (for instance a card change
+  the device's page should get now);
+- or Actions › Release › Run workflow with `firmware` ticked, for a
+  `VERSION` not released yet.
+
+A pull request's Release check says which it will be (« With a firmware » or
+« Card only »).
 
 A release carries:
 
 - `piscine-card.js`, for the Marketplace (HACS), as above: the card built
   with its texts and minified (`make card`), not the source file;
-- the controller's firmware, built by
+- when it carries a firmware, the controller's firmware, built by
   [.github/workflows/firmware.yml](.github/workflows/firmware.yml) with a
   pinned ESPHome (the Makefile's `ESPHOME_VERSION`) and `-s firmware_version v<VERSION>`:
   - `firmware.ota.bin`: what an installed controller downloads to update;
@@ -717,7 +741,8 @@ Pages site on its custom domain; a fork without one uses
 `https://<owner>.github.io/<repo>/firmware/manifest.json` through the
 `firmware_site` substitution). The
 release workflow publishes the release's three files there, replacing the
-previous ones, only when the repository allows it:
+previous ones (a card-only release redeploys the site with the last firmware
+release's files), only when the repository allows it:
 
 1. Settings › Pages › Build and deployment › Source: **GitHub Actions**.
 2. Settings › Secrets and variables › Actions › Variables: add
