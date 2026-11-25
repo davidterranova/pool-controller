@@ -1,16 +1,30 @@
 # ESP32-S3 controller with a touch panel: run the pool from the box, without a phone
 
-Tracking document. One session per work package (WP). Planned against main at v1.15.1 on 2026-11-25.
+Tracking document. One session per work package (WP).
+- Planned against main at v1.15.1 on 2026-11-25.
+- Re-planned the same day: VERSION 2.0.0, and three hardware phases. Main was at v1.16.0 by then.
+
+## Phases
+
+The feature grows on the bench in three hardware phases, then ships. Each phase ends with a **milestone**: its acceptance criteria are checked before the next phase wires anything new. Software-only WPs (marked « any time ») can run ahead of their phase.
+
+| Phase | On the bench | Milestone | WPs |
+|---|---|---|---|
+| **1. Software, screen and Auto button** | S3 board, display, Auto button. The relay, probe and meter pins stay unconnected | **M1:** the panel drives the controller's pump mode in three languages, Auto button included, seen on the controller's page and in the log | S1–S5 |
+| **2. Relays** | + the relay board (contacts free or on LEDs) and one DS18B20, so the schedule and freeze protection have a temperature | **M2:** the S3 switches the relays exactly as the WROOM does: order, boot safety, schedule, override expiry, freeze protection | S6 |
+| **3. Full install with water metering** | + the three probes, the water meter and the box; then the swap on the pool | **M3:** the S3 runs the pool for seven days, settings and histories carried over, Home Assistant unchanged | S7–S10 |
+| **Release** | — | **2.0.0:** the S3 build published beside the WROOM's | S11–S12 |
 
 ## Branches
 
-The feature lives on **`feat/s3-panel`**, branched from main. Nothing reaches main until the whole feature is ready, so no release happens and no controller in the field updates. Its first commit holds this plan and the VERSION bump to 1.16.0.
+The feature lives on **`feat/s3-panel`**, branched from main. Nothing reaches main until all three phases and the release WPs are done, so no release happens and no controller in the field updates.
 
 ```
-main ── feat/s3-panel ──┬── feat/s3-panel-s1-target ─────┐
-                        ├── feat/s3-panel-s3-scaffold ───┤ PRs into the feature branch
-                        ├── … s2 … s11 ──────────────────┘
-                        └── one PR into main = one release (1.16.0) = the S3 build published
+main (1.x keeps shipping) ── feat/s3-panel (2.0.0) ──┬── phase 1: s1-target, s2-bringup, s3-scaffold, s4-panel, s5-page ─┐
+                                                     ├── phase 2: s6-relays ─────────────────────────────────────────────┤ PRs into the
+                                                     ├── phase 3: s7-history, s8-transfer, s9-install, s10-swap ─────────┤ feature branch
+                                                     ├── release: s11-publish, s12-docs ─────────────────────────────────┘
+                                                     └── one PR into main = the 2.0.0 release
 ```
 
 To claim a WP:
@@ -18,28 +32,31 @@ To claim a WP:
 2. Branch from `feat/s3-panel` as `feat/s3-panel-s<n>-<topic>`. In the first commit, set its row to `in progress` with the branch name.
 3. Open the PR **into `feat/s3-panel`**, not main. The PR that finishes the WP ticks its done-when boxes, sets its row to `done` and links itself.
 4. The user merges it once CI is green, or lets Claude merge it by saying so in the PR. Then the WPs that depend on it merge the feature branch in.
+5. The PR that completes a phase also ticks that phase's milestone criteria, with their evidence.
 
 The feature branch's other rules:
-- **Version:**
-  - VERSION is 1.16.0, the next unreleased minor. Main is at 1.15.1, released and merged in on 2026-11-25.
-  - release.yml's check runs on every PR, whatever its base. It fails when the card or a root `*.yaml`/`*.h` changed and VERSION is already released, so WP PRs pass without each bumping it.
-  - If main releases 1.16.0 first, the next sync of main bumps it again.
+- **Version: 2.0.0.**
+  - It's a major release: the product gains a second hardware target and a new surface. Nothing is renamed or removed for WROOM users.
+  - Main keeps shipping the WROOM's 1.x features and fixes meanwhile (1.16.0 on 2026-11-25, then 1.16.x, 1.17…). They never collide with 2.0.0.
+  - Every merge of main into this branch conflicts on the card's `const VERSION` line: keep `2.0.0`.
+  - release.yml's check runs on every PR, whatever its base. It passes the WP PRs while 2.0.0 is unreleased.
 - **Keeping up with main:**
-  - Merge main into the feature branch whenever main moves, and always before the final PR. Then each open WP branch merges the feature branch in.
+  - Merge main into the feature branch whenever it releases, and always before the final PR. Then each open WP branch merges the feature branch in.
   - User-facing text a merge brings in is translated in that merge (`.claude/rules/translations.md`).
+  - A 1.x change to `pool-controller.yaml` reaches the S3 build automatically, through the package include.
 - **The live controller is read-only:**
-  - Until the swap (S9), nothing on this branch is flashed to the pool's WROOM.
-  - Tools may read it (S7's dry run), never write to it.
-  - Every S3 build before S9 runs as the **bench** device: `make … BENCH=1` names it `pool-panel-bench` (`pool-panel-bench.local`), so it never clashes with `pool-controller.local`.
-- **The bench S3 never fetches the WROOM's update:** the S3 build ships with Auto Update off and Update Check Interval `on_request` until S10 gives it its own manifest. ESPHome only checks that version strings differ (see [page-login.md](page-login.md)'s testing pitfall).
+  - Until the swap (S10), nothing on this branch is flashed to the pool's WROOM.
+  - Tools may read it (S8's dry run), never write to it.
+  - Every S3 build before S10 runs as the **bench** device: `make … BENCH=1` names it `pool-panel-bench` (`pool-panel-bench.local`), so it never clashes with `pool-controller.local`.
+- **The bench S3 never fetches the WROOM's update:** the S3 build ships with Auto Update off and Update Check Interval `on_request` until S11 gives it its own manifest. ESPHome only checks that version strings differ (see [page-login.md](page-login.md)'s testing pitfall).
 - **Mid-feature testing:**
   - The bench S3: `make flash-s3 BENCH=1` (USB) or `make ota-s3 BENCH=1`.
   - The panel without hardware: `make panel-shots` (S3).
   - The page: the mock (`make mock-ui`, S5).
   - Never through a release.
 - **Going live:**
-  1. When every WP is `done` and every acceptance criterion is ticked, open one PR from `feat/s3-panel` into main. Its description is the release notes (S11).
-  2. Its merge releases 1.16.0. WROOM controllers get History Import and the page's « Screen » section, hidden without a panel. CI publishes the S3 build and its manifest.
+  1. When M1, M2 and M3 are reached and S11–S12 are `done`, open one PR from `feat/s3-panel` into main. Its description is the release notes (S12).
+  2. Its merge releases **2.0.0**. WROOM controllers get History Import and the page's « Screen » section, hidden without a panel. CI publishes the S3 build and its manifest. HACS offers the card.
   3. The user merges it.
 
 ## Why
@@ -52,7 +69,7 @@ Without a phone or a computer, nothing at the box shows the pump's state or lets
 
 The controller sits indoors, inside a bigger box, in a dedicated room or a crawl space. The air is humid, there is no direct sun, and nobody wears gloves to use it.
 
-The current board (ESP32-WROOM, no PSRAM, 1.26 MB used of a 1.75 MB app slot) can't run a touch UI. An ESP32-S3 with PSRAM can, and leaves room for later pages, so the S3 becomes a second build target with a 3.5″ touchscreen. The WROOM build stays as it is for everyone who runs it.
+The current board (ESP32-WROOM, no PSRAM, 1.26 MB used of a 1.75 MB app slot) can't run a touch UI. An ESP32-S3 with PSRAM can, and leaves room for later pages, so the S3 becomes a second build target with a 3.5″ touchscreen. The WROOM build stays, and keeps getting its 1.x releases from main until 2.0.0 ships.
 
 ## Decisions
 
@@ -89,8 +106,8 @@ The options were evaluated in two iterations (2026-11-21: buttons + display agai
 **2026-11-25: settled with the user**
 - **Display: an Elecrow DLS30035B1-compatible module** (sold as Ginobili): ST7796U over SPI, FT6336U capacitive touch on I²C, a 14-pin 2.54 mm header. Elecrow's drawing gives its dimensions (« Hardware »).
 - **Moving to the new board carries the settings and the on-device histories:**
-  - a transfer tool (S7);
-  - a new History Import entity (S6) for the 7-day histories and today's running values;
+  - a transfer tool (S8);
+  - a new History Import entity (S7) for the 7-day histories and today's running values;
   - the existing Fill Water Import for the fill days and months.
   - History Import goes in **every** build, since it helps any board replacement, not only this one.
 - **Scope: panel v1, then publish the S3 build.**
@@ -101,45 +118,57 @@ The options were evaluated in two iterations (2026-11-21: buttons + display agai
   - The S3 files live at the root like the other packages. A feature branch never releases, and the final merge is the release that publishes the S3 build.
 - **Panel language: a « Panel Language » select** (`en`, `fr`, `es`, default `en`). The setup wizard sets it to the page's language. The panel uses a 24-hour clock in every language, and a decimal comma in French and Spanish.
 
+**2026-11-25: re-planned with the user**
+- **VERSION 2.0.0**, a major. Main stays free for the WROOM's 1.x features and fixes. Main released 1.16.0 the same day, the version this branch first held.
+- **Three hardware phases**:
+  1. software, screen and Auto button;
+  2. the relays;
+  3. the full install with water metering, then the release.
+
+  Each phase ends with a milestone checked on the bench before the next adds any wiring.
+
 ## Open questions (each settled in its WP, then moved to Decisions)
 
 - ESP-IDF or Arduino on the S3 (S1). Default: ESP-IDF, which ESPHome recommends for LVGL on the S3. The firmware uses no Arduino-only API, and its web server already runs on ESP-IDF's.
-- How `update: platform: http_request` picks a build in a manifest, by `chipFamily` or the first one (S1). This decides whether S10 ships one manifest with both builds or one manifest per target.
-- How Home Assistant keeps the entity ids across the swap (S2 rehearses it, S9 does it):
+- How `update: platform: http_request` picks a build in a manifest, by `chipFamily` or the first one (S1). This decides whether S11 ships one manifest with both builds or one manifest per target.
+- How Home Assistant keeps the entity ids across the swap (rehearsed on the bench board, then done in S10):
   - the ESPHome integration's device replacement, if it accepts a new MAC for the same name;
   - otherwise remove the old device, add the new one, and rename the ids back.
-- Rotation direction and touch transform (S2), once the mounting side of the connector is known (S8).
+- Rotation direction and touch transform (S2), with the connector's side as the box will mount it (S9).
 - Font sizes and their flash cost (S4). Default Panel Sleep After: 60 s (S4).
 
 ## Hardware
 
-| Part | Choice | Notes |
-|---|---|---|
-| Board | ESP32-S3-DevKitC-1 N16R8 clone with IPEX (×2: bench and spare) | check PSRAM, flash and every pin's label at first boot (S2) |
-| Antenna | IPEX→SMA bulkhead pigtail + 2.4 GHz 3 dBi dipole | bridge the antenna select resistor; bulkhead on the box's side |
-| Display | Elecrow DLS30035B1-compatible, 3.5″ IPS 320×480 | ST7796U (SPI), FT6336U (I²C), touch glass « G+F », 5 V with on-board level conversion, backlight 95 mA |
-| Auto button | 16 mm momentary, stainless 316, IP67 | to GND, internal pull-up |
-| Relays, probes, meter | unchanged | the 8-channel opto relay board (active-low), the DS18B20 bus with its 4.7 kΩ pull-up, the reed-switch meter |
-| Power | one 5 V supply, ≥ 2 A | S3 + display about 0.6 A at Wi-Fi peaks, plus the relay coils |
+| Part | Choice | Phase | Notes |
+|---|---|---|---|
+| Board | ESP32-S3-DevKitC-1 N16R8 clone with IPEX (×2: bench and spare) | 1 | check PSRAM, flash and every pin's label at first boot (S2) |
+| Antenna | IPEX→SMA bulkhead pigtail + 2.4 GHz 3 dBi dipole | 1 | bridge the antenna select resistor; bulkhead on the box's side |
+| Display | Elecrow DLS30035B1-compatible, 3.5″ IPS 320×480 | 1 | ST7796U (SPI), FT6336U (I²C), touch glass « G+F », 5 V with on-board level conversion, backlight 95 mA |
+| Auto button | 16 mm momentary, stainless 316, IP67 | 1 | to GND, internal pull-up |
+| Relays | the same 8-channel opto relay board (active-low) | 2 | on the bench with free contacts or LEDs, then the pump's DI terminals in phase 3 |
+| Probe (bench) | one DS18B20 + 4.7 kΩ pull-up | 2 | stands in for the pool probe on the bench |
+| Probes, meter | the install's three DS18B20 and the reed-switch meter | 3 | moved from the WROOM at the swap |
+| Box | the controller's box with a cutout, bezel, vent, bulkhead | 3 | see « Display » dimensions |
+| Power | one 5 V supply, ≥ 2 A | 1 | S3 + display about 0.6 A at Wi-Fi peaks, plus the relay coils from phase 2 |
 
 **Pin map (S3)**
 
-| Signal | S3 GPIO | WROOM today |
-|---|---|---|
-| Display SCK | 12 | — |
-| Display SDI (MOSI) | 11 | — |
-| Display SDO (MISO) | not connected | — |
-| Display LCD_CS | 10 | — |
-| Display LCD_RS (DC) | 9 | — |
-| Display LCD_RST | 8 | — |
-| Display LED (backlight, PWM) | 14 | — |
-| Touch CTP_SDA / CTP_SCL | 1 / 2 | — |
-| Touch CTP_INT / CTP_RST | 21 / 18 | — |
-| Display SD_CS | tied to 3.3 V (the micro-SD slot stays empty) | — |
-| Relay V1 / V2 / V3 / Run | 4 / 5 / 6 / 7 | 26 / 25 / 14 / 27 |
-| OneWire probes | 15 | 4 |
-| Water meter | 16 | 33 (an octal-PSRAM pin on the S3) |
-| Auto button | 17 | — |
+| Signal | S3 GPIO | WROOM today | Wired in phase |
+|---|---|---|---|
+| Display SCK | 12 | — | 1 |
+| Display SDI (MOSI) | 11 | — | 1 |
+| Display SDO (MISO) | not connected | — | — |
+| Display LCD_CS | 10 | — | 1 |
+| Display LCD_RS (DC) | 9 | — | 1 |
+| Display LCD_RST | 8 | — | 1 |
+| Display LED (backlight, PWM) | 14 | — | 1 |
+| Touch CTP_SDA / CTP_SCL | 1 / 2 | — | 1 |
+| Touch CTP_INT / CTP_RST | 21 / 18 | — | 1 |
+| Display SD_CS | tied to 3.3 V (the micro-SD slot stays empty) | — | 1 |
+| Auto button | 17 | — | 1 |
+| Relay V1 / V2 / V3 / Run | 4 / 5 / 6 / 7 | 26 / 25 / 14 / 27 | 2 |
+| OneWire probes | 15 | 4 | 2 (one bench probe), 3 (all three) |
+| Water meter | 16 | 33 (an octal-PSRAM pin on the S3) | 3 |
 
 - Pins 10–13 are the S3's native FSPI pins, so the display bus runs at full speed.
 - Spare: 13, 39, 40, 41, 42, 47. Pin 38 or 48 drives the onboard RGB LED, depending on the board's revision.
@@ -148,7 +177,8 @@ The options were evaluated in two iterations (2026-11-21: buttons + display agai
   - 19, 20 (USB);
   - 26–37 (flash and octal PSRAM);
   - 43, 44 (the serial log).
-- The relay pins are high-impedance at boot and the relay board's inputs float to off, so the relays stay open while the S3 starts, as they do today.
+- The relay pins are high-impedance at boot and the relay board's inputs float to off, so the relays stay open while the S3 starts, as they do today. Phase 2 proves it.
+- In phase 1 the firmware still drives the relay pins and reads the probe and meter pins, with nothing connected. The readings stay unknown, and the panel has to show that state anyway.
 
 **Display (Elecrow drawing DLS30035B1, V1.0)**
 - PCB 98.0 × 55.5 mm, touch glass 84.96 × 55.50 mm, active area 73.44 × 48.96 mm.
@@ -165,7 +195,7 @@ Agreed up front, so the WPs can run in parallel.
 
 | File | What | Builds |
 |---|---|---|
-| `pool-controller-s3.yaml` | S3 top-level config: `packages:` `core: !include pool-controller.yaml`, `panel: !include local-panel.yaml`, `history: !include history-import.yaml` comes through core. The pin map as substitutions, `device_name` (default `pool-controller`), the `esp32:`/`psram:` overrides, and the display, touch, backlight and Auto-button hardware | S3 |
+| `pool-controller-s3.yaml` | S3 top-level config: `packages:` `core: !include pool-controller.yaml` and `panel: !include local-panel.yaml`. The pin map as substitutions, `device_name` (default `pool-controller`), the `esp32:`/`psram:` overrides, and the display, touch, backlight and Auto-button hardware | S3 |
 | `local-panel.yaml` | The panel: fonts, LVGL pages, bindings, idle/wake, the Auto button's action, the panel's entities. It names its hardware only by id (`panel_display`, `panel_touch`, `panel_backlight`, `auto_button`), so the preview can stand in for it | S3, preview |
 | `panel_ui.h` | Pure helpers, no ESPHome header: the sheet's state, time left, number and duration formats per language, the asleep-touch counter | S3, host tests |
 | `panel_i18n.h` | **Generated** from `i18n-panel/{en,fr,es}.json` (`make panel-i18n`); never edited | S3, preview |
@@ -200,7 +230,7 @@ Names are English and never renamed once published. Every global's NVS key is th
     - in Auto, the speed now and the next change (« Medium until 16:00 »);
     - in manual, the speed and the time left (« High · 1 h 12 min left · Auto at 15:32 », or « no time limit »).
   - **Change** opens the sheet.
-  - Five tiles: Water, Equipment pad, Outdoor, Fill today, Fill this month. The fill tiles are hidden while Fill Meter is off.
+  - Five tiles: Water, Equipment pad, Outdoor, Fill today, Fill this month. The fill tiles are hidden while Fill Meter is off. A tile with no reading shows « — », as in phase 1.
   - Tapping the status bar opens Status.
 - **Pump mode sheet:**
   - Auto · Off · Low · Medium · High.
@@ -268,46 +298,51 @@ Each line is tagged, because Daily History and Daily Plan History share a format
 
 ## Acceptance criteria
 
-Tick each one only with its evidence (PR, command, or the date of the hardware check).
+Tick each one only with its evidence (PR, command, or the date of the hardware check). Each phase's milestone is reached when its block is ticked.
 
+**M1: software, screen and Auto button (phase 1)**
 - [ ] **A1 S3 build:**
   - `make validate-s3` and `make build-s3` pass locally and in CI.
   - Flash, RAM and PSRAM use noted in S1's PR.
-- [ ] **A2 WROOM unchanged except the planned shared changes:**
-  - `esphome config pool-controller.yaml` on the branch differs from main's only by History Import and the version.
+- [ ] **A2 WROOM unchanged:**
+  - `esphome config pool-controller.yaml` on the branch differs from main's only by History Import (from S7) and the version.
   - `make build` passes.
   - Its flash growth is noted in the final PR.
 - [ ] **A3 Board health:**
   - On the target board, the boot log reports 8 MB octal PSRAM and 16 MB flash.
-  - Every pin of the map toggles or reads as its silkscreen says (S2's blink test).
-- [ ] **A4 Radio:**
-  - With the IPEX antenna active, the S3's 24 h mean RSSI at the box is ≥ the WROOM's at the same spot.
-  - 0 Wi-Fi disconnects during the burn-in.
-- [ ] **A5 Pump safety on the S3:**
-  - Relays stay open while booting, flashing and resetting.
-  - Break-before-make order on every speed change (observed on LEDs, and in the log).
-  - Schedule, override expiry and freeze protection behave as on the WROOM.
-- [ ] **A6 Panel:**
-  - Home shows the mode, the time left and the readings, agreeing with the page.
-  - Apply writes the timeout, then the override (log).
+  - Every pin of the map toggles or reads as its silkscreen says.
+  - The IPEX antenna's RSSI is compared with the PCB antenna's at the box's spot.
+- [ ] **A4 Panel:**
+  - Home shows the mode and the time left, agreeing with the controller's page.
+  - Unconnected readings show « — ».
+  - Apply writes the timeout, then the override (log), and the page follows.
   - Cancel and sleep discard the sheet.
   - A touch on a sleeping screen only wakes it.
   - The screen sleeps after Panel Sleep After.
-  - Checked on hardware.
-- [ ] **A7 Auto button:** returns to Auto with the screen awake, asleep, and with the touch flex unplugged.
-- [ ] **A8 Languages:**
-  - `make panel-shots` gives every screen in every state (Auto, manual with a limit, manual Never, Off, fill meter off, freeze protection, no Wi-Fi) in en, fr and es.
+  - The override expires back to Auto, and the panel follows.
+- [ ] **A5 Auto button:** returns to Auto with the screen awake, asleep, and with the touch flex unplugged.
+- [ ] **A6 Languages:**
+  - `make panel-shots` gives every screen in every state (Auto, manual with a limit, manual Never, Off, fill meter off, freeze protection, no Wi-Fi, readings unknown) in en, fr and es.
   - No clipped text, and the accents are drawn.
   - `make i18n-check` passes with `panel` strict.
   - Panel Language switches the panel at once.
-- [ ] **A9 Tests:** green in CI:
-  - `make firmware-test`, with `panel_ui_test` and `history_import_test`;
-  - `make transfer-test`;
-  - `make webui-test`;
-  - `make mock-ui-check`;
-  - `make i18n-check`;
-  - `make ha-dashboard-check`;
-  - `make panel-preview-check`.
+  - The page's « Screen » section works in the three languages.
+
+**M2: relays (phase 2)**
+- [ ] **A7 Pump safety on the S3:**
+  - Relays stay open while booting, flashing, restarting and losing power.
+  - Break-before-make order on every speed change (LEDs, a multimeter on COM/NO, and the log).
+  - Schedule, override expiry and freeze protection drive the relays as on the WROOM, freeze protection being triggered from the bench probe.
+  - The panel's Water tile and the page agree.
+
+**M3: full install with water metering (phase 3)**
+- [ ] **A8 Water meter on the S3:**
+  - Detect Fill Meter reports `detected`.
+  - A real fill counts the same litres as the meter's dial, within 1 L.
+  - Fill Running and the long-fill alarm work, and the panel's fill tiles follow.
+- [ ] **A9 Radio in place:**
+  - In its closed box, the S3's 24 h mean RSSI is ≥ the WROOM's at the same spot.
+  - 0 Wi-Fi disconnects during the burn-in.
 - [ ] **A10 Transfer:**
   - The dry run lists every setting and history.
   - After `APPLY`, the verify step reports every setting equal and every history string equal to the source's (hours within one minute).
@@ -320,39 +355,52 @@ Tick each one only with its evidence (PR, command, or the date of the hardware c
   - No ignored-touch burst.
   - Daily History's hours match Daily Plan History's.
 - [ ] **A13 Rollback rehearsed:** the WROOM, left as it was, takes over again when swapped back (bench rehearsal before going live).
+
+**Release**
 - [ ] **A14 Published:**
   - A release build carries both firmwares, and the WROOM's manifest path is unchanged.
   - The install page installs the S3 build on a blank board (the spare).
   - An S3 controller finds and installs a newer build from its own manifest: a locally served one before the release, the real one after it.
-- [ ] **A15 Docs:** every row of « Documentation » ticked.
+- [ ] **A15 Tests:** green in CI:
+  - `make firmware-test`, with `panel_ui_test` and `history_import_test`;
+  - `make transfer-test`;
+  - `make webui-test`;
+  - `make mock-ui-check`;
+  - `make i18n-check`;
+  - `make ha-dashboard-check`;
+  - `make panel-preview-check`.
+- [ ] **A16 Docs:** every row of « Documentation » ticked.
 
 ## Status
 
-| WP | What | Depends on | Branch | Status | PR |
-|---|---|---|---|---|---|
-| S1 | S3 target, Make targets, CI | — | — | todo | — |
-| S2 | Bench bring-up: board checks, antenna, display, full firmware on the bench, HA rehearsal | S1, hardware delivered | — | todo | — |
-| S3 | Panel scaffolding: `panel_ui.h` + tests, translations pipeline, fonts, preview | contract | — | todo | — |
-| S4 | Panel UI (LVGL) | S1, S3 (S2 for the on-device checks) | — | todo | — |
-| S5 | Controller page + mock: « Screen », wizard | contract | — | todo | — |
-| S6 | History Import (every build) | contract | — | todo | — |
-| S7 | Transfer tool | S6 | — | todo | — |
-| S8 | Enclosure and wiring | S2, S4 | — | todo | — |
-| S9 | Burn-in, swap and go-live on the pool | S4–S8 | — | todo | — |
-| S10 | Publish the S3 build: CI, manifests, install page | S9 | — | todo | — |
-| S11 | Documentation pass and final PR | S1–S10 | — | todo | — |
+| WP | Phase | What | Depends on | Branch | Status | PR |
+|---|---|---|---|---|---|---|
+| S1 | 1 | S3 target, Make targets, CI | — | — | todo | — |
+| S2 | 1 | Bring-up: board checks, antenna, display, touch, Auto button | S1, board + display delivered | — | todo | — |
+| S3 | 1 (any time) | Panel scaffolding: `panel_ui.h` + tests, translations pipeline, fonts, preview | contract | — | todo | — |
+| S4 | 1 | Panel UI (LVGL) on the bench | S1, S2, S3 | — | todo | — |
+| S5 | 1 (any time) | Controller page + mock: « Screen », wizard | contract | — | todo | — |
+| S6 | 2 | Relays and a bench probe: pump safety on the S3 | M1 | — | todo | — |
+| S7 | 3 (any time) | History Import (every build) | contract | — | todo | — |
+| S8 | 3 (any time) | Transfer tool | S7 | — | todo | — |
+| S9 | 3 | Probes, water meter, box: the full wiring on the bench | M2 | — | todo | — |
+| S10 | 3 | Burn-in, swap and go-live on the pool | S8, S9 | — | todo | — |
+| S11 | release | Publish the S3 build: CI, manifests, install page | M3 | — | todo | — |
+| S12 | release | Documentation pass and final PR | S1–S11 | — | todo | — |
 
-S1, S3, S5 and S6 can start in parallel, before the hardware arrives.
+Phase 1's software (S1, S3, S5) can start before the hardware arrives, and so can S7 and S8.
 
 ## Work packages
 
-### S1: S3 target, Make targets, CI
+### Phase 1: software, screen and Auto button
+
+#### S1: S3 target, Make targets, CI
 - [ ] `pool-controller-s3.yaml`:
   - packages: `core: !include pool-controller.yaml`, plus a stub `local-panel.yaml` until S4;
   - substitutions: the pin map and `device_name`;
   - `esp32:` board `esp32-s3-devkitc-1`, `variant: esp32s3`, `flash_size: 16MB`, the framework the spike picks, with `!remove` on the WROOM-only advanced options (`minimum_chip_revision`, `sram1_as_iram`);
   - `psram:` `mode: octal`, `speed: 80MHz`;
-  - Auto Update off and Update Check Interval `on_request` until S10.
+  - Auto Update off and Update Check Interval `on_request` until S11.
 - [ ] Spike, with its findings recorded in Decisions:
   - (a) the package override (substitutions, `!remove`, the resolution of `esphome.includes` and `!include` from a second top-level file) leaves `pool-controller.yaml` untouched; if not, the smallest refactor, with A2's diff;
   - (b) ESP-IDF against Arduino on the S3: build both and pick;
@@ -370,7 +418,7 @@ S1, S3, S5 and S6 can start in parallel, before the hardware arrives.
   - the Makefile comments of the new targets;
   - README's build section mentions the S3 targets.
 
-### S2: bench bring-up (hardware)
+#### S2: bring-up of the board, screen and button (hardware)
 - [ ] Both boards:
   - the boot log shows the PSRAM size and mode, and the flash size;
   - a throwaway `tools/spike/s3-pins.yaml` blinks or reads every pin of the map, checked against the silkscreen;
@@ -379,38 +427,24 @@ S1, S3, S5 and S6 can start in parallel, before the hardware arrives.
   - bridge the 0 Ω select pad to the IPEX connector and fit the pigtail and dipole;
   - RSSI with the PCB antenna and with the IPEX one, 10 min each, at the box's spot.
 - [ ] Display, with a throwaway `tools/spike/s3-display.yaml`:
-  - a test pattern and the landscape rotation, with the connector on the mounting side;
+  - a test pattern and the landscape rotation, with the connector on the side the box will mount it;
   - the touch transform (`swap_xy`/`mirror_*`), so taps land on the drawn targets;
   - SPI at 40 MHz, then tried at 80 MHz.
-- [ ] Bench harness:
-  - the relay board on pins 4–7, with nothing on its contacts;
-  - one DS18B20 with 4.7 kΩ on 15;
-  - a push button standing in for the meter on 16;
-  - the Auto button on 17;
-  - the display per the pin map, with SD_CS to 3.3 V.
+- [ ] Bench, phase 1: the display per the pin map (SD_CS to 3.3 V), the Auto button on 17, and the 5 V supply. Nothing on the relay, probe or meter pins.
 - [ ] The full firmware, `make flash-s3 BENCH=1`:
   - the hotspot and the wizard;
-  - probes found by Rescan Probes;
-  - relay order on speed changes (LEDs);
-  - meter pulses counted;
   - the page's login;
-  - a clean log.
-- [ ] Home Assistant rehearsal for S9:
-  - add the bench board under its bench name;
-  - try the integration's device-replacement path on it, and record which way keeps entity ids;
-  - remove it.
+  - a clean log, apart from the absent probes and meter.
 - [ ] Done when:
   - A3 holds;
-  - A5 holds on the bench;
-  - the antenna comparison is recorded;
   - the rotation and touch transform are recorded in Decisions.
-- [ ] **Docs:** a draft of POOL-CONTROLLER.md's S3 hardware section (pin map, antenna mod, display wiring), finished in S8.
+- [ ] **Docs:** a draft of POOL-CONTROLLER.md's S3 hardware section (pin map, antenna mod, display wiring), finished in S9.
 
-### S3: panel scaffolding (helpers, translations, preview)
+#### S3: panel scaffolding (helpers, translations, preview), any time
 - [ ] `panel_ui.h`, tested in `tools/tests/panel_ui_test.cpp`:
   - the sheet's state: staged mode and minutes, what Apply writes, the hint for each combination;
   - time left and « Auto at HH:MM » from the override's start and the timeout;
-  - number and duration formats per language (decimal comma in fr/es, 24-hour clock);
+  - number and duration formats per language (decimal comma in fr/es, 24-hour clock, « — » for unknown);
   - the asleep-touch counter and its burst threshold.
 - [ ] Translations:
   - `i18n-panel/{en,fr,es}.json`;
@@ -433,7 +467,7 @@ S1, S3, S5 and S6 can start in parallel, before the hardware arrives.
   - README « Working on the panel without hardware »;
   - the panel in `.claude/rules/translations.md`'s « Where text goes ».
 
-### S4: panel UI (LVGL)
+#### S4: panel UI (LVGL) on the bench
 - [ ] `local-panel.yaml`:
   - the contract's entities and LVGL pages (home, pump-mode sheet, status), bound by id;
   - `on_idle` after Panel Sleep After: backlight off and `lvgl.pause`;
@@ -451,16 +485,16 @@ S1, S3, S5 and S6 can start in parallel, before the hardware arrives.
 - [ ] `panel` log tag: wake, sleep, every Apply with what it wrote, the Auto button, ignored-touch bursts.
 - [ ] Screenshots in the PR:
   - every screen × state × language from `make panel-shots`;
-  - one language on the hardware, described.
+  - one language on the bench, described.
 - [ ] Done when:
-  - A6 holds;
-  - A7 holds;
-  - A8 holds in the preview and on the hardware.
+  - A4 holds;
+  - A5 holds;
+  - A6 holds in the preview and on the bench, with the page's part done in S5.
 - [ ] **Docs:**
   - the header comment of `local-panel.yaml`: screens, behaviour, entities, and the stable globals;
   - POOL-CONTROLLER.md « Local touch panel »: how to use it.
 
-### S5: controller page and mock
+#### S5: controller page and mock, any time
 - [ ] `webui/app.js`: « Controller settings » › « Screen » (« Réglages contrôleur » › « Écran »), shown only when the panel's entities exist:
   - Panel Language, shown as language names;
   - Panel Sleep After;
@@ -477,7 +511,29 @@ S1, S3, S5 and S6 can start in parallel, before the hardware arrives.
   - POOL-CONTROLLER.md « Local web UI »;
   - the mock's flag in README.
 
-### S6: History Import (every build)
+**Milestone M1:** A1–A6 ticked. The PR completing phase 1 says so here, with the date.
+
+### Phase 2: relays
+
+#### S6: relays and a bench probe
+- [ ] Bench, phase 2:
+  - the relay board on 4–7, its contacts free or on LEDs, with a multimeter on COM/NO;
+  - one DS18B20 with 4.7 kΩ on 15, set as Pool Probe after Rescan Probes.
+- [ ] Boot safety: relays stay open while flashing (`make flash-s3`), at power-up, on Restart, on a reset button press, and when the 5 V is cut and restored.
+- [ ] Break-before-make: every speed change (Low ↔ Medium ↔ High ↔ Off, from the panel, the page and the schedule) opens the old speed relay before closing the new one, and Run only toggles to start or stop. Checked on the LEDs and in the log.
+- [ ] The schedule:
+  - with a short test plan (Min/Max Filtration Hours and offsets adjusted), the relays follow the planned blocks and the boost pulses;
+  - Daily History closes the day at midnight.
+- [ ] Override expiry: a 30 min override from the panel returns to Auto on time, and the relays follow.
+- [ ] Freeze protection: Freeze Protection Temperature set above the bench probe's reading (or the probe in iced water) starts the pump, and overrides Off.
+- [ ] Done when A7 holds.
+- [ ] **Docs:** POOL-CONTROLLER.md's S3 hardware section: the relay wiring (same board, new pins).
+
+**Milestone M2:** A7 ticked. The PR completing phase 2 says so here, with the date.
+
+### Phase 3: full install with water metering
+
+#### S7: History Import (every build), any time
 - [ ] `history-import.yaml`, included by `pool-controller.yaml`, and `history_import.h`, tested in `tools/tests/history_import_test.cpp`:
   - the contract's lines and codes;
   - writes the 7-day record and today's running values;
@@ -491,7 +547,7 @@ S1, S3, S5 and S6 can start in parallel, before the hardware arrives.
   - the package's header comment: formats, codes, the globals it writes;
   - POOL-CONTROLLER.md « Moving to a new board ».
 
-### S7: transfer tool
+#### S8: transfer tool, any time after S7
 - [ ] `tools/transfer/transfer.py`: the contract's `make transfer`, run in the ESPHome image with aioesphomeapi, as `tools/migrate/` does. The keys come from the environment or a file, never from the repo.
 - [ ] `make transfer-test` (CI): a fake API server pair with made-up values. No real controller in CI.
 - [ ] Done when A10 holds on the bench, with the live WROOM as a read-only source.
@@ -499,7 +555,7 @@ S1, S3, S5 and S6 can start in parallel, before the hardware arrives.
   - README « Moving a controller to a new board »;
   - the Makefile comment.
 
-### S8: enclosure and wiring
+#### S9: probes, water meter and box (full wiring on the bench)
 - [ ] The box:
   - a cutout for the touch glass, 85 × 55.5 mm (or a 74 × 50 mm window);
   - M3 holes at 92 × 49.5 mm and a gasketed bezel (PETG or ASA print);
@@ -507,27 +563,42 @@ S1, S3, S5 and S6 can start in parallel, before the hardware arrives.
   - the SMA bulkhead on the side, and an M12 breather vent low on the box;
   - silica gel;
   - conformal coating on the boards, with the connectors, the U.FL, the USB ports and the buttons masked.
-- [ ] The harness: relay board, probes, meter and the 5 V supply, each wire labelled.
+- [ ] Full wiring, in the box:
+  - the relay board;
+  - the probe bus on 15, ready for the install's three probes;
+  - the water meter input on 16, with the internal pull-up, as the WROOM's GPIO33 had;
+  - the 5 V supply ≥ 2 A;
+  - a labelled harness for the swap.
+- [ ] Meter on the bench: a reed switch and a magnet (or a spare meter) count pulses, Detect Fill Meter's pulse test passes, and Fill Running and the long-fill alarm (Fill Alarm After shortened) fire.
 - [ ] Done when:
   - the bench S3 runs ≥ 24 h in the closed box;
-  - the RSSI meets A4;
+  - its RSSI at the box's spot meets A9;
   - photos are described in the PR.
-- [ ] **Docs:** POOL-CONTROLLER.md's S3 hardware section, final: parts, pin map, antenna mod, enclosure dimensions.
+- [ ] **Docs:** POOL-CONTROLLER.md's S3 hardware section, final: parts, pin map, antenna mod, enclosure dimensions, meter input.
 
-### S9: burn-in, swap and go-live
+#### S10: burn-in, swap and go-live
+- [ ] Home Assistant rehearsal on the bench board:
+  - add it under its bench name;
+  - try the integration's device-replacement path, and record which way keeps the entity ids (Decisions);
+  - remove it.
 - [ ] Burn-in ≥ 72 h on the bench, in its box: no reboot, the panel used daily, a clean log.
 - [ ] Rollback rehearsal (A13).
 - [ ] The swap, with each step dated here:
   1. Export the controller's entity ids from Home Assistant.
   2. Run `make transfer FROM=pool-controller.local TO=pool-panel-bench.local` dry, then with `APPLY=1`.
   3. Rebuild the S3 with the default `device_name` (`make ota-s3`). Power the WROOM off and keep it as it is.
-  4. Move the wiring, then power on.
-  5. Home Assistant: take the path rehearsed in S2. Check that the HomeKit Bridge still exposes Pump.
-  6. Check A5 on the pool, A6, A7 and A11.
-- [ ] Seven days in place (A12). The WROOM stays ready for a rollback until S10's release.
-- [ ] Done when A4, A5, A11, A12 and A13 are ticked with dates.
+  4. Move the wiring: relays to the pump's DI terminals, the three probes, the water meter. Then power on.
+  5. Home Assistant: take the rehearsed path. Check that the HomeKit Bridge still exposes Pump.
+  6. Check A7 on the pool, A4, A5 and A11.
+  7. A8 at the first real fill.
+- [ ] Seven days in place (A12). The WROOM stays ready for a rollback until the 2.0.0 release.
+- [ ] Done when A8, A9, A11, A12 and A13 are ticked with dates.
 
-### S10: publish the S3 build
+**Milestone M3:** A8–A13 ticked. The PR completing phase 3 says so here, with the date.
+
+### Release
+
+#### S11: publish the S3 build
 - [ ] `firmware.yml` builds both configs. `tools/release/manifest.py` and its tests write the manifests per S1's finding: either one manifest with both builds, or the WROOM's at its current path plus the S3's under `firmware/s3-panel/`. Release assets are named per target.
 - [ ] The S3 build's updates come on (the WROOM's defaults), with its `firmware_manifest_url` set to its own manifest.
 - [ ] Install page:
@@ -543,11 +614,11 @@ S1, S3, S5 and S6 can start in parallel, before the hardware arrives.
   - the install page's texts;
   - POOL-CONTROLLER.md « Firmware updates » (the S3's manifest).
 
-### S11: documentation pass and final PR
+#### S12: documentation pass and final PR
 - [ ] Every row of « Documentation » is ticked, and reads true against what merged.
 - [ ] This plan: every WP `done`, the open questions closed.
-- [ ] The final PR's description becomes the 1.16.0 release notes:
-  - for WROOM users: History Import, `make transfer`, the page's « Screen » section (hidden without a panel);
+- [ ] The final PR's description becomes the 2.0.0 release notes:
+  - for WROOM users: what changes (History Import, `make transfer`, the page's « Screen » section hidden without a panel), and that nothing is renamed;
   - for S3 builders: the panel, the hardware, the install.
 
 ## Documentation
@@ -558,7 +629,7 @@ S1, S3, S5 and S6 can start in parallel, before the hardware arrives.
   - « Moving a controller to a new board » (transfer);
   - installing the S3 build.
 - [ ] POOL-CONTROLLER.md:
-  - Hardware › ESP32-S3 with touch panel: parts, pin map, antenna mod, display wiring, enclosure;
+  - Hardware › ESP32-S3 with touch panel: parts, pin map, antenna mod, display wiring, relays, meter input, enclosure;
   - « Local touch panel »;
   - « Moving to a new board »;
   - « Firmware updates » (the S3's manifest);
@@ -573,6 +644,7 @@ S1, S3, S5 and S6 can start in parallel, before the hardware arrives.
 
 ## Interactions with what's already on main
 
+- **Main keeps releasing 1.x** for the WROOM in production. Each release is merged into this branch, keeping VERSION 2.0.0. Its firmware changes reach the S3 build through the package include, and its texts are translated by then.
 - **Translations are done on main**, so the panel is a translated surface from its first commit (`strict: true`).
 - **The update gate:** an override set from the panel holds an install like any override (updates.yaml). Nothing changes there.
 - **HomeKit and voice assistants:**
@@ -581,8 +653,7 @@ S1, S3, S5 and S6 can start in parallel, before the hardware arrives.
   - The swap keeps the entity id, so a bridge keeps its accessory.
 - **`make ota` testing pitfall:**
   - It concerns the WROOM: Auto Update reinstalls the release.
-  - The S3 has updates off until S10, and the WROOM isn't flashed from this branch.
-- **Another feature branch** merging first takes 1.16.0: this branch then moves to the next unreleased minor at its next sync.
+  - The S3 has updates off until S11, and the WROOM isn't flashed from this branch.
 
 ## Later (not in this feature)
 
