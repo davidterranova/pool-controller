@@ -1,6 +1,6 @@
 # ESP32-S3 controller with a touch panel: run the pool from the box, without a phone
 
-Tracking document. One session per work package (WP). Planned against main at v1.15.0 on 2026-11-25.
+Tracking document. One session per work package (WP). Planned against main at v1.15.1 on 2026-11-25.
 
 ## Branches
 
@@ -21,7 +21,7 @@ To claim a WP:
 
 The feature branch's other rules:
 - **Version:**
-  - VERSION is 1.16.0, the next unreleased minor. Main is at 1.15.0, and 1.15.1 (a card docs patch) may ship first without changing this.
+  - VERSION is 1.16.0, the next unreleased minor. Main is at 1.15.1, released and merged in on 2026-11-25.
   - release.yml's check runs on every PR, whatever its base. It fails when the card or a root `*.yaml`/`*.h` changed and VERSION is already released, so WP PRs pass without each bumping it.
   - If main releases 1.16.0 first, the next sync of main bumps it again.
 - **Keeping up with main:**
@@ -75,11 +75,11 @@ The options were evaluated in two iterations (2026-11-21: buttons + display agai
   - the Auto button always works;
   - a breather vent, silica gel and conformal coating;
   - a counter of touches ignored while asleep (Panel Ignored Touches) shows condensation before it becomes a problem.
-- **Prototype on this install first; publish for everyone after** it has run the pool.
+- **Prototype on the maintainer's pool first; publish for everyone after** it has run a pool.
 
 **2026-11-23: the board**
 - **An ESP32-S3 with 8 MB octal PSRAM and an external antenna.**
-  - The controller's Wi-Fi at the box is weak: about −73 dBm on average on this install, with dips to −82.
+  - Wi-Fi at an equipment box is often weak: behind walls, in a crawl space, inside two boxes.
   - The new board sits behind a display's metal frame.
 - **Target board: an ESP32-S3-DevKitC-1 N16R8 clone with an IPEX connector**, the one tested being Heemol's: 16 MB flash, 8 MB octal PSRAM.
   - The IPEX connector is disconnected out of the box, behind a 0 Ω resistor. It is bridged with a solder blob; a buyer reports +7 dB.
@@ -575,10 +575,10 @@ S1, S3, S5 and S6 can start in parallel, before the hardware arrives.
 
 - **Translations are done on main**, so the panel is a translated surface from its first commit (`strict: true`).
 - **The update gate:** an override set from the panel holds an install like any override (updates.yaml). Nothing changes there.
-- **HomeKit:**
-  - The Pump fan is bridged to Apple Home, and Apple Home can latch an override off (a known behaviour on this install).
+- **HomeKit and voice assistants:**
+  - A bridged Pump fan can be switched off by a room or a scene.
   - The panel shows the resulting manual mode like any other.
-  - The swap keeps the entity id, so the bridge keeps its accessory.
+  - The swap keeps the entity id, so a bridge keeps its accessory.
 - **`make ota` testing pitfall:**
   - It concerns the WROOM: Auto Update reinstalls the release.
   - The S3 has updates off until S10, and the WROOM isn't flashed from this branch.
