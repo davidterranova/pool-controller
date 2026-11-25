@@ -7,6 +7,7 @@
  *   type: custom:piscine-card
  *   variant: tile        # tile on a dashboard; tap opens the Bubble pop-up `popup_hash`
  *   layout: horizontal   # or vertical (tile only: icon, name, water temperature, then the state)
+ *                        # both tiles show the equipment pad's temperature, light, under the water's
  *   popup_hash: "#piscine"
  *
  *   type: custom:piscine-card
@@ -462,14 +463,20 @@ ha-card.tile:active { transform:scale(.985); }
 .tile .s { font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .tile .s.warn { color:var(--amber); font-weight:500; }
 .tile .s.bad { color:var(--danger); font-weight:500; }
-.tile .val { font-size:16px; font-weight:500; flex:none; }
+.tile .temps { flex:none; display:flex; flex-direction:column; align-items:flex-end; gap:1px; }
+.tile .val { font-size:16px; font-weight:500; }
+/* the equipment pad's temperature, light, under the water's */
+.tile .pad { display:inline-flex; align-items:center; gap:2px; font-size:12px; color:var(--muted); }
+.tile .pad[hidden] { display:none; }
+.tile .pad ha-icon, .tile .pad svg { --mdc-icon-size:14px; width:14px; height:14px; fill:currentColor; display:inline-flex; }
 .tile .chev { width:18px; height:18px; fill:var(--muted); flex:none; margin-left:-4px; }
 ha-card.tile.vertical { flex-direction:column; justify-content:center; text-align:center; gap:8px; padding:14px 8px; }
-/* vertical: icon, name, the water's temperature, then the secondary line (the text's spans join the column) */
+/* vertical: icon, name, the water's temperature (and the pad's), then the secondary line (the text's spans join the column) */
 .tile.vertical .txt { display:contents; }
 .tile.vertical .p, .tile.vertical .s { max-width:100%; }
 .tile.vertical .p { order:1; margin-bottom:-6px; }
-.tile.vertical .val { order:2; font-size:20px; line-height:1.2; }
+.tile.vertical .temps { order:2; align-items:center; }
+.tile.vertical .val { font-size:20px; line-height:1.2; }
 .tile.vertical .s { order:3; white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
 .tile.vertical .chev { display:none; }
 .tile .led { align-self:flex-start; margin:5px -2px 0 0; }
@@ -971,7 +978,7 @@ const tileHtml = (t) => `
 <ha-card class="tile" id="tile" role="button" tabindex="0" aria-haspopup="dialog">
   <span class="ico" id="ico">${svg("pump")}</span>
   <span class="txt"><span class="p">${t("card.title")}</span><span class="s" id="sec"></span></span>
-  <span class="val num" id="val"></span>
+  <span class="temps"><span class="val num" id="val"></span><span class="pad num" id="pad" role="img" hidden><span id="padIc"></span><span id="padV"></span></span></span>
   <span class="led" id="led" role="img" hidden></span>
   <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.chevron}"/></svg>
 </ha-card>`;
@@ -2490,6 +2497,16 @@ class PiscineCard extends HTMLElement {
     const [sec, cls] = this._tileSecondary();
     this._$("sec").textContent = sec; this._$("sec").className = cls;
     this._$("val").textContent = `${fmt1(this._n("water"))} °C`;
+    // the equipment pad's temperature, light, under the water's (only when its probe reads)
+    const padC = this._n("pad"), pad = this._$("pad");
+    pad.hidden = !Number.isFinite(padC);
+    if (!pad.hidden) {
+      const ic = this._$("padIc");
+      if (!ic.firstChild) ic.innerHTML = this._icon("home-thermometer-outline");
+      this._$("padV").textContent = `${fmt1(padC)} °C`;
+      const label = this._t("card.read.pad", { temp: fmt1(padC) });
+      pad.title = label; pad.setAttribute("aria-label", label);
+    }
     this._renderLight();
   }
 
