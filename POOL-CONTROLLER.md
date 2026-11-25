@@ -345,10 +345,9 @@ Re-evaluated every 30 seconds, highest priority wins:
    or a reboot returns it to `Auto` (see *Why it doesn't depend on Home
    Assistant* below). The timeout applies to every way of setting an
    override, not just the select: the `Pump` fan entity maps a fan-off to
-   Manual Override `Off`, and an Apple Home room/scene "off" once did
-   exactly that and parked the pump for 16 hours across a night and the
-   following morning — with the timeout non-zero, that override would have
-   expired. Picking a different speed, or editing the timeout, restarts the
+   Manual Override `Off`, so a room- or scene-wide "off" from a voice
+   assistant or a HomeKit bridge parks the pump until someone notices —
+   with the timeout non-zero, that override expires. Picking a different speed, or editing the timeout, restarts the
    clock from that moment. **Manual Override Active** (binary sensor,
    `device_class: problem`) covers the open-ended case: it turns on once a
    timeout-`0` override has been off `Auto` for more than 30 minutes, so
