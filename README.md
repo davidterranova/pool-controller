@@ -145,7 +145,7 @@ the [plan](docs/plans/secret-free-firmware.md).
 
 `PORT` (serial) and `HOST` (network) both auto-detect and can be overridden
 on the command line, e.g. `make flash PORT=/dev/cu.usbserial-XXXX` or
-`make ota HOST=192.168.4.72`.
+`make ota HOST=<the controller's IP address>`.
 
 ## Working on the web UI without flashing
 
