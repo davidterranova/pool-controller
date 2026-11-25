@@ -187,7 +187,9 @@ firmware) is flashed with `make flash` and set up the same way, from step 3
 An installed controller never goes back to the install page: it updates
 itself from the published releases (`firmware/manifest.json` on the same
 site), over HTTPS, and keeps every setting (they live in its own storage,
-which an update doesn't touch).
+which an update doesn't touch). Not every release carries a firmware: one
+that changes only the Home Assistant card leaves the controller alone, so its
+version can trail the card's.
 
 - **Automatic, by default.** **Auto Update** is on; **Update Check
   Interval** (`on_request`, `6h`, `24h`, `7d`; 24 h by default; see
