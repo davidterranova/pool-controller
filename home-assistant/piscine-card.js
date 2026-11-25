@@ -53,10 +53,10 @@
  * Outdoor Min/Max Today closed at midnight), else the outdoor sensor's own daily statistics (in the air every reading
  * counts, so HA's day is exact and goes back as far as the sensor); today from Outdoor Min/Max Today, or with a firmware
  * before them the sensor's states since midnight. It widens the scale, never the freeze threshold's place.
- * The equipment pad too (1.17.0), in a light violet, lighter than the outdoors: on 24 h its sensor's line from the
- * recorder; on the other ranges its day's (week's) min – max as a band, from the device's Daily Equipment Pad History,
- * else the pad sensor's own daily statistics, today from Equipment Pad Min/Max Today. In the tooltip and the legend
- * (« Local technique »); it widens the scale like the outdoors.
+ * The equipment pad (1.17.0) is not drawn (its line or band over the outdoors' was hard to read): a line under the
+ * summary gives its min – max over the range shown, on 24 h from its sensor's states in the recorder, on the other
+ * ranges from the device's Daily Equipment Pad History, else the pad sensor's own daily statistics, today from
+ * Equipment Pad Min/Max Today.
  * Every view draws the freeze-protection threshold (number Freeze Protection Temperature, 3 °C by default), in
  * red: a dotted line over the zone where Low is forced once the water comes within FREEZE_NEAR_C of it, else a
  * tag at the foot of the axis, so a 13 °C curve isn't squashed to show 3 °C.
@@ -417,7 +417,6 @@ const STYLE = `
   --danger:#cc3a2f; --danger-soft:rgba(204,58,47,.12);
   --good:#2e9a4a;
   --out:#c2672a;
-  --pad:#8e7cc3;
   --idle:#858c94; --idle-soft:rgba(133,140,148,.17);
   --raised:rgba(127,135,145,.12); --line:rgba(127,135,145,.28);
   --fg:var(--primary-text-color,#1b1e22); --muted:var(--secondary-text-color,#626a73);
@@ -435,7 +434,6 @@ const STYLE = `
   --danger:#ff6b60; --danger-soft:rgba(255,107,96,.15);
   --good:#4cc26a;
   --out:#f0955a;
-  --pad:#b3a4e6;
   --idle:#8f969e; --idle-soft:rgba(143,150,158,.17);
   --raised:rgba(255,255,255,.07); --line:rgba(255,255,255,.12);
   --shadow:0 1px 2px rgba(0,0,0,.35);
@@ -662,11 +660,6 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .chart .out-band { fill:var(--out); opacity:.16; }
 .chart .out-edge { stroke:var(--out); stroke-width:1; opacity:.7; stroke-linejoin:round; }
 .chart .pt.out-pt { fill:var(--out); }
-/* the equipment pad on 24 h: a thin, light line, context rather than a reading to compare */
-.chart .padl { stroke:var(--pad); stroke-width:1.2; opacity:.65; stroke-linejoin:round; stroke-linecap:round; }
-.chart .pt.pad-pt { fill:var(--pad); }
-.chart .pad-band { fill:var(--pad); opacity:.1; }
-.chart .pad-edge { stroke:var(--pad); stroke-width:1; opacity:.5; stroke-linejoin:round; }
 /* freeze-protection threshold, in red: dotted line and the zone where Low is forced, or a tag at the foot of the axis */
 .chart .fz { stroke:var(--danger); stroke-width:1.5; stroke-dasharray:1 3; stroke-linecap:round; }
 .chart .fz-zone { fill:var(--danger); opacity:.07; }
@@ -679,15 +672,12 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .ttip i { display:inline-block; width:12px; height:0; border-top:2px solid var(--acc); vertical-align:3px; margin-right:5px; }
 .ttip i.no { border-top-style:dashed; border-top-color:var(--muted); }
 .ttip i.o { border-top-color:var(--out); }
-.ttip i.pd { border-top-color:var(--pad); }
 .ttip .o-l { display:block; }
 .tl-leg i.k-pool, .tl-leg i.k-pipe { width:14px; height:0; border-radius:0; border-top:2px solid var(--acc); vertical-align:3px; }
 .tl-leg i.k-pipe { border-top:2px dashed var(--muted); }
 .tl-leg i.k-band { background:var(--acc); opacity:.2; }
 .tl-leg i.k-rng { width:6px; height:11px; background:var(--acc); border-radius:2px; }
 .tl-leg i.k-out { width:14px; height:0; border-radius:0; border-top:2px solid var(--out); vertical-align:3px; }
-.tl-leg i.k-pad-band { width:14px; height:10px; background:color-mix(in srgb, var(--pad) 14%, transparent); border-top:1px solid color-mix(in srgb, var(--pad) 60%, transparent); border-bottom:1px solid color-mix(in srgb, var(--pad) 60%, transparent); border-radius:0; }
-.tl-leg i.k-pad { width:14px; height:0; border-radius:0; border-top:2px solid var(--pad); opacity:.75; vertical-align:3px; }
 .tl-leg i.k-out-band { width:14px; height:10px; background:color-mix(in srgb, var(--out) 22%, transparent); border-top:1px solid var(--out); border-bottom:1px solid var(--out); border-radius:0; }
 
 /* tabs « Contrôle » (pump) / « Réglages » (settings) / « Réglages contrôleur » (controller), the controller page's own:
@@ -1767,8 +1757,8 @@ class PiscineCard extends HTMLElement {
       if (!vals.length) return showEmpty(t("card.temp.none_24h"), nowTxt);
       const from = now - 24 * H_MS, x = (t) => L + ((t - from) / (24 * H_MS)) * (R - L), mid = midnight(now);
       const opts = this._outSeries(now), ovals = opts.filter((p) => Number.isFinite(p.v)).map((p) => p.v);
-      const ppts = this._outSeries(now, this._pHist), pvals = ppts.filter((p) => Number.isFinite(p.v)).map((p) => p.v); // the equipment pad
-      const sc = yScale(vals, TOP, BOT, [...ovals, ...pvals]);
+      const pvals = this._outSeries(now, this._pHist).filter((p) => Number.isFinite(p.v)).map((p) => p.v); // the equipment pad: a line of text, not drawn
+      const sc = yScale(vals, TOP, BOT, ovals);
       g += sc.grid;
       let s0 = null; // filtration periods behind the curve
       pts.forEach((p, i) => {
@@ -1789,13 +1779,6 @@ class PiscineCard extends HTMLElement {
         od += `${pen ? "L" : "M"}${x(p.t).toFixed(1)},${sc.y(p.v).toFixed(1)}`; pen = true;
       }
       if (od) g += `<path class="out" d="${od}"/>`;
-      // the equipment pad, lighter still, under the pool's line
-      let pd = ""; pen = false;
-      for (const p of ppts) {
-        if (!Number.isFinite(p.v)) { pen = false; continue; }
-        pd += `${pen ? "L" : "M"}${x(p.t).toFixed(1)},${sc.y(p.v).toFixed(1)}`; pen = true;
-      }
-      if (pd) g += `<path class="padl" d="${pd}"/>`;
       // runs of pool / pipe readings, each joined to the point before so the line only breaks where HA has no value
       const runs = [];
       let prev = null;
@@ -1825,12 +1808,6 @@ class PiscineCard extends HTMLElement {
           tip.insertAdjacentHTML("beforeend", `<span class="o-l"><i class="o"></i><span class="ov"></span></span>`);
           tip.querySelector(".ov").textContent = t("card.temp.tip_out", { temp: fmt1(oAt.v) });
         }
-        const pAt = [...ppts].reverse().find((p) => p.t <= hov.t);
-        if (pAt && Number.isFinite(pAt.v)) {
-          g += `<circle class="pt pad-pt" cx="${x(hov.t)}" cy="${sc.y(pAt.v)}" r="3"/>`;
-          tip.insertAdjacentHTML("beforeend", `<span class="o-l"><i class="pd"></i><span class="pv"></span></span>`);
-          tip.querySelector(".pv").textContent = t("card.temp.tip_pad", { temp: fmt1(pAt.v) });
-        }
         hovX = x(hov.t);
       }
       const dot = hov || last;
@@ -1845,14 +1822,13 @@ class PiscineCard extends HTMLElement {
       }
       const oRange = ovals.length ? { lo: fmt1(Math.min(...ovals)), hi: fmt1(Math.max(...ovals)) } : null;
       if (oRange) s += `<span>${t("card.temp.out_24h", oRange)}</span>`;
+      if (pvals.length) s += `<span>${t("card.temp.pad_24h", { lo: fmt1(Math.min(...pvals)), hi: fmt1(Math.max(...pvals)) })}</span>`;
       sum.innerHTML = s;
       leg.innerHTML = `<span><i class="k-pool"></i>${t("card.temp.leg_pool", { min: POOL_AFTER_MIN })}</span><span><i class="k-pipe"></i>${t("card.temp.leg_pipe")}</span>`
         + (oRange ? `<span><i class="k-out"></i>${t("card.temp.leg_out")}</span>` : "")
-        + (pvals.length ? `<span><i class="k-pad"></i>${t("card.row.pad.label")}</span>` : "")
         + `<span><i class="k-band"></i>${t("card.sec.filtration")}</span>${sc.legend}`;
       box.setAttribute("aria-label", t("card.temp.aria24", { lo: fmt1(Math.min(...vals)), hi: fmt1(Math.max(...vals)) })
-        + (oRange ? `. ${t("card.temp.aria_out24", oRange)}` : "")
-        + (pvals.length ? `. ${t("card.temp.aria_pad24", { lo: fmt1(Math.min(...pvals)), hi: fmt1(Math.max(...pvals)) })}` : ""));
+        + (oRange ? `. ${t("card.temp.aria_out24", oRange)}` : ""));
     } else {
       // 7 / 30 / 90 j: a bar a day; 1 an: a bar a week. The pool's min–max where it is known; elsewhere (before Min/Max
       // Today had statistics) the probe's mean, dashed: the pipe is in it, as on the 24 h curve.
@@ -1864,9 +1840,9 @@ class PiscineCard extends HTMLElement {
       const vals = [...pool.flatMap((d) => [d.lo, d.hi]), ...mean.map((d) => d.mean)];
       const outs = days.filter((d) => d.oknown), ovals = outs.flatMap((d) => [d.olo, d.ohi]);
       const pads = days.filter((d) => d.pknown), pvals = pads.flatMap((d) => [d.plo, d.phi]);
-      const sc = yScale(vals.length ? vals : [Number.isFinite(this._n("water")) ? this._n("water") : 20], TOP + 6, BOT - 6, [...ovals, ...pvals]);
+      const sc = yScale(vals.length ? vals : [Number.isFinite(this._n("water")) ? this._n("water") : 20], TOP + 6, BOT - 6, ovals);
       g += sc.grid;
-      // a min – max (the outdoors', the equipment pad's): a band joining neighbouring days (weeks) behind the bars, a lone one a box
+      // the outdoors' min – max: a band joining neighbouring days (weeks) behind the bars, a lone one a box
       const band = (cls, has, lo, hi) => {
         for (let i = 0; i < n;) {
           if (!days[i][has]) { i++; continue; }
@@ -1884,7 +1860,6 @@ class PiscineCard extends HTMLElement {
           i = j + 1;
         }
       };
-      band("pad", "pknown", "plo", "phi"); // lighter, under the outdoors'
       band("out", "oknown", "olo", "ohi");
       const label = (d, i) => {
         if (wk) { const m = d.date.getMonth(); return i < 2 || m % 2 || days[i - 1].date.getMonth() === m ? "" : F.date(d.date, { month: "short" }); } // every other month's first Monday
@@ -1918,13 +1893,11 @@ class PiscineCard extends HTMLElement {
       const hd = this._tHover !== null ? days[this._tHover] : null;
       if (hd) {
         if (!hd.known && Number.isFinite(hd.mean)) g += `<circle class="pt no" cx="${cx(this._tHover)}" cy="${sc.y(hd.mean)}" r="3.5"/>`;
-        tip.innerHTML = `<b></b><span></span>${hd.oknown ? `<span class="o-l"><i class="o"></i><span class="ov"></span></span>` : ""}`
-          + (hd.pknown ? `<span class="o-l"><i class="pd"></i><span class="pv"></span></span>` : "");
+        tip.innerHTML = `<b></b><span></span>${hd.oknown ? `<span class="o-l"><i class="o"></i><span class="ov"></span></span>` : ""}`;
         tip.querySelector("b").textContent = hd.known ? `${fmt1(hd.lo)} – ${fmt1(hd.hi)} °C` : Number.isFinite(hd.mean) ? `≈ ${fmt1(hd.mean)} °C` : t("card.temp.no_reading");
         tip.querySelector("span").textContent = long(hd) + (hd.known ? (Number.isFinite(hd.hours) ? ` · ${t("card.temp.tip_hours", { hours: fmt1(hd.hours) })}` : "") + belowFz(hd.lo)
           : Number.isFinite(hd.mean) ? ` · ${t(`card.temp.tip_mean.${per}`)}` : "");
         if (hd.oknown) tip.querySelector(".ov").textContent = t("card.temp.tip_out_rng", { lo: fmt1(hd.olo), hi: fmt1(hd.ohi) });
-        if (hd.pknown) tip.querySelector(".pv").textContent = t("card.temp.tip_pad_rng", { lo: fmt1(hd.plo), hi: fmt1(hd.phi) });
         hovX = cx(this._tHover);
       }
       const k = pool.length + mean.length, span = wk ? t("card.temp.span_12m") : t("card.temp.span_days", { count: n });
@@ -1934,17 +1907,16 @@ class PiscineCard extends HTMLElement {
       if (mean.length) s += `<span>${pool.length ? t(`card.temp.note_dash.${per}`) : t("card.temp.note_mean")}</span>`;
       const oRange = outs.length ? { lo: fmt1(Math.min(...ovals)), hi: fmt1(Math.max(...ovals)), span } : null;
       if (oRange) s += `<span>${t("card.temp.out_span", oRange)}</span>`;
+      if (pads.length) s += `<span>${t("card.temp.pad_span", { lo: fmt1(Math.min(...pvals)), hi: fmt1(Math.max(...pvals)), span })}</span>`;
       if (T_STATS.has(range) && this._statsErr) s += `<span>${t("card.temp.stats_err")}</span>`;
       else if (n > 7 && k < n) s += `<span>${t(`card.temp.measured.${per}`, { count: k, n })}</span>`;
       sum.innerHTML = s;
       leg.innerHTML = (pool.length || !mean.length ? `<span><i class="k-rng"></i>${t(`card.temp.leg_rng.${per}`, { min: POOL_AFTER_MIN })}</span>` : "")
         + (mean.length ? `<span><i class="k-pipe"></i>${t(`card.temp.leg_mean.${per}`)}</span>` : "")
-        + (oRange ? `<span><i class="k-out-band"></i>${t(`card.temp.leg_out_rng.${per}`)}</span>` : "")
-        + (pads.length ? `<span><i class="k-pad-band"></i>${t(`card.temp.leg_pad_rng.${per}`)}</span>` : "") + sc.legend;
+        + (oRange ? `<span><i class="k-out-band"></i>${t(`card.temp.leg_out_rng.${per}`)}</span>` : "") + sc.legend;
       box.setAttribute("aria-label", t("card.temp.aria", { span, items: days.map((d) => (d.known ? t("card.temp.aria_range", { when: long(d), lo: fmt1(d.lo), hi: fmt1(d.hi) })
         : Number.isFinite(d.mean) ? t("card.temp.aria_mean", { when: long(d), temp: fmt1(d.mean) }) : t("card.temp.aria_none", { when: long(d) }))).join(", ") })
-        + (oRange ? `. ${t("card.temp.aria_out", oRange)}` : "")
-        + (pads.length ? `. ${t("card.temp.aria_pad", { lo: fmt1(Math.min(...pvals)), hi: fmt1(Math.max(...pvals)), span })}` : ""));
+        + (oRange ? `. ${t("card.temp.aria_out", oRange)}` : ""));
     }
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
     svg.innerHTML = g;

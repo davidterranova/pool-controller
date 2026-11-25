@@ -123,23 +123,17 @@
       "aria_none": "{when} no reading",
       "out_24h": "Outdoor: {lo} – {hi} °C over 24 h",
       "out_span": "Outdoor: {lo} – {hi} °C over {span}",
+      "pad_24h": "Equipment pad: {lo} – {hi} °C over 24 h",
+      "pad_span": "Equipment pad: {lo} – {hi} °C over {span}",
       "leg_out": "Outdoor temperature",
       "leg_out_rng": {
         "day": "Outdoor, daily min – max",
         "week": "Outdoor, weekly min – max"
       },
-      "leg_pad_rng": {
-        "day": "Equipment pad, daily min – max",
-        "week": "Equipment pad, weekly min – max"
-      },
       "tip_out": "outdoor temperature {temp} °C",
       "tip_out_rng": "outdoor temperature {lo} – {hi} °C",
-      "tip_pad_rng": "equipment pad {lo} – {hi} °C",
-      "tip_pad": "equipment pad {temp} °C",
       "aria_out24": "Outdoor temperature from {lo} to {hi} °C",
-      "aria_pad24": "Equipment pad from {lo} to {hi} °C",
-      "aria_out": "Outdoor temperature over {span}: from {lo} to {hi} °C",
-      "aria_pad": "Equipment pad over {span}: from {lo} to {hi} °C"
+      "aria_out": "Outdoor temperature over {span}: from {lo} to {hi} °C"
     },
     "fill": {
       "alarm_since": "Fill running since {time} ({duration}): check the fill tap.",
