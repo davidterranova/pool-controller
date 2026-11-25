@@ -6,7 +6,7 @@
  *
  *   type: custom:piscine-card
  *   variant: tile        # tile on a dashboard; tap opens the Bubble pop-up `popup_hash`
- *   layout: horizontal   # or vertical (tile only)
+ *   layout: horizontal   # or vertical (tile only: icon, name, water temperature, then the state)
  *   popup_hash: "#piscine"
  *
  *   type: custom:piscine-card
@@ -136,7 +136,7 @@ const DICTS = { en, fr, es };
  */
 let T = makeT(DICTS, "en"), F = makeFmt("en");
 
-const VERSION = "1.15.0";
+const VERSION = "1.15.1";
 
 const DEFAULT_ENTITIES = {
   override: "select.pool_controller_manual_override",
@@ -465,9 +465,13 @@ ha-card.tile:active { transform:scale(.985); }
 .tile .val { font-size:16px; font-weight:500; flex:none; }
 .tile .chev { width:18px; height:18px; fill:var(--muted); flex:none; margin-left:-4px; }
 ha-card.tile.vertical { flex-direction:column; justify-content:center; text-align:center; gap:8px; padding:14px 8px; }
-.tile.vertical .txt { width:100%; align-items:center; }
-.tile.vertical .s { white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
-.tile.vertical .val, .tile.vertical .chev { display:none; }
+/* vertical: icon, name, the water's temperature, then the secondary line (the text's spans join the column) */
+.tile.vertical .txt { display:contents; }
+.tile.vertical .p, .tile.vertical .s { max-width:100%; }
+.tile.vertical .p { order:1; margin-bottom:-6px; }
+.tile.vertical .val { order:2; font-size:20px; line-height:1.2; }
+.tile.vertical .s { order:3; white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.tile.vertical .chev { display:none; }
 .tile .led { align-self:flex-start; margin:5px -2px 0 0; }
 .tile.vertical .led { position:absolute; top:10px; right:10px; margin:0; }
 
