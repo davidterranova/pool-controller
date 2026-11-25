@@ -17,10 +17,17 @@ not a dependency for correct operation.
 
 ## Hardware
 
-- **Board**: ESP32-WROOM (`esp32dev`, Arduino framework).
+- **Board**: ESP32 DevKit V1, 30 pins (DOIT layout), ESP32-WROOM-32 module,
+  4 MB flash, CP2102 or CH340 USB (`esp32dev`, Arduino framework). The
+  firmware is built with `minimum_chip_revision: "3.1"`: the chip must be
+  revision v3.1 or later (ESP32-D0WD-V3; `esptool.py chip_id` shows it), or
+  the published image won't start. The install page draws the pinout and
+  every part's wiring: <https://pool-controller.kitesize.fr/#cablage>.
 - **GPIO4** — OneWire bus for three DS18B20 temperature sensors, wired as a
   genuine daisy-chain (each sensor's leads spliced in-line between the
-  previous and next, not a star/hub of separate stubs), read as
+  previous and next, not a star/hub of separate stubs), each powered from
+  its own VDD lead (red → 3V3, yellow data → GPIO4, black → GND; no
+  parasite power), read as
   `Pool Return Temperature`, `Equipment Pad Temperature` and
   `Outdoor Temperature`. Which probe is which is a setting, not compiled in:
   see [Controller settings](#controller-settings).
@@ -60,6 +67,15 @@ not a dependency for correct operation.
   | 3 | `relay_v3_pin` | `GPIO14` | DI3 — Speed V3 (High) |
   | 4 | `relay_run_pin` | `GPIO27` | DI4 — Run/Stop |
 
+  The pump is a Hayward variable-speed pump of the VSTD range, driven
+  through its 5-wire digital-input cord: each relay's `NO` to one input
+  (DI1 brown, DI2 green, DI3 white, DI4 red) and the four relays' `COM`
+  together to the cord's common (C, black). The inputs are dry contacts
+  powered by the pump itself. DI4 must be closed for any input to act (open,
+  the pump stays stopped and shows `dSTOP`), and a closed speed input takes
+  priority over the pump's own program. Unplug the pump and wait 5 minutes
+  before opening it; insulate the cord's unused wires.
+
   These are set in the `substitutions:` block at the top of
   `pool-controller.yaml` — edit them if your wiring uses different GPIOs.
   Each relay is wired to its channel's `COM`/`NO` contacts, not `NC` — if
@@ -86,10 +102,11 @@ not a dependency for correct operation.
   break-before-make sequencing below; exposing them individually in HA
   would let someone bypass that sequencing by accident.
 
-- **GPIO33** — optional: a pulse water meter on the pool's fill-in line (a
-  reed-switch dry contact, 1 pulse per litre), its signal wire to GPIO33
-  (`water_meter_pin` in pool-controller.yaml; internal pull-up), the other
-  to GND. It gives the fill flow, counts the
+- **GPIO33** — optional: a pulse water meter on the pool's fill-in line (an
+  AJN15TI: a reed-switch dry contact, 1 pulse per litre, passive), its green
+  signal wire to GPIO33
+  (`water_meter_pin` in pool-controller.yaml; internal pull-up), the black
+  one to GND. It gives the fill flow, counts the
   water added and alarms on a fill that runs too long; an update waits for
   a fill to end. Without one, turn **Fill Meter** off: see
   [Fill meter](#fill-meter).

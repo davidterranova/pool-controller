@@ -90,16 +90,16 @@
     "title": "Lo que necesitas",
     "optional": "opcional",
     "board": {
-      "name": "Una placa ESP32",
-      "note": "Una placa de desarrollo con un ESP32-WROOM («ESP32 DevKit») y su puerto USB."
+      "name": "Una placa ESP32 DevKit V1",
+      "note": "De 30 pines, con un módulo ESP32-WROOM-32 cuyo chip es de revisión v3.1 o posterior, y su puerto USB."
     },
     "relay": {
       "name": "Un módulo de relés de 5 V, con 4 canales o más",
-      "note": "Optoacoplado y activo en nivel bajo (los módulos comunes de 8 canales funcionan: se usan 4). Cierra las entradas de la bomba."
+      "note": "Optoacoplado y activo en nivel bajo, como el módulo de 8 canales de Elegoo (se usan 4). Cierra las entradas de la bomba."
     },
     "pump": {
       "name": "Una bomba de velocidad variable",
-      "note": "Con entradas de control por contacto seco: tres velocidades y encendido/apagado (DI1 a DI4)."
+      "note": "Una Hayward de la gama VSTD, u otra con entradas de contacto seco: tres velocidades y encendido/apagado (DI1 a DI4)."
     },
     "probes": {
       "name": "Sondas DS18B20",
@@ -107,7 +107,7 @@
     },
     "meter": {
       "name": "Un contador de agua de impulsos",
-      "note": "En la entrada de llenado, contacto seco, 1 impulso por litro: el controlador cuenta el agua añadida."
+      "note": "Un AJN15TI en la entrada de llenado: contacto seco, 1 impulso por litro. El controlador cuenta el agua añadida."
     },
     "power": {
       "name": "Una fuente de alimentación de 5 V",
@@ -120,10 +120,10 @@
     "computer": {
       "name": "Un ordenador con Chrome o Edge",
       "note": "Windows, macOS o Linux. Después, basta con un teléfono para configurar el controlador."
-    }
+    },
+    "wiring": "Cómo se conecta cada pieza, con su esquema: {hw_link}."
   },
   "wiring": {
-    "summary": "Cableado (fijado en el firmware publicado)",
     "pin": "Pin",
     "goes_to": "Va a",
     "relay1": "Relé 1 → DI1, velocidad 1 (lenta)",
@@ -133,6 +133,72 @@
     "probes": "Sondas DS18B20 (bus 1-Wire), 4,7 kΩ a 3,3 V",
     "meter": "Contador de agua; su otro cable a GND",
     "note": "Relés en COM/NO: con la placa apagada, todos se abren y la bomba se detiene. ¿Otros pines? Están compilados: cámbialos en {yaml} y compila el firmware tú mismo. Los detalles: {hardware_link}."
+  },
+  "hw": {
+    "title": "Material y cableado",
+    "intro": "Los pines del firmware publicado son fijos: conéctalo como se muestra abajo. Corta la alimentación, también la de la bomba, antes de tocar un cable.",
+    "board": {
+      "title": "La placa: ESP32 DevKit V1",
+      "aria": "Patillaje del ESP32 DevKit V1, con los pines que usa el controlador resaltados",
+      "ref": "ESP32 DevKit V1, 30 pines (distribución DOIT): un módulo ESP32-WROOM-32, 4 MB de flash, USB mediante un chip CP2102 o CH340.",
+      "rev": "Su chip debe ser de revisión v3.1 o posterior (ESP32-D0WD-V3): el firmware está compilado para ella y no arranca en una anterior. {esptool_chip_id} la muestra: {chip_rev}.",
+      "power": "Alimentada con 5 V en VIN y GND, desde la misma fuente que el módulo de relés. Para instalar, basta con el USB."
+    },
+    "probes": {
+      "title": "Sondas de temperatura: DS18B20 en un bus",
+      "aria": "Tres sondas DS18B20 encadenadas en GPIO4, con una resistencia de 4,7 kΩ entre la línea de datos y 3,3 V",
+      "resistor": "4,7 kΩ",
+      "wires": "Tres cables por sonda: rojo (VDD) a 3V3, amarillo (datos) a GPIO4, negro a GND. Algunos cables usan otros colores: revisa la ficha del vendedor.",
+      "pullup": "Una resistencia de 4,7 kΩ entre la línea de datos y 3V3, para todo el bus: no se usa el pull-up interno de GPIO4 y, sin la resistencia, ninguna sonda responde.",
+      "chain": "Una cadena, no una estrella: cada sonda se une al bus después de la anterior. Cada sonda se alimenta por su cable VDD (sin alimentación parásita).",
+      "roles": "Hasta tres: el retorno de la piscina (en la tubería que vuelve al vaso), el cuarto técnico, el exterior (a la sombra). Cuál es cuál es un ajuste: el paso Sondas del asistente muestra cada una con su lectura; calienta una con la mano para reconocerla.",
+      "genuine": "Solo sondas originales: una DS18B20 falsificada puede funcionar sola y bloquear todo el bus en cuanto se une otra sonda."
+    },
+    "relays": {
+      "title": "Módulo de relés",
+      "aria": "El ESP32 al módulo de relés: 5 V y GND, luego GPIO26, GPIO25, GPIO14 y GPIO27 a IN1 a IN4",
+      "ref": "El módulo de 8 canales de 5 V con optoacopladores de Elegoo, o la misma placa tipo SainSmart con otro nombre: se usan 4 canales, los demás quedan libres.",
+      "wires": "VCC a los 5 V de la fuente (con el VIN de la placa), GND a GND, IN1 a IN4 a GPIO26, GPIO25, GPIO14 y GPIO27.",
+      "low": "Activo en nivel bajo: un pin a 0 V cierra su relé. El firmware lo tiene en cuenta: un relé encendido está cerrado.",
+      "jumper": "Deja el puente entre JD-VCC y VCC: una sola fuente de 5 V alimenta los optoacopladores y las bobinas. Los relés solo conmutan las entradas de baja tensión de la bomba, nunca la red eléctrica."
+    },
+    "pump": {
+      "title": "Bomba Hayward: sus entradas digitales",
+      "aria": "Los contactos de los relés al cable de 5 hilos de la bomba: el NO de cada relé a DI1 a DI4, todos los COM a C",
+      "relay": "Relé",
+      "wire": "Cable de la bomba",
+      "does": "Función",
+      "v1": "Velocidad V1, Baja",
+      "v2": "Velocidad V2, Media",
+      "v3": "Velocidad V3, Alta",
+      "run": "Encendido/apagado",
+      "common": "Común, los cuatro COM juntos",
+      "ref": "Una bomba de velocidad variable Hayward de la gama VSTD, mediante su cable de 5 hilos de entradas digitales. Otra bomba con entradas de contacto seco se conecta igual: comprueba sus bornes en su manual.",
+      "dry": "Contactos secos: la bomba alimenta sus propias entradas y ninguna tensión del controlador le llega. NC queda libre: con el controlador apagado, todos los relés se abren y la bomba se detiene.",
+      "di4": "DI4 debe estar cerrada para que las entradas actúen; abierta, la bomba sigue parada (muestra dSTOP). Mientras una entrada de velocidad está cerrada, tiene prioridad sobre el programa de la bomba.",
+      "sequence": "El controlador nunca cierra dos velocidades a la vez: abre DI4, luego todas las velocidades, cierra la nueva velocidad y vuelve a cerrar DI4.",
+      "safety": "Desenchufa la bomba y espera 5 minutos antes de abrirla. Aísla los cables del cordón que no se usan."
+    },
+    "color": {
+      "brown": "marrón",
+      "green": "verde",
+      "white": "blanco",
+      "red": "rojo",
+      "black": "negro"
+    },
+    "meter": {
+      "title": "Agua de llenado: un contador de impulsos",
+      "aria": "El contador de agua AJN15TI en la entrada de llenado, su cable verde a GPIO33 y su cable negro a GND",
+      "ref": "Un contador de agua AJN15TI en la entrada de llenado: un interruptor de láminas se cierra con cada litro (1 impulso = 1 L). Es pasivo y no necesita alimentación.",
+      "wires": "Cable verde a GPIO33 (el firmware activa su pull-up interno), cable negro a GND. Es un contacto: sin polaridad, sin resistencia.",
+      "counts": "El controlador mide el caudal (L/min) y cuenta los litros: un llenado empieza con el primer litro y termina 5 minutos después del último; una alarma avisa si dura demasiado.",
+      "test": "Para comprobarlo: en la página del controlador, Ajustes del controlador › Contador de agua › Probar, y abre el grifo de llenado; 3 L en 5 minutos prueban el cableado. Sin contador, desactiva ahí Fill Meter."
+    },
+    "svg": {
+      "relays": "Relés",
+      "fill": "entrada de llenado",
+      "pulse": "1 impulso = 1 L"
+    }
   },
   "after": {
     "title": "Después de la instalación",

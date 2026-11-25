@@ -38,6 +38,7 @@
   --idle: #858c94; --idle-soft: rgba(133, 140, 148, .17);
   --raised: rgba(127, 135, 145, .12); --line: rgba(127, 135, 145, .28);
   --shadow: 0 1px 2px rgba(20, 24, 30, .08);
+  --wire-case: rgba(0, 0, 0, .4);
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -55,6 +56,7 @@
     --idle: #8f969e; --idle-soft: rgba(143, 150, 158, .17);
     --raised: rgba(255, 255, 255, .07); --line: rgba(255, 255, 255, .12);
     --shadow: 0 1px 2px rgba(0, 0, 0, .35);
+    --wire-case: rgba(255, 255, 255, .55);
   }
 }
 
@@ -198,12 +200,47 @@ main { max-width: 1040px; margin: 0 auto; padding: 8px 16px 32px; display: flex;
 .pins td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--divider-color); vertical-align: top; }
 .pins tr:last-child td { border-bottom: 0; }
 .pins td:first-child { white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; width: 1%; padding-right: 14px; }
-details.more { margin-top: 6px; }
-details.more summary { cursor: pointer; color: var(--acc); font-weight: 500; font-size: 13px; padding: 6px 0; list-style: none; display: flex; gap: 6px; align-items: center; }
-details.more summary::-webkit-details-marker { display: none; }
-details.more summary::before { content: ""; width: 0; height: 0; border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent; transition: transform .15s; }
-details.more[open] summary::before { transform: rotate(90deg); }
-details.more[open] summary { margin-bottom: 4px; }
+/* hardware and wiring: figures, each a schematic (inline SVG) and its notes */
+.hwlede { margin: 4px 0 14px; max-width: 80ch; }
+.hw { display: grid; gap: 28px 32px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) {
+  .hw { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fig.wide { grid-column: 1 / -1; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); column-gap: 32px; }
+}
+.fig { margin: 0; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.fig h3 { margin: 0; font-size: 16px; font-weight: 500; }
+.figtext { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.pts { margin: 0; padding-left: 18px; display: grid; gap: 5px; font-size: 13px; }
+.pts li::marker { color: var(--secondary-text-color); }
+.sch { width: 100%; max-width: 520px; height: auto; border-radius: 10px; background: var(--raised); }
+.sch text { font: 500 11px Roboto, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: var(--primary-text-color); }
+.sch .pn { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; }
+.sch .pn.on, .sch .use { fill: var(--acc); }
+.sch .use { font-size: 10px; }
+.sch .mut { fill: var(--secondary-text-color); font-weight: 400; }
+.sch .sm { font-size: 10px; }
+.sch .big { font-size: 16px; }
+.sch .part { fill: var(--card-background-color); stroke: var(--secondary-text-color); stroke-width: 1.2; }
+.sch .chip { fill: var(--raised); stroke: var(--line); }
+.sch .probe { fill: var(--idle); }
+.sch .res { fill: var(--card-background-color); stroke: var(--primary-text-color); stroke-width: 1.4; }
+.sch .jmp { fill: var(--primary-text-color); }
+.sch .pin { fill: var(--card-background-color); stroke: var(--secondary-text-color); stroke-width: 1.2; }
+.sch .pin.on { fill: var(--acc); stroke: var(--acc); }
+.sch .dot { fill: var(--primary-text-color); }
+.sch .pipe { fill: none; stroke: var(--idle-soft); stroke-width: 14; }
+.sch .flow { fill: none; stroke: var(--secondary-text-color); stroke-width: 2; }
+/* a wire: its colour (the real cable's) over a casing, so black and white read on both themes */
+.sch .wc { fill: none; stroke: var(--wire-case); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+.sch .wk { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.red { --wire: #d7352b; } .black { --wire: #1d1d1d; } .yellow { --wire: #f0c000; } .brown { --wire: #8a5a2b; }
+.green { --wire: #2f9e44; } .white { --wire: #fafafa; } .sig { --wire: var(--acc); } .plain { --wire: var(--primary-text-color); }
+.sch .wk, .sw { stroke: var(--wire); }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px;
+  background: var(--wire); box-shadow: 0 0 0 1px var(--wire-case); }
+.pins.cord td:first-child { width: auto; }
+.pins.cord td:nth-child(2) { white-space: nowrap; }
+
 
 .links { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
 .links a { white-space: nowrap; overflow-wrap: normal; font-size: 12px; font-weight: 500; text-decoration: none; padding: 2px 8px; border-radius: 8px; background: var(--acc-soft); }
@@ -320,21 +357,7 @@ footer a { color: inherit; }
             <div class="name"><span data-i18n="need.computer.name"></span><small data-i18n="need.computer.note"></small></div></div>
         </div>
 
-        <details class="more">
-          <summary data-i18n="wiring.summary"></summary>
-          <table class="pins">
-            <thead><tr><th scope="col" data-i18n="wiring.pin"></th><th scope="col" data-i18n="wiring.goes_to"></th></tr></thead>
-            <tbody>
-              <tr><td>GPIO26</td><td data-i18n="wiring.relay1"></td></tr>
-              <tr><td>GPIO25</td><td data-i18n="wiring.relay2"></td></tr>
-              <tr><td>GPIO14</td><td data-i18n="wiring.relay3"></td></tr>
-              <tr><td>GPIO27</td><td data-i18n="wiring.relay4"></td></tr>
-              <tr><td>GPIO4</td><td data-i18n="wiring.probes"></td></tr>
-              <tr><td>GPIO33</td><td data-i18n="wiring.meter"></td></tr>
-            </tbody>
-          </table>
-          <p class="hint" style="margin-top:8px" data-i18n="wiring.note"></p>
-        </details>
+        <p class="hint" style="margin-top:8px" data-i18n="need.wiring"></p>
       </div>
     </section>
 
@@ -401,6 +424,307 @@ footer a { color: inherit; }
       </div>
     </section>
   </div>
+
+  <!-- ============================================================ Hardware and wiring
+       The published firmware's pins (pool-controller.yaml's substitutions:), drawn. The schematics are inline
+       SVG: pin and terminal names are codes, the same in every language; their few words are data-i18n keys. -->
+  <section class="card" id="cablage" aria-labelledby="hHw">
+    <h2 id="hHw"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16,7V3H14V7H10V3H8V7H8C7,7 6,8 6,9V14.5L9.5,18V21H14.5V18L18,14.5V9C18,8 17,7 16,7Z"/></svg><span data-i18n="hw.title"></span></h2>
+    <div class="body">
+      <p class="hwlede" data-i18n="hw.intro"></p>
+      <div class="hw">
+        <figure class="fig wide" id="cablage-carte">
+          <div><svg class="sch" viewBox="0 0 360 310" role="img" data-i18n-aria-label="hw.board.aria">
+<rect class="part" x="112" y="8" width="136" height="294" rx="6"/>
+<text x="180" y="28" text-anchor="middle">DevKit V1</text>
+<rect class="chip" x="164" y="44" width="32" height="206" rx="3"/>
+<text class="mut sm" x="180" y="147" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 180 147)">ESP32-WROOM-32</text>
+<rect class="chip" x="162" y="280" width="36" height="22" rx="3"/>
+<text x="180" y="295" class="mut sm" text-anchor="middle">USB</text>
+<circle class="pin" cx="122" cy="50" r="3.5"/>
+<text x="131" y="53.5" class="pn" text-anchor="start">EN</text>
+<circle class="pin" cx="122" cy="65.5" r="3.5"/>
+<text x="131" y="69" class="pn" text-anchor="start">VP</text>
+<circle class="pin" cx="122" cy="81" r="3.5"/>
+<text x="131" y="84.5" class="pn" text-anchor="start">VN</text>
+<circle class="pin" cx="122" cy="96.5" r="3.5"/>
+<text x="131" y="100" class="pn" text-anchor="start">D34</text>
+<circle class="pin" cx="122" cy="112" r="3.5"/>
+<text x="131" y="115.5" class="pn" text-anchor="start">D35</text>
+<circle class="pin" cx="122" cy="127.5" r="3.5"/>
+<text x="131" y="131" class="pn" text-anchor="start">D32</text>
+<circle class="pin on" cx="122" cy="143" r="3.5"/>
+<text x="131" y="146.5" class="pn on" text-anchor="start">D33</text>
+<text x="110" y="146.5" class="use" text-anchor="end">AJN15TI</text>
+<circle class="pin on" cx="122" cy="158.5" r="3.5"/>
+<text x="131" y="162" class="pn on" text-anchor="start">D25</text>
+<text x="110" y="162" class="use" text-anchor="end">IN2</text>
+<circle class="pin on" cx="122" cy="174" r="3.5"/>
+<text x="131" y="177.5" class="pn on" text-anchor="start">D26</text>
+<text x="110" y="177.5" class="use" text-anchor="end">IN1</text>
+<circle class="pin on" cx="122" cy="189.5" r="3.5"/>
+<text x="131" y="193" class="pn on" text-anchor="start">D27</text>
+<text x="110" y="193" class="use" text-anchor="end">IN4</text>
+<circle class="pin on" cx="122" cy="205" r="3.5"/>
+<text x="131" y="208.5" class="pn on" text-anchor="start">D14</text>
+<text x="110" y="208.5" class="use" text-anchor="end">IN3</text>
+<circle class="pin" cx="122" cy="220.5" r="3.5"/>
+<text x="131" y="224" class="pn" text-anchor="start">D12</text>
+<circle class="pin" cx="122" cy="236" r="3.5"/>
+<text x="131" y="239.5" class="pn" text-anchor="start">D13</text>
+<circle class="pin on" cx="122" cy="251.5" r="3.5"/>
+<text x="131" y="255" class="pn on" text-anchor="start">GND</text>
+<text x="110" y="255" class="use" text-anchor="end">GND</text>
+<circle class="pin on" cx="122" cy="267" r="3.5"/>
+<text x="131" y="270.5" class="pn on" text-anchor="start">VIN</text>
+<text x="110" y="270.5" class="use" text-anchor="end">+5 V</text>
+<circle class="pin" cx="238" cy="50" r="3.5"/>
+<text x="229" y="53.5" class="pn" text-anchor="end">D23</text>
+<circle class="pin" cx="238" cy="65.5" r="3.5"/>
+<text x="229" y="69" class="pn" text-anchor="end">D22</text>
+<circle class="pin" cx="238" cy="81" r="3.5"/>
+<text x="229" y="84.5" class="pn" text-anchor="end">TX0</text>
+<circle class="pin" cx="238" cy="96.5" r="3.5"/>
+<text x="229" y="100" class="pn" text-anchor="end">RX0</text>
+<circle class="pin" cx="238" cy="112" r="3.5"/>
+<text x="229" y="115.5" class="pn" text-anchor="end">D21</text>
+<circle class="pin" cx="238" cy="127.5" r="3.5"/>
+<text x="229" y="131" class="pn" text-anchor="end">D19</text>
+<circle class="pin" cx="238" cy="143" r="3.5"/>
+<text x="229" y="146.5" class="pn" text-anchor="end">D18</text>
+<circle class="pin" cx="238" cy="158.5" r="3.5"/>
+<text x="229" y="162" class="pn" text-anchor="end">D5</text>
+<circle class="pin" cx="238" cy="174" r="3.5"/>
+<text x="229" y="177.5" class="pn" text-anchor="end">TX2</text>
+<circle class="pin" cx="238" cy="189.5" r="3.5"/>
+<text x="229" y="193" class="pn" text-anchor="end">RX2</text>
+<circle class="pin on" cx="238" cy="205" r="3.5"/>
+<text x="229" y="208.5" class="pn on" text-anchor="end">D4</text>
+<text x="250" y="208.5" class="use" text-anchor="start">DS18B20</text>
+<circle class="pin" cx="238" cy="220.5" r="3.5"/>
+<text x="229" y="224" class="pn" text-anchor="end">D2</text>
+<circle class="pin" cx="238" cy="236" r="3.5"/>
+<text x="229" y="239.5" class="pn" text-anchor="end">D15</text>
+<circle class="pin on" cx="238" cy="251.5" r="3.5"/>
+<text x="229" y="255" class="pn on" text-anchor="end">GND</text>
+<text x="250" y="255" class="use" text-anchor="start">GND</text>
+<circle class="pin on" cx="238" cy="267" r="3.5"/>
+<text x="229" y="270.5" class="pn on" text-anchor="end">3V3</text>
+<text x="250" y="270.5" class="use" text-anchor="start">VDD</text>
+</svg></div>
+          <div class="figtext">
+            <h3 data-i18n="hw.board.title"></h3>
+            <ul class="pts">
+              <li data-i18n="hw.board.ref"></li>
+              <li data-i18n="hw.board.rev"></li>
+              <li data-i18n="hw.board.power"></li>
+            </ul>
+            <table class="pins">
+              <thead><tr><th scope="col" data-i18n="wiring.pin"></th><th scope="col" data-i18n="wiring.goes_to"></th></tr></thead>
+              <tbody>
+                <tr><td>GPIO26</td><td data-i18n="wiring.relay1"></td></tr>
+                <tr><td>GPIO25</td><td data-i18n="wiring.relay2"></td></tr>
+                <tr><td>GPIO14</td><td data-i18n="wiring.relay3"></td></tr>
+                <tr><td>GPIO27</td><td data-i18n="wiring.relay4"></td></tr>
+                <tr><td>GPIO4</td><td data-i18n="wiring.probes"></td></tr>
+                <tr><td>GPIO33</td><td data-i18n="wiring.meter"></td></tr>
+              </tbody>
+            </table>
+            <p class="hint" data-i18n="wiring.note"></p>
+          </div>
+        </figure>
+
+        <figure class="fig" id="cablage-sondes">
+          <h3 data-i18n="hw.probes.title"></h3>
+          <svg class="sch" viewBox="0 0 360 222" role="img" data-i18n-aria-label="hw.probes.aria">
+<rect class="part" x="8" y="22" width="72" height="112" rx="6"/>
+<text x="44" y="40" text-anchor="middle">ESP32</text>
+<text x="72" y="64" class="pn" text-anchor="end">3V3</text>
+<path class="wc" d="M80 60 H344"/><path class="wk red" d="M80 60 H344"/>
+<text x="72" y="92" class="pn" text-anchor="end">GPIO4</text>
+<path class="wc" d="M80 88 H344"/><path class="wk yellow" d="M80 88 H344"/>
+<text x="72" y="120" class="pn" text-anchor="end">GND</text>
+<path class="wc" d="M80 116 H344"/><path class="wk black" d="M80 116 H344"/>
+<path class="wc" d="M112 60 V88"/><path class="wk plain" d="M112 60 V88"/>
+<rect class="res" x="106" y="66" width="12" height="16" rx="2"/>
+<text x="124" y="78" class="sm" data-i18n="hw.probes.resistor"></text>
+<circle class="dot" cx="112" cy="60" r="3"/>
+<circle class="dot" cx="112" cy="88" r="3"/>
+<path class="wc" d="M186 60 V172"/><path class="wk red" d="M186 60 V172"/>
+<path class="wc" d="M196 88 V172"/><path class="wk yellow" d="M196 88 V172"/>
+<path class="wc" d="M206 116 V172"/><path class="wk black" d="M206 116 V172"/>
+<circle class="dot" cx="186" cy="60" r="3"/>
+<circle class="dot" cx="196" cy="88" r="3"/>
+<circle class="dot" cx="206" cy="116" r="3"/>
+<rect class="part" x="180" y="168" width="32" height="14" rx="4"/>
+<rect class="probe" x="189" y="182" width="14" height="30" rx="7"/>
+<path class="wc" d="M254 60 V172"/><path class="wk red" d="M254 60 V172"/>
+<path class="wc" d="M264 88 V172"/><path class="wk yellow" d="M264 88 V172"/>
+<path class="wc" d="M274 116 V172"/><path class="wk black" d="M274 116 V172"/>
+<circle class="dot" cx="254" cy="60" r="3"/>
+<circle class="dot" cx="264" cy="88" r="3"/>
+<circle class="dot" cx="274" cy="116" r="3"/>
+<rect class="part" x="248" y="168" width="32" height="14" rx="4"/>
+<rect class="probe" x="257" y="182" width="14" height="30" rx="7"/>
+<path class="wc" d="M322 60 V172"/><path class="wk red" d="M322 60 V172"/>
+<path class="wc" d="M332 88 V172"/><path class="wk yellow" d="M332 88 V172"/>
+<path class="wc" d="M342 116 V172"/><path class="wk black" d="M342 116 V172"/>
+<circle class="dot" cx="322" cy="60" r="3"/>
+<circle class="dot" cx="332" cy="88" r="3"/>
+<circle class="dot" cx="342" cy="116" r="3"/>
+<rect class="part" x="316" y="168" width="32" height="14" rx="4"/>
+<rect class="probe" x="325" y="182" width="14" height="30" rx="7"/>
+<text x="160" y="200" class="mut" text-anchor="end">DS18B20 ×3</text>
+</svg>
+          <ul class="pts">
+            <li data-i18n="hw.probes.wires"></li>
+            <li data-i18n="hw.probes.pullup"></li>
+            <li data-i18n="hw.probes.chain"></li>
+            <li data-i18n="hw.probes.roles"></li>
+            <li data-i18n="hw.probes.genuine"></li>
+          </ul>
+        </figure>
+
+        <figure class="fig" id="cablage-compteur">
+          <h3 data-i18n="hw.meter.title"></h3>
+          <svg class="sch" viewBox="0 0 360 198" role="img" data-i18n-aria-label="hw.meter.aria">
+<rect class="part" x="8" y="22" width="84" height="78" rx="6"/>
+<text x="50" y="40" text-anchor="middle">ESP32</text>
+<text x="84" y="64" class="pn" text-anchor="end">GND</text>
+<text x="84" y="88" class="pn" text-anchor="end">GPIO33</text>
+<path class="wc" d="M92 60 H272 V110"/><path class="wk black" d="M92 60 H272 V110"/>
+<path class="wc" d="M92 84 H256 V110"/><path class="wk green" d="M92 84 H256 V110"/>
+<path class="pipe" d="M120 136 H352"/>
+<path class="flow" d="M330 128 l12 8 l-12 8"/>
+<circle class="part" cx="264" cy="134" r="24"/>
+<circle class="chip" cx="264" cy="134" r="13"/>
+<text x="264" y="176" text-anchor="middle">AJN15TI</text>
+<text x="264" y="190" class="mut sm" text-anchor="middle" data-i18n="hw.svg.pulse"></text>
+<text x="120" y="162" class="mut sm" data-i18n="hw.svg.fill"></text>
+</svg>
+          <ul class="pts">
+            <li data-i18n="hw.meter.ref"></li>
+            <li data-i18n="hw.meter.wires"></li>
+            <li data-i18n="hw.meter.counts"></li>
+            <li data-i18n="hw.meter.test"></li>
+          </ul>
+        </figure>
+
+        <figure class="fig" id="cablage-relais">
+          <h3 data-i18n="hw.relays.title"></h3>
+          <svg class="sch" viewBox="0 0 360 226" role="img" data-i18n-aria-label="hw.relays.aria">
+<rect class="part" x="8" y="48" width="96" height="170" rx="6"/>
+<text x="56" y="64" text-anchor="middle">ESP32</text>
+<rect class="part" x="232" y="48" width="120" height="170" rx="6"/>
+<text x="318" y="64" text-anchor="middle" data-i18n="hw.svg.relays"></text>
+<rect class="part" x="138" y="8" width="60" height="26" rx="5"/>
+<text x="168" y="25" text-anchor="middle">5 V</text>
+<path class="wc" d="M150 34 V72"/><path class="wk red" d="M150 34 V72"/>
+<path class="wc" d="M186 34 V96"/><path class="wk black" d="M186 34 V96"/>
+<circle class="dot" cx="150" cy="72" r="3"/>
+<circle class="dot" cx="186" cy="96" r="3"/>
+<path class="wc" d="M104 72 H232"/><path class="wk red" d="M104 72 H232"/>
+<text x="96" y="76" class="pn" text-anchor="end">VIN</text>
+<text x="240" y="76" class="pn" text-anchor="start">VCC</text>
+<path class="wc" d="M104 96 H232"/><path class="wk black" d="M104 96 H232"/>
+<text x="96" y="100" class="pn" text-anchor="end">GND</text>
+<text x="240" y="100" class="pn" text-anchor="start">GND</text>
+<path class="wc" d="M104 128 H232"/><path class="wk sig" d="M104 128 H232"/>
+<text x="96" y="132" class="pn" text-anchor="end">GPIO26</text>
+<text x="240" y="132" class="pn" text-anchor="start">IN1</text>
+<path class="wc" d="M104 152 H232"/><path class="wk sig" d="M104 152 H232"/>
+<text x="96" y="156" class="pn" text-anchor="end">GPIO25</text>
+<text x="240" y="156" class="pn" text-anchor="start">IN2</text>
+<path class="wc" d="M104 176 H232"/><path class="wk sig" d="M104 176 H232"/>
+<text x="96" y="180" class="pn" text-anchor="end">GPIO14</text>
+<text x="240" y="180" class="pn" text-anchor="start">IN3</text>
+<path class="wc" d="M104 200 H232"/><path class="wk sig" d="M104 200 H232"/>
+<text x="96" y="204" class="pn" text-anchor="end">GPIO27</text>
+<text x="240" y="204" class="pn" text-anchor="start">IN4</text>
+<rect class="jmp" x="290" y="82" width="26" height="12" rx="2"/>
+<text x="303" y="108" class="mut sm" text-anchor="middle">JD-VCC</text>
+<text x="303" y="120" class="mut sm" text-anchor="middle">= VCC</text>
+<text x="318" y="160" class="mut sm" text-anchor="middle">8 × 5 V</text>
+</svg>
+          <ul class="pts">
+            <li data-i18n="hw.relays.ref"></li>
+            <li data-i18n="hw.relays.wires"></li>
+            <li data-i18n="hw.relays.low"></li>
+            <li data-i18n="hw.relays.jumper"></li>
+          </ul>
+        </figure>
+
+        <figure class="fig" id="cablage-pompe">
+          <h3 data-i18n="hw.pump.title"></h3>
+          <svg class="sch" viewBox="0 0 360 246" role="img" data-i18n-aria-label="hw.pump.aria">
+<text x="60" y="16" text-anchor="middle" data-i18n="hw.svg.relays"></text>
+<rect class="part" x="8" y="24" width="104" height="40" rx="5"/>
+<text x="20" y="48" class="big">1</text>
+<text x="96" y="37" class="pn" text-anchor="end">NO</text>
+<text x="96" y="57" class="pn" text-anchor="end">COM</text>
+<circle class="pin on" cx="112" cy="34" r="3.5"/>
+<circle class="pin on" cx="112" cy="54" r="3.5"/>
+<path class="wc" d="M112 34 H262"/><path class="wk brown" d="M112 34 H262"/>
+<path class="wc" d="M112 54 H150"/><path class="wk black" d="M112 54 H150"/>
+<circle class="dot" cx="150" cy="54" r="3"/>
+<rect class="part" x="8" y="70" width="104" height="40" rx="5"/>
+<text x="20" y="94" class="big">2</text>
+<text x="96" y="83" class="pn" text-anchor="end">NO</text>
+<text x="96" y="103" class="pn" text-anchor="end">COM</text>
+<circle class="pin on" cx="112" cy="80" r="3.5"/>
+<circle class="pin on" cx="112" cy="100" r="3.5"/>
+<path class="wc" d="M112 80 H262"/><path class="wk green" d="M112 80 H262"/>
+<path class="wc" d="M112 100 H150"/><path class="wk black" d="M112 100 H150"/>
+<circle class="dot" cx="150" cy="100" r="3"/>
+<rect class="part" x="8" y="116" width="104" height="40" rx="5"/>
+<text x="20" y="140" class="big">3</text>
+<text x="96" y="129" class="pn" text-anchor="end">NO</text>
+<text x="96" y="149" class="pn" text-anchor="end">COM</text>
+<circle class="pin on" cx="112" cy="126" r="3.5"/>
+<circle class="pin on" cx="112" cy="146" r="3.5"/>
+<path class="wc" d="M112 126 H262"/><path class="wk white" d="M112 126 H262"/>
+<path class="wc" d="M112 146 H150"/><path class="wk black" d="M112 146 H150"/>
+<circle class="dot" cx="150" cy="146" r="3"/>
+<rect class="part" x="8" y="162" width="104" height="40" rx="5"/>
+<text x="20" y="186" class="big">4</text>
+<text x="96" y="175" class="pn" text-anchor="end">NO</text>
+<text x="96" y="195" class="pn" text-anchor="end">COM</text>
+<circle class="pin on" cx="112" cy="172" r="3.5"/>
+<circle class="pin on" cx="112" cy="192" r="3.5"/>
+<path class="wc" d="M112 172 H262"/><path class="wk red" d="M112 172 H262"/>
+<path class="wc" d="M112 192 H150"/><path class="wk black" d="M112 192 H150"/>
+<circle class="dot" cx="150" cy="192" r="3"/>
+<path class="wc" d="M150 54 V222 H262"/><path class="wk black" d="M150 54 V222 H262"/>
+<rect class="part" x="262" y="16" width="90" height="222" rx="6"/>
+<text x="270" y="38" class="pn">DI1</text>
+<text x="270" y="84" class="pn">DI2</text>
+<text x="270" y="130" class="pn">DI3</text>
+<text x="270" y="176" class="pn">DI4</text>
+<text x="270" y="226" class="pn">C</text>
+<text x="330" y="118" text-anchor="middle">Hayward</text>
+<text x="330" y="134" class="mut" text-anchor="middle">VSTD</text>
+</svg>
+          <table class="pins cord">
+            <thead><tr><th scope="col" data-i18n="hw.pump.relay"></th><th scope="col" data-i18n="hw.pump.wire"></th><th scope="col" data-i18n="hw.pump.does"></th></tr></thead>
+            <tbody>
+              <tr><td>1 · NO</td><td><i class="sw brown"></i>DI1 · <span data-i18n="hw.color.brown"></span></td><td data-i18n="hw.pump.v1"></td></tr>
+              <tr><td>2 · NO</td><td><i class="sw green"></i>DI2 · <span data-i18n="hw.color.green"></span></td><td data-i18n="hw.pump.v2"></td></tr>
+              <tr><td>3 · NO</td><td><i class="sw white"></i>DI3 · <span data-i18n="hw.color.white"></span></td><td data-i18n="hw.pump.v3"></td></tr>
+              <tr><td>4 · NO</td><td><i class="sw red"></i>DI4 · <span data-i18n="hw.color.red"></span></td><td data-i18n="hw.pump.run"></td></tr>
+              <tr><td>1–4 · COM</td><td><i class="sw black"></i>C · <span data-i18n="hw.color.black"></span></td><td data-i18n="hw.pump.common"></td></tr>
+            </tbody>
+          </table>
+          <ul class="pts">
+            <li data-i18n="hw.pump.ref"></li>
+            <li data-i18n="hw.pump.dry"></li>
+            <li data-i18n="hw.pump.di4"></li>
+            <li data-i18n="hw.pump.sequence"></li>
+          </ul>
+          <div class="box warn"><p data-i18n="hw.pump.safety"></p></div>
+        </figure>
+      </div>
+    </div>
+  </section>
 </main>
 
 <footer>

@@ -541,6 +541,14 @@ manifest state) are in `install-model.js`, tested by `make webui-test`;
   hold no markup. `docs/install/i18n.js` is a symlink to
   `home-assistant/i18n.js`, the helper the card and the device's page use:
   the Pages job copies the folder with `cp -L`, so the site gets the file.
+- **Hardware and wiring.** A section (`#cablage`) with the parts'
+  references (ESP32 DevKit V1, the Elegoo relay module, a Hayward VSTD pump,
+  the AJN15TI meter) and a schematic for each: the board's pinout, the
+  DS18B20 bus, the relay module, the relays to the pump's 5-wire cord, the
+  meter. The schematics are inline SVG in `index.html`: pin and terminal
+  names are literal, their few words are `data-i18n` keys (`hw.svg.*`), and
+  a wire is drawn twice (`.wc` casing, `.wk` core) so black and white wires
+  read on both themes. Keep them in step with POOL-CONTROLLER.md, Hardware.
 - **Always erases.** The manifest has no `new_install_prompt_erase`, so ESP
   Web Tools erases the board without asking, then goes straight to the Wi-Fi
   step. The page is for a new board or one to start over; a controller in
