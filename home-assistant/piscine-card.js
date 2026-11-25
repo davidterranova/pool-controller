@@ -53,8 +53,10 @@
  * Outdoor Min/Max Today closed at midnight), else the outdoor sensor's own daily statistics (in the air every reading
  * counts, so HA's day is exact and goes back as far as the sensor); today from Outdoor Min/Max Today, or with a firmware
  * before them the sensor's states since midnight. It widens the scale, never the freeze threshold's place.
- * On 24 h the equipment pad too (1.17.0): its sensor's line from the recorder, thin and light violet, in the tooltip
- * and the legend (« Local technique »); it widens the scale like the outdoors.
+ * The equipment pad too (1.17.0), in a light violet, lighter than the outdoors: on 24 h its sensor's line from the
+ * recorder; on the other ranges its day's (week's) min – max as a band, from the device's Daily Equipment Pad History,
+ * else the pad sensor's own daily statistics, today from Equipment Pad Min/Max Today. In the tooltip and the legend
+ * (« Local technique »); it widens the scale like the outdoors.
  * Every view draws the freeze-protection threshold (number Freeze Protection Temperature, 3 °C by default), in
  * red: a dotted line over the zone where Low is forced once the water comes within FREEZE_NEAR_C of it, else a
  * tag at the foot of the axis, so a 13 °C curve isn't squashed to show 3 °C.
@@ -198,6 +200,10 @@ const DEFAULT_ENTITIES = {
   // « Réglages contrôleur » › Firmware, under the updates (1.15.0): how long the controller has run, and its chip's temperature
   uptime: "sensor.pool_controller_uptime",
   chipTemp: "sensor.pool_controller_chip_temperature",
+  // The equipment pad's min – max of the day and its last 7 days (1.17.0), for the temperature graph's band
+  padMin: "sensor.pool_controller_equipment_pad_min_today",
+  padMax: "sensor.pool_controller_equipment_pad_max_today",
+  padHistory: "sensor.pool_controller_daily_equipment_pad_history",
   autoUpdate: "switch.pool_controller_auto_update",
   updateInterval: "select.pool_controller_update_check_interval",
   updateStatus: "sensor.pool_controller_update_status",
@@ -659,6 +665,8 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 /* the equipment pad on 24 h: a thin, light line, context rather than a reading to compare */
 .chart .padl { stroke:var(--pad); stroke-width:1.2; opacity:.65; stroke-linejoin:round; stroke-linecap:round; }
 .chart .pt.pad-pt { fill:var(--pad); }
+.chart .pad-band { fill:var(--pad); opacity:.1; }
+.chart .pad-edge { stroke:var(--pad); stroke-width:1; opacity:.5; stroke-linejoin:round; }
 /* freeze-protection threshold, in red: dotted line and the zone where Low is forced, or a tag at the foot of the axis */
 .chart .fz { stroke:var(--danger); stroke-width:1.5; stroke-dasharray:1 3; stroke-linecap:round; }
 .chart .fz-zone { fill:var(--danger); opacity:.07; }
@@ -678,6 +686,7 @@ ha-card.tile.vertical { flex-direction:column; justify-content:center; text-alig
 .tl-leg i.k-band { background:var(--acc); opacity:.2; }
 .tl-leg i.k-rng { width:6px; height:11px; background:var(--acc); border-radius:2px; }
 .tl-leg i.k-out { width:14px; height:0; border-radius:0; border-top:2px solid var(--out); vertical-align:3px; }
+.tl-leg i.k-pad-band { width:14px; height:10px; background:color-mix(in srgb, var(--pad) 14%, transparent); border-top:1px solid color-mix(in srgb, var(--pad) 60%, transparent); border-bottom:1px solid color-mix(in srgb, var(--pad) 60%, transparent); border-radius:0; }
 .tl-leg i.k-pad { width:14px; height:0; border-radius:0; border-top:2px solid var(--pad); opacity:.75; vertical-align:3px; }
 .tl-leg i.k-out-band { width:14px; height:10px; background:color-mix(in srgb, var(--out) 22%, transparent); border-top:1px solid var(--out); border-bottom:1px solid var(--out); border-radius:0; }
 
@@ -1143,20 +1152,21 @@ class PiscineCard extends HTMLElement {
    *                     for 1 an's weeks beyond 90 days: HA's day carries the evening before until the reset, so a
    *                     week may hold the Sunday before it, at most a day of lag on a 7-day bar;
    *                     and the outdoor sensor's own day min/max: in the air, every reading is the outdoors, so HA's
-   *                     day is exact (no 23:00 trick) and goes back as far as the sensor (7 j uses it too).
+   *                     day is exact (no 23:00 trick) and goes back as far as the sensor (7 j uses it too); the
+   *                     equipment pad's the same way.
    */
   _loadStats() {
     if (!this._config.recorder || this._statsLoading || Date.now() - this._statsAt < H_MS) return;
     this._statsLoading = true;
-    const { waterMin, waterMax, water, outdoor } = this._e;
+    const { waterMin, waterMax, water, outdoor, pad } = this._e;
     const ws = (o) => this._hass.callWS({ type: "recorder/statistics_during_period", ...o });
     const at = (row) => new Date(typeof row.start === "number" ? row.start : Date.parse(row.start));
     Promise.all([
       ws({ start_time: dayAgo(90).toISOString(), statistic_ids: [waterMin, waterMax], period: "hour", types: ["min", "max"] }),
-      ws({ start_time: this._weekStart().toISOString(), statistic_ids: [waterMin, waterMax, water, outdoor], period: "day", types: ["min", "max", "mean"] }),
+      ws({ start_time: this._weekStart().toISOString(), statistic_ids: [waterMin, waterMax, water, outdoor, pad], period: "day", types: ["min", "max", "mean"] }),
     ])
       .then(([hr, dy]) => {
-        const stats = {}, daily = {}, oDaily = {};
+        const stats = {}, daily = {}, oDaily = {}, pDaily = {};
         const take = (r, id, type, field, out, at23) => {
           for (const row of (r && r[id]) || []) {
             const d = at(row);
@@ -1173,9 +1183,12 @@ class PiscineCard extends HTMLElement {
         for (const row of (dy && dy[outdoor]) || [])
           if (Number.isFinite(row.min) && Number.isFinite(row.max) && row.min >= OUT_SANE[0] && row.max <= OUT_SANE[1])
             oDaily[dayKey(at(row))] = { lo: row.min, hi: row.max };
-        this._stats = stats; this._daily = daily; this._oDaily = oDaily; this._statsErr = false;
+        for (const row of (dy && dy[pad]) || []) // the pad: in its air too, every reading counts
+          if (Number.isFinite(row.min) && Number.isFinite(row.max) && row.min >= OUT_SANE[0] && row.max <= OUT_SANE[1])
+            pDaily[dayKey(at(row))] = { lo: row.min, hi: row.max };
+        this._stats = stats; this._daily = daily; this._oDaily = oDaily; this._pDaily = pDaily; this._statsErr = false;
       })
-      .catch((err) => { console.warn("piscine-card: temperature statistics unavailable", err); this._stats = {}; this._daily = {}; this._oDaily = {}; this._statsErr = true; })
+      .catch((err) => { console.warn("piscine-card: temperature statistics unavailable", err); this._stats = {}; this._daily = {}; this._oDaily = {}; this._pDaily = {}; this._statsErr = true; })
       .finally(() => { this._statsAt = Date.now(); this._statsLoading = false; this._tVer++; this._update(); });
   }
   /** Ended overrides of today as [{speed, from, to}] in minutes of the day; the running one is drawn apart. */
@@ -1638,28 +1651,33 @@ class PiscineCard extends HTMLElement {
    * device's Daily History, else the statistics' 23:00 row, else (`loose`: 1 an) HA's own day; today, Min/Max Today.
    * `mean` is the probe's daily mean, drawn where the pool is unknown. `olo`, `ohi`: the outdoors, from the device's
    * Daily Outdoor History, else the outdoor sensor's daily statistics; today, Outdoor Min/Max Today (_outToday).
+   * `plo`, `phi`: the equipment pad, the same way (Daily Equipment Pad History, Equipment Pad Min/Max Today).
    */
   _tempDays(n, loose = false) {
     const hist = parseDays(this._s("history")), stats = this._stats || {}, daily = this._daily || {}, out = [];
     const oHist = parseOutdoor(this._s("outdoorHistory")), oDaily = this._oDaily || {};
+    const pHist = parseOutdoor(this._s("padHistory")), pDaily = this._pDaily || {};
     const ok = (x) => x && Number.isFinite(x.lo) && Number.isFinite(x.hi);
     for (let ago = n - 1; ago >= 1; ago--) {
       const date = dayAgo(ago), k = dayKey(date), h = hist[k], src = [h, stats[k], loose && daily[k]].find(ok), o = [oHist[k], oDaily[k]].find(ok);
+      const pd = [pHist[k], pDaily[k]].find(ok);
       out.push({ ago, date, lo: src ? src.lo : NaN, hi: src ? src.hi : NaN, hours: h ? h.hours : NaN, mean: daily[k]?.mean ?? NaN,
-        olo: o ? o.lo : NaN, ohi: o ? o.hi : NaN });
+        olo: o ? o.lo : NaN, ohi: o ? o.hi : NaN, plo: pd ? pd.lo : NaN, phi: pd ? pd.hi : NaN });
     }
-    const o = this._outToday();
-    out.push({ ago: 0, date: dayAgo(0), lo: this._n("waterMin"), hi: this._n("waterMax"), hours: this._n("hoursToday"), mean: NaN, olo: o.lo, ohi: o.hi });
-    return out.map((d) => ({ ...d, known: Number.isFinite(d.lo) && Number.isFinite(d.hi), oknown: Number.isFinite(d.olo) && Number.isFinite(d.ohi) }));
+    const o = this._outToday(), pd = this._outToday("pad");
+    out.push({ ago: 0, date: dayAgo(0), lo: this._n("waterMin"), hi: this._n("waterMax"), hours: this._n("hoursToday"), mean: NaN,
+      olo: o.lo, ohi: o.hi, plo: pd.lo, phi: pd.hi });
+    return out.map((d) => ({ ...d, known: Number.isFinite(d.lo) && Number.isFinite(d.hi), oknown: Number.isFinite(d.olo) && Number.isFinite(d.ohi),
+      pknown: Number.isFinite(d.plo) && Number.isFinite(d.phi) }));
   }
   /**
-   * Today's outdoor min – max: Outdoor Min/Max Today; with a firmware before them, the outdoor sensor's states since
-   * midnight in the 24 h history.
+   * Today's outdoor (`which` "pad": equipment pad) min – max: Outdoor (Equipment Pad) Min/Max Today; with a firmware
+   * before them, the sensor's states since midnight in the 24 h history.
    */
-  _outToday() {
-    const lo = this._n("outdoorMin"), hi = this._n("outdoorMax");
+  _outToday(which = "outdoor") {
+    const lo = this._n(`${which}Min`), hi = this._n(`${which}Max`);
     if (Number.isFinite(lo) && Number.isFinite(hi)) return { lo, hi };
-    const mid = dayAgo(0).getTime(), v = (this._oHist || []).filter((p) => p.t >= mid).map((p) => parseFloat(p.s))
+    const mid = dayAgo(0).getTime(), v = ((which === "pad" ? this._pHist : this._oHist) || []).filter((p) => p.t >= mid).map((p) => parseFloat(p.s))
       .filter((x) => Number.isFinite(x) && x >= OUT_SANE[0] && x <= OUT_SANE[1]);
     return v.length ? { lo: Math.min(...v), hi: Math.max(...v) } : { lo: NaN, hi: NaN };
   }
@@ -1677,10 +1695,12 @@ class PiscineCard extends HTMLElement {
     const days = this._tempDays(Math.round((dayAgo(0) - this._weekStart()) / 864e5) + 1, true), out = [];
     for (let i = 0; i < days.length; i += 7) {
       const ds = days.slice(i, i + 7), pool = ds.filter((d) => d.known), m = ds.filter((d) => Number.isFinite(d.mean)), o = ds.filter((d) => d.oknown);
+      const pd = ds.filter((d) => d.pknown);
       out.push({ date: ds[0].date, cur: i + 7 >= days.length, known: pool.length > 0,
         lo: pool.length ? Math.min(...pool.map((d) => d.lo)) : NaN, hi: pool.length ? Math.max(...pool.map((d) => d.hi)) : NaN,
         mean: !pool.length && m.length ? m.reduce((a, d) => a + d.mean, 0) / m.length : NaN,
-        oknown: o.length > 0, olo: o.length ? Math.min(...o.map((d) => d.olo)) : NaN, ohi: o.length ? Math.max(...o.map((d) => d.ohi)) : NaN });
+        oknown: o.length > 0, olo: o.length ? Math.min(...o.map((d) => d.olo)) : NaN, ohi: o.length ? Math.max(...o.map((d) => d.ohi)) : NaN,
+        pknown: pd.length > 0, plo: pd.length ? Math.min(...pd.map((d) => d.plo)) : NaN, phi: pd.length ? Math.max(...pd.map((d) => d.phi)) : NaN });
     }
     return out;
   }
@@ -1695,7 +1715,8 @@ class PiscineCard extends HTMLElement {
     if (!W) return; // not laid out: the pop-up is closed
     const now = Date.now();
     const key = [range, this._tHover, W, H, this._tVer, Math.floor(now / M_MS),
-      ...["water", "waterMin", "waterMax", "history", "hoursToday", "freezeAt", "outdoorMin", "outdoorMax", "outdoorHistory"].map((k) => this._s(k))].join("|");
+      ...["water", "waterMin", "waterMax", "history", "hoursToday", "freezeAt", "outdoorMin", "outdoorMax", "outdoorHistory",
+        "pad", "padMin", "padMax", "padHistory"].map((k) => this._s(k))].join("|");
     if (key === this._tDrawn) return;
     this._tDrawn = key;
 
@@ -1842,24 +1863,29 @@ class PiscineCard extends HTMLElement {
       const pool = days.filter((d) => d.known), mean = days.filter((d) => !d.known && Number.isFinite(d.mean));
       const vals = [...pool.flatMap((d) => [d.lo, d.hi]), ...mean.map((d) => d.mean)];
       const outs = days.filter((d) => d.oknown), ovals = outs.flatMap((d) => [d.olo, d.ohi]);
-      const sc = yScale(vals.length ? vals : [Number.isFinite(this._n("water")) ? this._n("water") : 20], TOP + 6, BOT - 6, ovals);
+      const pads = days.filter((d) => d.pknown), pvals = pads.flatMap((d) => [d.plo, d.phi]);
+      const sc = yScale(vals.length ? vals : [Number.isFinite(this._n("water")) ? this._n("water") : 20], TOP + 6, BOT - 6, [...ovals, ...pvals]);
       g += sc.grid;
-      // the outdoors' min – max: a band joining neighbouring days (weeks) behind the bars, a lone one a box
-      for (let i = 0; i < n;) {
-        if (!days[i].oknown) { i++; continue; }
-        let j = i;
-        while (j + 1 < n && days[j + 1].oknown) j++;
-        const yhi = (d) => sc.y(d.ohi), ylo = (d) => Math.max(sc.y(d.olo), sc.y(d.ohi) + 2);
-        if (j === i) g += `<rect class="out-band" x="${(cx(i) - cw * 0.4).toFixed(1)}" y="${yhi(days[i]).toFixed(1)}" width="${(cw * 0.8).toFixed(1)}" height="${(ylo(days[i]) - yhi(days[i])).toFixed(1)}"/>`;
-        else {
-          const seg = days.slice(i, j + 1), xs = seg.map((_, k) => cx(i + k).toFixed(1));
-          const top = seg.map((d, k) => `${k ? "L" : "M"}${xs[k]},${yhi(d).toFixed(1)}`).join("");
-          const bot = seg.map((d, k) => `${k ? "L" : "M"}${xs[k]},${ylo(d).toFixed(1)}`).join("");
-          const back = seg.map((d, k) => `L${xs[k]},${ylo(d).toFixed(1)}`).reverse().join("");
-          g += `<path class="out-band" d="${top}${back}Z"/><path class="out-edge" d="${top}"/><path class="out-edge" d="${bot}"/>`;
+      // a min – max (the outdoors', the equipment pad's): a band joining neighbouring days (weeks) behind the bars, a lone one a box
+      const band = (cls, has, lo, hi) => {
+        for (let i = 0; i < n;) {
+          if (!days[i][has]) { i++; continue; }
+          let j = i;
+          while (j + 1 < n && days[j + 1][has]) j++;
+          const yhi = (d) => sc.y(d[hi]), ylo = (d) => Math.max(sc.y(d[lo]), sc.y(d[hi]) + 2);
+          if (j === i) g += `<rect class="${cls}-band" x="${(cx(i) - cw * 0.4).toFixed(1)}" y="${yhi(days[i]).toFixed(1)}" width="${(cw * 0.8).toFixed(1)}" height="${(ylo(days[i]) - yhi(days[i])).toFixed(1)}"/>`;
+          else {
+            const seg = days.slice(i, j + 1), xs = seg.map((_, k) => cx(i + k).toFixed(1));
+            const top = seg.map((d, k) => `${k ? "L" : "M"}${xs[k]},${yhi(d).toFixed(1)}`).join("");
+            const bot = seg.map((d, k) => `${k ? "L" : "M"}${xs[k]},${ylo(d).toFixed(1)}`).join("");
+            const back = seg.map((d, k) => `L${xs[k]},${ylo(d).toFixed(1)}`).reverse().join("");
+            g += `<path class="${cls}-band" d="${top}${back}Z"/><path class="${cls}-edge" d="${top}"/><path class="${cls}-edge" d="${bot}"/>`;
+          }
+          i = j + 1;
         }
-        i = j + 1;
-      }
+      };
+      band("pad", "pknown", "plo", "phi"); // lighter, under the outdoors'
+      band("out", "oknown", "olo", "ohi");
       const label = (d, i) => {
         if (wk) { const m = d.date.getMonth(); return i < 2 || m % 2 || days[i - 1].date.getMonth() === m ? "" : F.date(d.date, { month: "short" }); } // every other month's first Monday
         if (d.ago === 0) return n > 30 ? "" : t("common.today_short"); // 90 j: the freeze tag sits there
@@ -1892,11 +1918,13 @@ class PiscineCard extends HTMLElement {
       const hd = this._tHover !== null ? days[this._tHover] : null;
       if (hd) {
         if (!hd.known && Number.isFinite(hd.mean)) g += `<circle class="pt no" cx="${cx(this._tHover)}" cy="${sc.y(hd.mean)}" r="3.5"/>`;
-        tip.innerHTML = `<b></b><span></span>${hd.oknown ? `<span class="o-l"><i class="o"></i><span class="ov"></span></span>` : ""}`;
+        tip.innerHTML = `<b></b><span></span>${hd.oknown ? `<span class="o-l"><i class="o"></i><span class="ov"></span></span>` : ""}`
+          + (hd.pknown ? `<span class="o-l"><i class="pd"></i><span class="pv"></span></span>` : "");
         tip.querySelector("b").textContent = hd.known ? `${fmt1(hd.lo)} – ${fmt1(hd.hi)} °C` : Number.isFinite(hd.mean) ? `≈ ${fmt1(hd.mean)} °C` : t("card.temp.no_reading");
         tip.querySelector("span").textContent = long(hd) + (hd.known ? (Number.isFinite(hd.hours) ? ` · ${t("card.temp.tip_hours", { hours: fmt1(hd.hours) })}` : "") + belowFz(hd.lo)
           : Number.isFinite(hd.mean) ? ` · ${t(`card.temp.tip_mean.${per}`)}` : "");
         if (hd.oknown) tip.querySelector(".ov").textContent = t("card.temp.tip_out_rng", { lo: fmt1(hd.olo), hi: fmt1(hd.ohi) });
+        if (hd.pknown) tip.querySelector(".pv").textContent = t("card.temp.tip_pad_rng", { lo: fmt1(hd.plo), hi: fmt1(hd.phi) });
         hovX = cx(this._tHover);
       }
       const k = pool.length + mean.length, span = wk ? t("card.temp.span_12m") : t("card.temp.span_days", { count: n });
@@ -1911,10 +1939,12 @@ class PiscineCard extends HTMLElement {
       sum.innerHTML = s;
       leg.innerHTML = (pool.length || !mean.length ? `<span><i class="k-rng"></i>${t(`card.temp.leg_rng.${per}`, { min: POOL_AFTER_MIN })}</span>` : "")
         + (mean.length ? `<span><i class="k-pipe"></i>${t(`card.temp.leg_mean.${per}`)}</span>` : "")
-        + (oRange ? `<span><i class="k-out-band"></i>${t(`card.temp.leg_out_rng.${per}`)}</span>` : "") + sc.legend;
+        + (oRange ? `<span><i class="k-out-band"></i>${t(`card.temp.leg_out_rng.${per}`)}</span>` : "")
+        + (pads.length ? `<span><i class="k-pad-band"></i>${t(`card.temp.leg_pad_rng.${per}`)}</span>` : "") + sc.legend;
       box.setAttribute("aria-label", t("card.temp.aria", { span, items: days.map((d) => (d.known ? t("card.temp.aria_range", { when: long(d), lo: fmt1(d.lo), hi: fmt1(d.hi) })
         : Number.isFinite(d.mean) ? t("card.temp.aria_mean", { when: long(d), temp: fmt1(d.mean) }) : t("card.temp.aria_none", { when: long(d) }))).join(", ") })
-        + (oRange ? `. ${t("card.temp.aria_out", oRange)}` : ""));
+        + (oRange ? `. ${t("card.temp.aria_out", oRange)}` : "")
+        + (pads.length ? `. ${t("card.temp.aria_pad", { lo: fmt1(Math.min(...pvals)), hi: fmt1(Math.max(...pvals)), span })}` : ""));
     }
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
     svg.innerHTML = g;

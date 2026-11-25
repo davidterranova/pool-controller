@@ -196,7 +196,7 @@ export class FakeHass {
     return out;
   }
 
-  /** Long-term statistics: the pool's min/max (hourly and daily), the probe's daily mean, the fill meter's change. */
+  /** Long-term statistics: the pool's min/max (hourly and daily), the probe's daily mean, the outdoors' and the pad's day, the fill meter's change. */
   _statistics(msg) {
     const start = Date.parse(msg.start_time), now = Date.now(), out = {};
     for (const id of msg.statistic_ids) {
@@ -208,6 +208,11 @@ export class FakeHass {
         const day = new Date(d); day.setHours(0, 0, 0, 0);
         if (now - day.getTime() < D) continue; // today has no closed statistics
         const r = rand(day.getTime() / D), t = seasonal(day) + (r() - 0.5) * 0.8;
+        if (k === "pad") { // the equipment pad: sheltered, a narrow day a few degrees over the water
+          const lo = t + 2 + (r() - 0.5) * 1.5, hi = lo + 1.5 + r() * 2.5;
+          rows.push({ start: d.getTime(), end: d.getTime() + D, min: +lo.toFixed(2), max: +hi.toFixed(2), mean: +((lo + hi) / 2).toFixed(2) });
+          continue;
+        }
         if (k === "outdoor") { // the air: a wider day, a few degrees under the water
           const lo = t - 7 + (r() - 0.5) * 3, hi = lo + 7 + r() * 6;
           rows.push({ start: d.getTime(), end: d.getTime() + D, min: +lo.toFixed(2), max: +hi.toFixed(2), mean: +((lo + hi) / 2).toFixed(2) });

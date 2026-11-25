@@ -128,12 +128,18 @@
         "day": "Extérieur, min – max du jour",
         "week": "Extérieur, min – max de la semaine"
       },
+      "leg_pad_rng": {
+        "day": "Local technique, min – max du jour",
+        "week": "Local technique, min – max de la semaine"
+      },
       "tip_out": "température extérieure {temp} °C",
       "tip_out_rng": "température extérieure {lo} – {hi} °C",
+      "tip_pad_rng": "local technique {lo} – {hi} °C",
       "tip_pad": "local technique {temp} °C",
       "aria_out24": "Température extérieure de {lo} à {hi} °C",
       "aria_pad24": "Local technique de {lo} à {hi} °C",
-      "aria_out": "Température extérieure sur {span} : de {lo} à {hi} °C"
+      "aria_out": "Température extérieure sur {span} : de {lo} à {hi} °C",
+      "aria_pad": "Local technique sur {span} : de {lo} à {hi} °C"
     },
     "fill": {
       "alarm_since": "Remplissage en cours depuis {time} ({duration}) : vérifiez le robinet de remplissage.",

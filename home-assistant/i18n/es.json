@@ -128,12 +128,18 @@
         "day": "Exterior, mín. – máx. del día",
         "week": "Exterior, mín. – máx. de la semana"
       },
+      "leg_pad_rng": {
+        "day": "Cuarto técnico, mín. – máx. del día",
+        "week": "Cuarto técnico, mín. – máx. de la semana"
+      },
       "tip_out": "temperatura exterior {temp} °C",
       "tip_out_rng": "temperatura exterior {lo} – {hi} °C",
+      "tip_pad_rng": "cuarto técnico {lo} – {hi} °C",
       "tip_pad": "cuarto técnico {temp} °C",
       "aria_out24": "Temperatura exterior de {lo} a {hi} °C",
       "aria_pad24": "Cuarto técnico de {lo} a {hi} °C",
-      "aria_out": "Temperatura exterior en {span}: de {lo} a {hi} °C"
+      "aria_out": "Temperatura exterior en {span}: de {lo} a {hi} °C",
+      "aria_pad": "Cuarto técnico en {span}: de {lo} a {hi} °C"
     },
     "fill": {
       "alarm_since": "Llenado en curso desde las {time} ({duration}): comprueba el grifo de llenado.",

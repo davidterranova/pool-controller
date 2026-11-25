@@ -129,14 +129,15 @@ addEventListener("location-changed", route); // what piscine-card fires after it
 const card = document.createElement("piscine-card");
 card.setConfig({
   variant: "panel",
-  recorder: false, // no recorder nor statistics here: the temperature graph keeps its 7 days, from Daily (Outdoor) History
+  recorder: false, // no recorder nor statistics here: the temperature graph keeps its 7 days, from Daily (Outdoor, Equipment Pad) History
   settings_tab: false, // this page has its own « Réglages » and « Réglages contrôleur »
   controller_light: false, // its header's « Connected to the controller » chip is this page's link to the controller
   entities: {
     override: E.override, commanded: E.commanded, planned: E.planned, nextAt: E.nextAt, nextTo: E.nextTo,
     b1s: E.b1s, b1e: E.b1e, b2s: E.b2s, b2e: E.b2e, hoursToday: E.hoursToday, hoursPlanned: E.hoursPlanned,
     water: E.water, waterMin: E.waterMin, waterMax: E.waterMax, history: E.history, outdoor: E.outdoor,
-    outdoorMin: E.outdoorMin, outdoorMax: E.outdoorMax, outdoorHistory: E.outdoorHistory, pad: E.pad, online: E.online, stuck: E.overrideActive, notComputed: E.notComputed,
+    outdoorMin: E.outdoorMin, outdoorMax: E.outdoorMax, outdoorHistory: E.outdoorHistory, pad: E.pad,
+    padMin: E.padMin, padMax: E.padMax, padHistory: E.padHistory, online: E.online, stuck: E.overrideActive, notComputed: E.notComputed,
     recomputed: E.recomputed, boostInterval: E.boostInterval, boostDuration: E.boostDuration,
     highEvery: E.highEvery, timeout: E.timeout, endsAt: E.endsAt, freezeAt: E.freezeAt,
     // the long-fill alarm's banner, with « Acquitter » (fill-meter.yaml): this page's own, fed by the controller
