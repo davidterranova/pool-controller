@@ -271,13 +271,16 @@ Each line is tagged, because Daily History and Daily Plan History share a format
 | `daily:` | Daily History's own line (« 2026-11-13: 6.42 h 25.9/26.6 °C, … ») | the 7-day record's dates, filtration minutes and water min/max |
 | `plan:` | Daily Plan History's | planned minutes, for dates already in the record |
 | `outdoor:` | Daily Outdoor History's | outdoor min/max, for dates already in the record |
-| `today:` | `YYYY-MM-DD filtration=<min> water=<lo>/<hi> outdoor=<lo>/<hi> fill=<L>` (`-` for unknown) | today's running values, only if the date is the device's today |
+| `pad:` | Daily Equipment Pad History's (added by S8: the contract predates that sensor) | the pad's min/max, for dates already in the record |
+| `today:` | `YYYY-MM-DD filtration=<min> water=<lo>/<hi> outdoor=<lo>/<hi> fill=<L>`, optional `pad=<lo>/<hi>`, any order (`-` for unknown) | today's running values, only if the date is the device's today |
 
 - **Outcome codes:**
-  - `imported:daily:N`, `imported:plan:N`, `imported:outdoor:N`, `imported:today`;
+  - `imported:daily:N`, `imported:plan:N`, `imported:outdoor:N`, `imported:pad:N`, `imported:today`;
   - `refused:no_clock`, `refused:format`, `refused:tag`, `refused:date`, `refused:value`, `refused:too_many`, `refused:future`, `refused:record_ahead`, `refused:not_today`.
 - A refused line changes nothing.
-- A `daily:` line never replaces a record holding newer days.
+- A `daily:` line never replaces a record holding newer days. It replaces the record's dates; the other series keep their value for a date that stays, and are unknown for a new one.
+- `plan:`, `outdoor:` and `pad:` are each their series' whole truth: a record day the line leaves out becomes unknown, so the target prints the source's string exactly. A date not in the record refuses the line (`refused:date`).
+- `today:` copies the source's values: `-` makes a min/max unknown and Fill Water Today 0; without `pad=` the pad's stay.
 - Hours parse back to within one minute, because the sensors print hundredths of an hour.
 - Like Fill Water Import's codes, these show in Home Assistant's device page only, so no UI translates them.
 
@@ -578,16 +581,16 @@ Only S6 waits for the display.
 ### Phase 3: full install with water metering
 
 #### S8: History Import (every build), any time
-- [ ] `history-import.yaml`, included by `pool-controller.yaml`, and `history_import.h`, tested in `tools/tests/history_import_test.cpp`:
+- [x] `history-import.yaml`, included by `pool-controller.yaml`, and `history_import.h`, tested in `tools/tests/history_import_test.cpp`:
   - the contract's lines and codes;
   - writes the 7-day record and today's running values;
   - refuses a whole line on any error, and never overwrites newer days;
   - republishes Daily History, Daily Plan History, Daily Outdoor History and today's sensors.
-- [ ] Round trip: every string the firmware's own lambdas print parses back to the same record, hours within one minute.
+- [x] Round trip: every string the firmware's own lambdas print parses back to the same record, hours within one minute.
 - [ ] Done when:
-  - the tests are green;
-  - on the bench S3, a `daily:` line copied from the live controller's Daily History (read-only) imports, and Daily History reads the same.
-- [ ] **Docs:**
+  - [x] the tests are green;
+  - [ ] on the bench S3 (waits for hardware), a `daily:` line copied from the live controller's Daily History (read-only) imports, and Daily History reads the same.
+- [x] **Docs:**
   - the package's header comment: formats, codes, the globals it writes;
   - POOL-CONTROLLER.md « Moving to a new board ».
 
