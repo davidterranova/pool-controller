@@ -29,6 +29,8 @@ export const t = (key, vars) => tr(key, vars);
 /** The page's formats (Intl): number, time, date, litres. */
 export const fmt = () => F;
 export const pageLang = () => lang;
+/** A language's name in itself (« Français »), or the code as is for one the page doesn't know. */
+export const langName = (code) => NAMES[code] || code;
 /** « a », « a and b », « a, b and c », in the page's language. */
 export const andList = (items) => new Intl.ListFormat(lang, { type: "conjunction" }).format(items);
 
