@@ -24,7 +24,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build firmware-test panel-i18n panel-glyphsets panel-preview-image panel-shots panel-preview-check flash status kill-port ota ip logs webui webui-test card i18n-check ha-files i18n-export i18n-import mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test clean
+.PHONY: validate build firmware-test panel-i18n panel-glyphsets panel-preview-image panel-preview-build panel-shots panel-preview-check flash status kill-port ota ip logs webui webui-test card i18n-check ha-files i18n-export i18n-import mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate: webui
@@ -243,6 +243,31 @@ card-shots:
 # CARD_BUNDLE=1: against the release's minified card (make card) instead of its source, as CI does.
 card-preview-check: $(if $(CARD_BUNDLE),card)
 	$(PLAYWRIGHT) --check $(if $(CARD_BUNDLE),--bundle) $(if $(LANG),--lang $(LANG))
+
+# The touch panel's preview (tools/panel-preview/): local-panel.yaml built for the host with ESPHome's SDL display,
+# against stand-ins for the controller's entities, in the ESPHome image plus SDL2 and Xvfb (its Dockerfile, built
+# once per ESPHOME_VERSION by panel-preview-image). No board, no controller. One build, then each scenario of
+# preview.h in each language:
+#   panel-shots          tools/panel-preview/shots/<lang>-<screen>-<state>.png at 480×320 (gitignored);
+#                        SCENARIO=auto,off for some, LANGS=fr for one language (LANGS, not LANG: the shell's locale)
+#   panel-preview-check  the same, failing on a dictionary key, « nan » or a missing text drawn instead of a text,
+#                        or a run that logs an error (CI runs it)
+PANEL_PREVIEW_IMAGE := pool-panel-preview:$(ESPHOME_VERSION)
+PANEL_PREVIEW_PROGRAM := tools/panel-preview/.esphome/build/pool-panel-preview/.pioenvs/pool-panel-preview/program
+PANEL_SHOOT = docker run --rm -v "$(CURDIR):/config" -w /config --entrypoint python3 $(PANEL_PREVIEW_IMAGE) -I tools/panel-preview/shoot.py \
+	$(PANEL_PREVIEW_PROGRAM) $(if $(SCENARIO),--only $(SCENARIO)) $(if $(LANGS),--lang $(LANGS))
+
+panel-preview-image:
+	docker build -q --build-arg ESPHOME_IMAGE=$(ESPHOME_IMAGE) -t $(PANEL_PREVIEW_IMAGE) tools/panel-preview >/dev/null
+
+panel-preview-build: panel-preview-image
+	docker run --rm -v "$(CURDIR):/config" $(PANEL_PREVIEW_IMAGE) compile tools/panel-preview/preview.yaml
+
+panel-shots: panel-preview-build
+	$(PANEL_SHOOT)
+
+panel-preview-check: panel-preview-build
+	$(PANEL_SHOOT) --check
 
 # Unit tests of the pages' pure modules (webui/test/: the setup's logic, the
 # time zone table; tools/tests/install-page.test.mjs: the install page's
