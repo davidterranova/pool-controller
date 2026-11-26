@@ -494,7 +494,7 @@ Only S6 waits for the display.
   - `make panel-shots` → `tools/panel-preview/shots/<lang>-<screen>-<state>.png` at 480×320;
   - `make panel-preview-check` fails on a key shown instead of its text;
   - CI runs the check.
-- [ ] Done when:
+- [x] Done when:
   - the host tests pass;
   - the preview draws a placeholder screen in each language, in CI.
 - [x] **Docs:**
