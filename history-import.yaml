@@ -1,0 +1,113 @@
+# History Import: fills the controller's 7-day record (Daily History, Daily
+# Plan History, Daily Outdoor History, Daily Equipment Pad History) and
+# today's running values from another controller's, when a board is replaced
+# (`make transfer`, docs/plans/s3-panel.md S9). Included by
+# pool-controller.yaml (packages: history_import), so every build has it; its
+# logic, and the printers those four sensors use, are in history_import.h.
+# Config, write-only, kept off the device's page, like Fill Water Import.
+#
+# One line per write, a tag then the source's own string:
+#
+#   daily:<Daily History>       e.g. "daily:2026-11-13: 6.42 h 25.9/26.6 °C,
+#                               2026-11-12: 6.70 h". Replaces the record's
+#                               dates, filtration minutes and water min/max;
+#                               the other series keep a date that stays and
+#                               are unknown for a new one. Refused when the
+#                               record holds a newer day than the line's.
+#   plan:<Daily Plan History>   then these three, for dates already in the
+#   outdoor:<Daily Outdoor ...> record (import daily: first). Each is its
+#   pad:<Daily Equipment Pad>   series' whole truth: a record day the line
+#                               leaves out becomes unknown, "--" clears all.
+#   today:YYYY-MM-DD filtration=<min> water=<lo>/<hi> outdoor=<lo>/<hi>
+#         fill=<L> [pad=<lo>/<hi>]
+#                               today's running values (Filtration Hours
+#                               Today in minutes, the Min/Max Today pairs,
+#                               Fill Water Today), any order, "-" for unknown
+#                               (fill: none). Only when the date is the
+#                               device's today; without pad= the pad's stay.
+#
+# Hours read back to within a minute (the sensors print hundredths of an
+# hour), temperatures exactly. Anything off refuses the whole line, and a
+# refused line changes nothing; the log says why, in English. Its state is
+# what the last import did, never the line, as a code (history_import.h's
+# outcome()): imported:daily:N, imported:plan:N, imported:outdoor:N,
+# imported:pad:N, imported:today, refused:no_clock, refused:format,
+# refused:tag, refused:date (also: a date not in the record),
+# refused:value, refused:too_many, refused:future, refused:record_ahead,
+# refused:not_today. Like Fill Water Import's, they show on Home
+# Assistant's device page only, so no UI translates them.
+#
+# Writes the globals: history_dates, history_filtration_minutes,
+# history_water_min/max, history_outdoor_min/max, history_pad_min/max,
+# history_planned_minutes (daily:, plan:, outdoor:, pad:), and
+# filtration_ms_today, water_min/max_today, outdoor_min/max_today,
+# pad_min/max_today, fill_today (today:). It owns none: they are
+# pool-controller.yaml's.
+
+esphome:
+  includes:
+    - history_import.h
+
+text:
+  - platform: template
+    name: "History Import"
+    web_server: {sorting_group_id: grp_plan, sorting_weight: 29}
+    id: history_import_text
+    icon: mdi:database-import-outline
+    entity_category: config
+    mode: text
+    max_length: 255
+    optimistic: false
+    set_action:
+      - lambda: |-
+          // Close a midnight not rolled over yet first, so the record and
+          // today are the clock's, and fold the running pump segment into
+          // today before a today: line replaces it.
+          id(filtration_accrue).execute();
+          auto t = id(local_time).now();
+          if (!t.is_valid()) {
+            ESP_LOGW("history", "History import refused: no clock yet");
+            id(history_import_text).publish_state(history_import::REFUSED_NO_CLOCK);
+            return;
+          }
+          history_import::Line line;
+          history_import::Result r;
+          r.error = history_import::parse(x, line);
+          if (r.error == history_import::Error::NONE) {
+            uint32_t today = t.year * 10000UL + t.month * 100UL + t.day_of_month;
+            history_import::Record rec{id(history_dates), id(history_filtration_minutes),
+                                       id(history_water_min), id(history_water_max),
+                                       id(history_outdoor_min), id(history_outdoor_max),
+                                       id(history_pad_min), id(history_pad_max),
+                                       id(history_planned_minutes)};
+            history_import::Today now{&id(filtration_ms_today),
+                                      &id(water_min_today), &id(water_max_today),
+                                      &id(outdoor_min_today), &id(outdoor_max_today),
+                                      &id(pad_min_today), &id(pad_max_today),
+                                      &id(fill_today)};
+            r = history_import::apply(line, today, rec, now);
+          }
+          std::string code = history_import::outcome(r);
+          if (r.error != history_import::Error::NONE) {
+            ESP_LOGW("history", "History import refused (%u characters): %s", (unsigned) x.size(),
+                     history_import::error_text(r.error));
+            id(history_import_text).publish_state(code);
+            return;
+          }
+          ESP_LOGI("history", "History import: %s", code.c_str());
+          id(history_import_text).publish_state(code);
+          if (r.kind == history_import::Kind::TODAY) {
+            id(filtration_hours_today).update();
+            id(water_min_today_sensor).update();
+            id(water_max_today_sensor).update();
+            id(outdoor_min_today_sensor).update();
+            id(outdoor_max_today_sensor).update();
+            id(pad_min_today_sensor).update();
+            id(pad_max_today_sensor).update();
+            id(fill_today_sensor).update();
+          } else {
+            id(daily_history).update();
+            id(daily_plan_history).update();
+            id(daily_outdoor_history).update();
+            id(daily_pad_history).update();
+          }

@@ -75,11 +75,14 @@ wifi:
 # that waits for a Manual Override or a fill to end): updates.yaml.
 # The fill meter as an option (Fill Meter on/off, its pulse test, the
 # long-fill alarm): fill-meter.yaml.
+# History Import, which fills the 7-day record and today's values from
+# another controller's when a board is replaced: history-import.yaml.
 packages:
   wifi_setup: !include wifi-setup.yaml
   device_settings: !include device-settings.yaml
   updates: !include updates.yaml
   fill_meter: !include fill-meter.yaml
+  history_import: !include history-import.yaml
 
 logger:
   level: INFO
@@ -612,7 +615,8 @@ text_sensor:
   # device was off for (or had no clock) are simply missing, not zero.
   # Under HA's 255-character limit for a state: 7 days take ~240 at most.
   # Pushed by filtration_accrue at each rollover; the interval only covers
-  # the first publish after boot.
+  # the first publish after boot. Printed by history_import.h, which History
+  # Import (history-import.yaml) reads these four strings back with.
   - platform: template
     name: "Daily History"
     web_server: {sorting_group_id: grp_plan, sorting_weight: 25}
@@ -621,22 +625,8 @@ text_sensor:
     entity_category: diagnostic
     update_interval: 1h
     lambda: |-
-      std::string out;
-      for (int i = 0; i < 7; i++) {
-        uint32_t d = id(history_dates)[i];
-        if (d == 0) continue;
-        uint16_t m = id(history_filtration_minutes)[i];
-        char buf[64];
-        int len = snprintf(buf, sizeof(buf), "%s%04u-%02u-%02u: %u.%02u h", out.empty() ? "" : ", ",
-                           (unsigned) (d / 10000), (unsigned) (d / 100 % 100), (unsigned) (d % 100),
-                           (unsigned) (m / 60), (unsigned) ((m % 60) * 100 / 60));
-        int16_t lo = id(history_water_min)[i], hi = id(history_water_max)[i];
-        if (lo != INT16_MIN && hi != INT16_MIN) {
-          snprintf(buf + len, sizeof(buf) - len, " %.1f/%.1f °C", lo / 10.0f, hi / 10.0f);
-        }
-        out += buf;
-      }
-      return out.empty() ? std::string("--") : out;
+      return history_import::format_daily(id(history_dates), id(history_filtration_minutes),
+                                          id(history_water_min), id(history_water_max));
   # The plan Daily History's days were measured against: each closed day's
   # Planned Filtration Hours, as it stood at the day's end. Same date and
   # hours format as Daily History; days with no known plan are left out.
@@ -648,19 +638,7 @@ text_sensor:
     icon: mdi:calendar-clock
     entity_category: diagnostic
     update_interval: 1h
-    lambda: |-
-      std::string out;
-      for (int i = 0; i < 7; i++) {
-        uint32_t d = id(history_dates)[i];
-        uint16_t m = id(history_planned_minutes)[i];
-        if (d == 0 || m == 0xFFFF) continue;
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%s%04u-%02u-%02u: %u.%02u h", out.empty() ? "" : ", ",
-                 (unsigned) (d / 10000), (unsigned) (d / 100 % 100), (unsigned) (d % 100),
-                 (unsigned) (m / 60), (unsigned) ((m % 60) * 100 / 60));
-        out += buf;
-      }
-      return out.empty() ? std::string("--") : out;
+    lambda: 'return history_import::format_plan(id(history_dates), id(history_planned_minutes));'
   # The last 7 closed days' outdoor min/max (see Outdoor Min/Max Today), same
   # dates as Daily History, e.g. "2026-11-13: -1.4/9.8 °C, 2026-11-12:
   # 2.0/11.5 °C"; a day with no outdoor reading is left out. Its own sensor so
@@ -673,18 +651,7 @@ text_sensor:
     icon: mdi:calendar-weather
     entity_category: diagnostic
     update_interval: 1h
-    lambda: |-
-      std::string out;
-      for (int i = 0; i < 7; i++) {
-        uint32_t d = id(history_dates)[i];
-        int16_t lo = id(history_outdoor_min)[i], hi = id(history_outdoor_max)[i];
-        if (d == 0 || lo == INT16_MIN || hi == INT16_MIN) continue;
-        char buf[40];
-        snprintf(buf, sizeof(buf), "%s%04u-%02u-%02u: %.1f/%.1f °C", out.empty() ? "" : ", ",
-                 (unsigned) (d / 10000), (unsigned) (d / 100 % 100), (unsigned) (d % 100), lo / 10.0f, hi / 10.0f);
-        out += buf;
-      }
-      return out.empty() ? std::string("--") : out;
+    lambda: 'return history_import::format_range(id(history_dates), id(history_outdoor_min), id(history_outdoor_max));'
   # The same for the equipment pad (see Equipment Pad Min/Max Today), in the
   # same format, e.g. "2026-11-13: 6.2/11.8 °C"; a day with no pad reading
   # is left out.
@@ -695,18 +662,7 @@ text_sensor:
     icon: mdi:calendar-blank-outline
     entity_category: diagnostic
     update_interval: 1h
-    lambda: |-
-      std::string out;
-      for (int i = 0; i < 7; i++) {
-        uint32_t d = id(history_dates)[i];
-        int16_t lo = id(history_pad_min)[i], hi = id(history_pad_max)[i];
-        if (d == 0 || lo == INT16_MIN || hi == INT16_MIN) continue;
-        char buf[40];
-        snprintf(buf, sizeof(buf), "%s%04u-%02u-%02u: %.1f/%.1f °C", out.empty() ? "" : ", ",
-                 (unsigned) (d / 10000), (unsigned) (d / 100 % 100), (unsigned) (d % 100), lo / 10.0f, hi / 10.0f);
-        out += buf;
-      }
-      return out.empty() ? std::string("--") : out;
+    lambda: 'return history_import::format_range(id(history_dates), id(history_pad_min), id(history_pad_max));'
   # Fill water, for the device's own page (Home Assistant has the meter's
   # long-term statistics). Days: the last 30 closed days, newest first, from
   # the date of the newest -- "2026-11-16: 0 19 0 - 940 …" in litres, "-" for
@@ -1237,7 +1193,8 @@ globals:
   # slot), how long the pump ran in minutes, and the water min/max in tenths
   # of a degree (INT16_MIN = not measured that day). Shifted once a day by
   # filtration_accrue's midnight rollover, so these cost one flash write a
-  # day. Read by the Daily History text sensor above.
+  # day. Read by the Daily History text sensor above. History Import
+  # (history-import.yaml) writes them too, and today's values below.
   - id: history_dates
     type: uint32_t[7]
     restore_value: true

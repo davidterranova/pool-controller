@@ -81,6 +81,9 @@ export const E = {
   // Write-only, a one-off tool Home Assistant drives (its history into the record above): known, so the page lists
   // it nowhere (not under Capteurs internes › Autres entités).
   fillImport: "text/Fill Water Import",
+  // Write-only, a one-off tool (history-import.yaml: another controller's 7-day record and today's values, when a board
+  // is replaced): known, so the page lists it nowhere (not under Capteurs internes › Autres entités).
+  historyImport: "text/History Import",
   // From fill-meter.yaml: the meter as an option, its pulse test and its long-fill alarm. A firmware without them
   // counts the meter always: the page shows Remplissage and no « Compteur d'eau ».
   fillEnabled: "switch/Fill Meter",

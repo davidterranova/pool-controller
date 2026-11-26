@@ -250,6 +250,27 @@ timezone, probe roles), and it comes back set up and still paired with
 Home Assistant, with nothing to do on the page. Then it updates like any
 other. See the README.
 
+## Moving to a new board
+
+A replacement board (a spare, or the ESP32-S3 with its touch panel) starts
+with none of the old one's settings and history. Everything a person reads
+on the old one can be written to the new one, while both are on the
+network, the old one only read:
+
+- the settings, through their own entities, then **Apply Filtration
+  Config**;
+- the fill water, through **Fill Water Import** (one line of Fill Water
+  Days, one of Fill Water Months);
+- the 7-day history and today's running values, through **History
+  Import**, in this order: `daily:` (Daily History), then `plan:`,
+  `outdoor:` and `pad:` (Daily Plan, Outdoor and Equipment Pad History),
+  then `today:`. Each line is the old controller's string after its tag,
+  and the new one then shows the same strings.
+
+Passwords, the API key and Wi-Fi are write-only and set again by the
+setup wizard. `make transfer` (docs/plans/s3-panel.md, S9) does all of
+it in that order, then reads everything back.
+
 ## Location & clock
 
 The autonomous filtration schedule needs today's sunrise/sunset and true
@@ -535,6 +556,31 @@ Re-evaluated every 30 seconds, highest priority wins:
      yesterday, `refused:no_clock`); the log says it in English. Before
      1.11.0 it was French (`importé : 30 jours`).
      A 30-day line is at most 191 characters, within a text entity's 255.
+   - **History Import** (config, write-only, not on the device's page)
+     fills the 7-day record and today's running values from another
+     controller's, when a board is replaced (see [Moving to a new
+     board](#moving-to-a-new-board)). It takes one line: a tag, then the
+     other controller's own string —
+     - `daily:` + Daily History: the record's days, hours and water
+       min/max. Refused when the record already holds a newer day;
+     - `plan:` + Daily Plan History, `outdoor:` + Daily Outdoor History,
+       `pad:` + Daily Equipment Pad History: for days already in the record
+       (import `daily:` first). Each is that series' whole truth: a day the
+       line leaves out becomes unknown;
+     - `today:2026-11-26 filtration=192 water=25.1/26.0 outdoor=-2.0/8.5
+       fill=40` (Filtration Hours Today in minutes, the Min/Max Today pairs,
+       Fill Water Today; optional `pad=`; `-` for unknown), only when the
+       date is the controller's today.
+
+     Hours read back to within a minute (the sensors print hundredths of an
+     hour), temperatures exactly. Anything off refuses the whole line, which
+     then changes nothing. Its state is a code: `imported:daily:7`,
+     `imported:plan:7`, `imported:outdoor:7`, `imported:pad:7`,
+     `imported:today`, else why it was refused (`refused:format`,
+     `refused:tag`, `refused:date` — also a day not in the record —,
+     `refused:value`, `refused:too_many`, `refused:future`,
+     `refused:record_ahead`, `refused:not_today`, `refused:no_clock`); the
+     log says it in English.
    - **Firmware Version** (diagnostic) is the commit of this repo the
      firmware was compiled from, as `git describe --tags --always --dirty`
      says it: `v1.3.0`, `v1.3.0-4-g1a2b3c4` (4 commits after that tag),
