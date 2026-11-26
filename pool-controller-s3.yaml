@@ -96,6 +96,22 @@ globals:
   - id: !extend update_check_hours
     initial_value: '0'
 
+# The panel's entities in the page's « Screen » group (« Écran »): here, so the
+# preview's host build (no web server) includes local-panel.yaml as it is.
+web_server:
+  sorting_groups:
+    - id: grp_panel
+      name: "Screen"
+      sorting_weight: 55
+
+select:
+  - id: !extend panel_language
+    web_server: {sorting_group_id: grp_panel, sorting_weight: 10}
+
+number:
+  - id: !extend panel_sleep_after
+    web_server: {sorting_group_id: grp_panel, sorting_weight: 20}
+
 # --- The S3's hardware block: what local-panel.yaml names by id ---------------
 # Written from Elecrow's drawing (DLS30035B1) and the pin map; S6 corrects the
 # rotation, the touch transform and the bus speed on the screen. Until S6 the
@@ -206,6 +222,8 @@ text_sensor:
       return std::string(ips[0].str_to(buf));
 
 sensor:
+  - id: !extend panel_ignored_touches
+    web_server: {sorting_group_id: grp_panel, sorting_weight: 30}
   - platform: template
     id: panel_wifi_rssi
     internal: true
