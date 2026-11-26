@@ -1,0 +1,37 @@
+{
+  "panel": {
+    "fmt": {
+      "unknown": "—",
+      "decimal_sep": ",",
+      "quantity": "{value} {unit}",
+      "min": "{m} min",
+      "h": "{h} h",
+      "h_min": "{h} h {m} min"
+    },
+    "unit": {
+      "celsius": "°C",
+      "litre": "L"
+    },
+    "home": {
+      "change": "Cambiar",
+      "auto_until": "{speed} hasta las {time}",
+      "manual_never": "{speed} · sin límite de tiempo",
+      "manual_left": "{speed} · quedan {left} · Auto a las {time}",
+      "tile": {
+        "water": "Agua",
+        "pad": "Cuarto técnico",
+        "outdoor": "Exterior",
+        "fill_today": "Llenado hoy",
+        "fill_month": "Llenado este mes"
+      }
+    },
+    "sheet": {
+      "hint": {
+        "off_never": "La filtración sigue apagada hasta que la cambie o el controlador se reinicie. El antiheladas sigue arrancando la bomba.",
+        "never": "Un reinicio vuelve a Auto.",
+        "until": "{speed} hasta las {time}, después vuelve a Auto",
+        "for": "{speed} durante {duration}, después vuelve a Auto"
+      }
+    }
+  }
+}

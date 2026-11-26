@@ -1,0 +1,37 @@
+{
+  "panel": {
+    "fmt": {
+      "unknown": "—",
+      "decimal_sep": ".",
+      "quantity": "{value} {unit}",
+      "min": "{m} min",
+      "h": "{h} h",
+      "h_min": "{h} h {m} min"
+    },
+    "unit": {
+      "celsius": "°C",
+      "litre": "L"
+    },
+    "home": {
+      "change": "Change",
+      "auto_until": "{speed} until {time}",
+      "manual_never": "{speed} · no time limit",
+      "manual_left": "{speed} · {left} left · Auto at {time}",
+      "tile": {
+        "water": "Water",
+        "pad": "Equipment pad",
+        "outdoor": "Outdoor",
+        "fill_today": "Fill today",
+        "fill_month": "Fill this month"
+      }
+    },
+    "sheet": {
+      "hint": {
+        "off_never": "Filtration stays off until you change it or the controller restarts. Freeze protection still starts the pump.",
+        "never": "A restart returns to Auto.",
+        "until": "{speed} until {time}, then back to Auto",
+        "for": "{speed} for {duration}, then back to Auto"
+      }
+    }
+  }
+}

@@ -117,6 +117,8 @@ export function scanUsage(text, usage) {
   // t("key"), this._t("key"), and T("key") (a module-level translator, as the card's helpers outside its class use)
   for (const m of text.matchAll(/(?:^|[^\w$])(?:_?t|T)\(\s*(["'`])([\w.:-]+)\1/g)) keys.add(m[2]);
   for (const m of text.matchAll(/(?:^|[^\w$])(?:_?t|T)\(\s*`([\w.:-]*)\$\{/g)) prefixes.add(m[1]);
+  // the panel's C++: tr_prefix("common.speed.", code), a key built at run time from a firmware code
+  for (const m of text.matchAll(/(?:^|[^\w$])tr_prefix\(\s*"([\w.:-]*)"/g)) prefixes.add(m[1]);
   // HTML filled from its attributes: data-i18n="key", data-i18n-<attribute>="key"
   for (const m of text.matchAll(/\sdata-i18n(?:-[\w-]+)?\s*=\s*(["'])([\w.:-]+)\1/g)) keys.add(m[2]);
   // a key handed over another way (t(cond ? "a" : "b")): any dotted literal; it only counts as used, it is never required

@@ -24,7 +24,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build firmware-test flash status kill-port ota ip logs webui webui-test card i18n-check ha-files i18n-export i18n-import mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test clean
+.PHONY: validate build firmware-test panel-i18n panel-glyphsets panel-preview-image panel-shots panel-preview-check flash status kill-port ota ip logs webui webui-test card i18n-check ha-files i18n-export i18n-import mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate: webui
@@ -40,7 +40,7 @@ build: webui
 # Import; fill_meter.h's fills, long-fill alarm and pulse test;
 # components/page_login's HMAC, sessions, nonces and lockout), with the
 # ESPHome image's g++.
-FIRMWARE_TESTS := updates_test fill_import_test fill_meter_test page_login_test
+FIRMWARE_TESTS := updates_test fill_import_test fill_meter_test page_login_test panel_ui_test
 firmware-test:
 	docker run --rm -v "$(CURDIR):/config" -w /config --entrypoint sh $(ESPHOME_IMAGE) -c \
 		'set -e; for t in $(FIRMWARE_TESTS); do g++ -std=c++20 -Wall -Wextra -Werror -o /tmp/$$t tools/tests/$$t.cpp; /tmp/$$t; done'
@@ -258,11 +258,23 @@ webui-test:
 #   i18n-export   every text in English as one Markdown file, .i18n/translations.en.md, for any translation tool
 #   i18n-import   the translated file back into each surface's <TO>.json: make i18n-import TO=es FILE=~/Downloads/x.md
 #                 (DRY_RUN=1: only report). TO, not LANG: LANG is the shell's locale.
+#   panel-i18n    panel_i18n.h, the touch panel's texts compiled in, from i18n-panel/{en,fr,es}.json and the card's
+#                 keys the panel uses (tools/i18n/panel-header.mjs); fails on a plural, a missing language, or a
+#                 character no font of local-panel.yaml covers. i18n-check fails when panel_i18n.h is stale.
+#   panel-glyphsets  tools/i18n/panel-glyphsets.json, the characters of the fonts' glyph sets, from the ESPHome
+#                 image's esphome-glyphsets: after an ESPHOME_VERSION bump
 I18N_NODE := docker run --rm -v "$(CURDIR):/src" -w /src node:22-alpine node
 
 i18n-check:
 	$(I18N_NODE) tools/i18n/check.mjs
 	$(I18N_NODE) tools/i18n/ha-files.mjs --check
+	$(I18N_NODE) tools/i18n/panel-header.mjs --check
+
+panel-i18n:
+	$(I18N_NODE) tools/i18n/panel-header.mjs
+
+panel-glyphsets:
+	docker run --rm -v "$(CURDIR):/config" --entrypoint python3 $(ESPHOME_IMAGE) -I /config/tools/i18n/panel-glyphsets.py > tools/i18n/panel-glyphsets.json
 
 ha-files:
 	$(I18N_NODE) tools/i18n/ha-files.mjs
