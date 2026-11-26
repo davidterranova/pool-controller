@@ -207,10 +207,9 @@ you set `local: true` back).
 - **The touch panel** of the ESP32-S3 build: `MOCK_PANEL=1 make mock-webui`
   (`--panel`) adds Panel Language, Panel Sleep After and Panel Ignored Touches,
   so « Controller settings » (« Réglages contrôleur ») shows « Screen » (« Écran »).
-  They come from `local-panel.yaml` once the branch has it, else from
-  `tools/webui-mock/panel-stand-in.yaml`. `make mock-ui-check` checks the
-  layout with them too, and `pool-controller-s3.yaml` once it exists (the
-  mock follows packages included by packages).
+  They come from `local-panel.yaml`. `make mock-ui-check` checks the
+  layout with them too, and `pool-controller-s3.yaml` (the mock follows
+  packages included by packages).
 - An entity the simulation doesn't know (e.g. one you just added) still
   shows up, with a static value. `make mock-ui-check` marks it
   `[static: not simulated]`. Add it to the `N` map in `mock_server.py` to make
