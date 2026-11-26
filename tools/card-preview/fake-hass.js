@@ -134,7 +134,7 @@ export class FakeHass {
     return new Promise((ok) => setTimeout(() => ok(out), 200));
   }
 
-  /** The last 24 h: the water and outdoor sensors every 5 min, the commanded speed by the plan's blocks, the override's states. */
+  /** The last 24 h: the water, outdoor and equipment pad sensors every 5 min, the commanded speed by the plan's blocks, the override's states. */
   _history(msg) {
     const now = Date.now(), from = now - D, out = {};
     for (const id of msg.entity_ids) {
@@ -157,6 +157,16 @@ export class FakeHass {
         for (let t = from; t <= until; t += 5 * M) {
           const d = new Date(t), h = d.getHours() + d.getMinutes() / 60;
           rows.push({ s: (v - 2 + 4.5 * Math.sin(((h - 9) / 24) * 2 * Math.PI) + (r() - 0.5) * 0.4).toFixed(1), lu: t / 1000 });
+        }
+        out[id] = rows;
+      } else if (k === "pad") {
+        // the equipment pad: sheltered, it follows the air from afar, a little later
+        const spec = this.specs.pad, r = rand(13), rows = [];
+        const v = parseFloat(spec !== null && typeof spec === "object" ? spec.s : spec);
+        const until = this.scenario.offline ? now - this.scenario.offline * M : now;
+        for (let t = from; t <= until; t += 5 * M) {
+          const d = new Date(t), h = d.getHours() + d.getMinutes() / 60;
+          rows.push({ s: (v - 0.8 + 1.5 * Math.sin(((h - 11) / 24) * 2 * Math.PI) + (r() - 0.5) * 0.2).toFixed(1), lu: t / 1000 });
         }
         out[id] = rows;
       } else if (k === "commanded") {
@@ -186,7 +196,7 @@ export class FakeHass {
     return out;
   }
 
-  /** Long-term statistics: the pool's min/max (hourly and daily), the probe's daily mean, the fill meter's change. */
+  /** Long-term statistics: the pool's min/max (hourly and daily), the probe's daily mean, the outdoors' and the pad's day, the fill meter's change. */
   _statistics(msg) {
     const start = Date.parse(msg.start_time), now = Date.now(), out = {};
     for (const id of msg.statistic_ids) {
@@ -198,6 +208,11 @@ export class FakeHass {
         const day = new Date(d); day.setHours(0, 0, 0, 0);
         if (now - day.getTime() < D) continue; // today has no closed statistics
         const r = rand(day.getTime() / D), t = seasonal(day) + (r() - 0.5) * 0.8;
+        if (k === "pad") { // the equipment pad: sheltered, a narrow day a few degrees over the water
+          const lo = t + 2 + (r() - 0.5) * 1.5, hi = lo + 1.5 + r() * 2.5;
+          rows.push({ start: d.getTime(), end: d.getTime() + D, min: +lo.toFixed(2), max: +hi.toFixed(2), mean: +((lo + hi) / 2).toFixed(2) });
+          continue;
+        }
         if (k === "outdoor") { // the air: a wider day, a few degrees under the water
           const lo = t - 7 + (r() - 0.5) * 3, hi = lo + 7 + r() * 6;
           rows.push({ start: d.getTime(), end: d.getTime() + D, min: +lo.toFixed(2), max: +hi.toFixed(2), mean: +((lo + hi) / 2).toFixed(2) });
