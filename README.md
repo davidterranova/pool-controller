@@ -21,7 +21,7 @@ tooling, and building the firmware yourself.
 | File | Purpose |
 |---|---|
 | `pool-controller.yaml` | The ESPHome device config — this *is* the firmware source. |
-| `pool-controller-s3.yaml`, `local-panel.yaml` | The ESP32-S3 build with a touch panel, in progress on `feat/s3-panel` ([plan](docs/plans/s3-panel.md)): `pool-controller.yaml` included as a package, under the S3's board, pins and panel (see [The ESP32-S3 build](#the-esp32-s3-build)). `local-panel.yaml` is a stub until the panel is written. |
+| `pool-controller-s3.yaml`, `local-panel.yaml` | The ESP32-S3 build with a touch panel, in progress on `feat/s3-panel` ([plan](docs/plans/s3-panel.md)): `pool-controller.yaml` included as a package, under the S3's board, pins and panel (see [The ESP32-S3 build](#the-esp32-s3-build)). `local-panel.yaml` is the panel: its screens, sleep and wake, and entities. |
 | `wifi-setup.yaml` | Package included by `pool-controller.yaml`: fallback hotspot, joining a network from the page, Wi-Fi statistics, clock from the browser (see below). |
 | `device-settings.yaml`, `device_settings.h` | Package included by `pool-controller.yaml`: the controller's settings, set at run time and kept on the device (page and OTA passwords, API key, position, timezone, probe roles, Setup State, Factory Reset). Nothing personal is compiled in. |
 | `fill-meter.yaml`, `fill_meter.h` | Package included by `pool-controller.yaml`: the fill-line water meter as an option (Fill Meter on/off, its pulse test, the long-fill alarm and its acknowledgement). `fill_meter.h` is pure logic, tested on the host (`make firmware-test`). |
@@ -155,7 +155,7 @@ the [plan](docs/plans/secret-free-firmware.md).
 | `make firmware-test` | Host tests of the firmware's pure C++ helpers (`tools/tests/`). Runs in CI. |
 | `make webui-test` | Unit tests of the device's page and the install page's pure modules, with Node's test runner. Runs in CI. |
 | `make card-preview` | Serve the pool card's preview at http://localhost:8124/tools/card-preview/ (see [Previewing the card](#previewing-the-card)). `make card-shots` screenshots every situation into `tools/card-preview/shots/` (`SCENARIO=a,b` for some); `make card-preview-check` loads them all and fails on an error or a « NaN »; it runs in CI, on the built card (`CARD_BUNDLE=1`). |
-| `make panel-shots` | Build the touch panel for your computer and screenshot each scenario in each language into `tools/panel-preview/shots/` (`SCENARIO=a,b`, `LANGS=fr`). `make panel-preview-check` fails on a key or « nan » shown instead of a text; it runs in CI. See [Working on the panel without hardware](#working-on-the-panel-without-hardware). |
+| `make panel-shots` | Build the touch panel for your computer and screenshot each screen in each scenario and language into `tools/panel-preview/shots/` (`SCENARIO=a,b`, `SCREEN=home`, `LANGS=fr`). `make panel-preview-check` fails on a key or « nan » shown instead of a text, then taps through the panel's flows; it runs in CI. See [Working on the panel without hardware](#working-on-the-panel-without-hardware). |
 | `make panel-i18n` | Write `panel_i18n.h`, the panel's texts compiled in, from `i18n-panel/` and the card's keys the panel uses. `make i18n-check` fails when it is out of date. `make panel-glyphsets` refreshes the fonts' character list after an ESPHome bump. |
 | `make card` | Build the card as a release ships it: `home-assistant/piscine-card.js` with its texts, minified, into `home-assistant/dist/piscine-card.js`. |
 | `make i18n-check` | Fail when a language lacks a text, or a translation changed its placeholders, plural forms or markup, copies the English, or a key the code uses is missing, or when a Home Assistant file is out of date with its template (see [Languages](#languages)). Runs in CI. |
@@ -611,22 +611,32 @@ board, no screen, no controller.
   ([preview.yaml](tools/panel-preview/preview.yaml)). Template entities
   stand in for the controller's, under the firmware's own ids
   (`manual_override`, `pool_return_temp`…), and for the S3's display, touch,
-  backlight and Auto button. It builds in the ESPHome image plus SDL2 and
-  Xvfb ([Dockerfile](tools/panel-preview/Dockerfile)), so you only need
-  Docker. The first build takes a few minutes.
-- **`make panel-shots`** draws every scenario (Auto, an override with a time
-  limit, one with none, Off, no readings: `SCENARIOS` in
+  backlight, Auto button and Wi-Fi. It builds in the ESPHome image plus
+  SDL2, Xvfb and xdotool ([Dockerfile](tools/panel-preview/Dockerfile)), so
+  you only need Docker. The first build takes a few minutes.
+- **`make panel-shots`** draws each screen (home, the pump-mode sheet,
+  status) in every scenario (Auto, an override with a time limit, one with
+  none, Off, Fill Meter off, a fill running too long, freeze protection, no
+  Wi-Fi, no readings: `SCENARIOS` in
   [preview.h](tools/panel-preview/preview.h)) in English, French and
   Spanish, into `tools/panel-preview/shots/<lang>-<screen>-<state>.png`
-  (480×320, gitignored). `SCENARIO=auto,off` or `LANGS=fr` for fewer. One
-  build serves every shot: the scenario and the language are picked when
-  the program starts.
+  (480×320, gitignored). `SCENARIO=auto,off`, `SCREEN=sheet` or `LANGS=fr`
+  for fewer. One build serves every shot: the scenario, the screen and the
+  language are picked when the program starts.
 - **`make panel-preview-check`** does the same, and fails when a screen
   shows a dictionary key, « nan » or a text the panel couldn't find instead
-  of a text, or a run logs an error. CI runs it and keeps the shots as the
-  run's artifact (`panel-shots`).
+  of a text, or a run logs an error. Then it runs the flows (`FLOWS` in
+  [shoot.py](tools/panel-preview/shoot.py)): the panel used by taps on the
+  screen (xdotool) and the preview's commands (the Auto button, a language),
+  each step checked against the log: Apply writes Manual Override Timeout
+  then Manual Override, Cancel and sleep discard the sheet, a touch on a
+  sleeping screen only wakes it, the Auto button sets Auto and wakes the
+  screen, an override expires back to Auto, Panel Language relabels at
+  once. CI runs it and keeps the shots as the run's artifact
+  (`panel-shots`).
 - **A new scenario** is a line in `SCENARIOS`; a new stand-in, an entity in
-  `preview.yaml` with the firmware's id.
+  `preview.yaml` with the firmware's id; a new flow, an entry in `FLOWS`
+  (the buttons' centres are in `AT`: move them with the layout).
 - **The logic** the screens show (the pump-mode sheet, time left, number and
   duration formats, the ignored-touch counter) is in `panel_ui.h`, tested on
   the host by `make firmware-test`.
