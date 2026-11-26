@@ -268,8 +268,11 @@ network, the old one only read:
   and the new one then shows the same strings.
 
 Passwords, the API key and Wi-Fi are write-only and set again by the
-setup wizard. `make transfer` (docs/plans/s3-panel.md, S9) does all of
-it in that order, then reads everything back.
+setup wizard. `make transfer` does all of it in that order, then reads
+everything back and fails on any difference; see the README's « Moving a
+controller to a new board ». A probe role moves only once its probe is on
+the new board's bus (Rescan Probes): until the probes are moved, pick them
+on the new board's page afterwards.
 
 ## Location & clock
 

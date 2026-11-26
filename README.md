@@ -36,6 +36,7 @@ tooling, and building the firmware yourself.
 | `tools/tz-posix.py` | Regenerates the card's IANA → POSIX time-zone table from tzdata (« Utiliser la position et le fuseau de Home Assistant »). |
 | `tools/release/` | Release helpers for CI: the guard that keeps secrets out of a published firmware, the firmware's `manifest.json`, and whether a release carries a new firmware (see [Releases](#releases)), with their tests (`python3 -I tools/release/test_manifest.py`, `python3 -I tools/release/test_firmware_release.py`). |
 | `tools/migrate/` | `make migrate`: moves a controller built with `secrets.yaml` to this firmware in one OTA (see [Coming from a secrets.yaml build](#coming-from-a-secretsyaml-build)). |
+| `tools/transfer/` | `make transfer`: copies one controller's settings and on-device histories to another when a board is replaced, then checks them (see [Moving a controller to a new board](#moving-a-controller-to-a-new-board)). `fake_controller.py` stands in for both controllers in its tests (`make transfer-test`). |
 | `docs/install/` | The install page, served at the root of <https://pool-controller.kitesize.fr/> (see [The install page](#the-install-page-docsinstall)). |
 | `webui/` | The device's own web page, built around the same `piscine-card` (see below). `make webui` bundles it into `webui/dist/` (gitignored), which the firmware embeds. `i18n-page/`: its own texts; `piscine-card.js`, `i18n.js` and `i18n/` are symlinks to the card's. |
 | `docs/plans/` | Plans for work spanning several PRs, with their progress: [secret-free firmware and OTA updates](docs/plans/secret-free-firmware.md), [optional fill meter](docs/plans/optional-fill-meter.md), [internationalisation (English, French, Spanish)](docs/plans/i18n.md). |
@@ -135,6 +136,47 @@ for the next `make ota`. From then on it updates like any other, and
 `secrets.yaml` can go. Details: `make migrate` in the Makefile, and WP8 of
 the [plan](docs/plans/secret-free-firmware.md).
 
+## Moving a controller to a new board
+
+A replacement board (a spare, or the ESP32-S3 with its touch panel) starts
+with none of the old one's settings or history. With both on the network,
+`make transfer` copies them over the native API, reading the old one only:
+
+```sh
+# 1. A dry run: reads the old controller, prints every write it would make.
+make transfer FROM=pool-controller.local TO=pool-panel-bench.local
+# 2. Writes them to the new one, then reads it back and compares.
+make transfer FROM=pool-controller.local TO=pool-panel-bench.local APPLY=1
+```
+
+- **The keys** are each controller's API encryption key, as Home Assistant
+  shows it. Give them in the environment, `FROM_KEY=… TO_KEY=… make
+  transfer …` (a leading space keeps the line out of most shells' history),
+  or in files, `FROM_KEY_FILE=… TO_KEY_FILE=…`. They are never printed.
+  Leave one out for a controller not paired yet (its API is open).
+- **What moves**, in this order: the schedule (Min/Max Filtration Hours, the
+  offsets and the boost), then « Apply Filtration Config »; Freeze
+  Protection Temperature and Manual Override Timeout; Timezone, Latitude and
+  Longitude; the probe roles (Pool/Pad/Outdoor Probe), after a « Rescan
+  Probes » on the new board; Fill Meter and Fill Alarm After; the fill water
+  (Fill Water Import: Fill Water Days, then Months); the 7-day history and
+  today's running values (History Import: `daily:`, `plan:`, `outdoor:`,
+  `pad:`, `today:`). See [Moving to a new board](POOL-CONTROLLER.md#moving-to-a-new-board).
+- **The check:** after `APPLY=1` it reads the new board back over a new
+  connection, and fails on any setting that differs, any history string
+  that isn't the old one's (hours within one minute), or any import the
+  new board refused.
+- **What doesn't move**, and it says so at the end: the passwords and the API
+  key (write-only, set by the new board's setup wizard), Wi-Fi, the panel's
+  settings, and the update settings unless `WITH_UPDATES=1`. A probe role
+  whose probe isn't on the new board's bus yet is left too: once the probe is
+  wired there, press « Rescan Probes » and pick it on the new board's page.
+- **Safety:** it never writes to `FROM`, and stops when `FROM` and `TO` are
+  the same controller. Manual Override is never copied.
+
+The tool is `tools/transfer/transfer.py`, run in the ESPHome image like
+`make migrate`; `make transfer-test` runs it against two fake controllers.
+
 ## Makefile targets
 
 | Target | What it does |
@@ -148,6 +190,7 @@ the [plan](docs/plans/secret-free-firmware.md).
 | `make kill-port` | Kill whatever process (a leftover `screen`/monitor session, usually) is holding the serial port open. |
 | `make ota` | Rebuild, then push the firmware over Wi-Fi instead of USB. Only works once the device has already joined Wi-Fi at least once; the OTA Password comes from `.ota-password` or `OTA_PASSWORD=`. |
 | `make migrate` | Move a controller built with `secrets.yaml` to this firmware in one OTA (see above). `make migrate-build` only builds it, `make migrate-check` repeats its checks, `make migrate-clean` deletes the generated build, `make migrate-test` runs its tests. |
+| `make transfer` | Copy one controller's settings and histories to another (see [Moving a controller to a new board](#moving-a-controller-to-a-new-board)). `make transfer-test` runs its tests against two fake controllers; it runs in CI. |
 | `make ip` | Resolve and print the device's current IP via mDNS. |
 | `make mock-ui` | Serve a local mock of the device's web UI at http://localhost:8080/ (see below). `MOCK_PORT=` to change the port, `MOCK_INDEX=path.html` to serve your own page. |
 | `make mock-webui` | `make mock-ui` serving the page from its sources in `webui/`, reloading on save (see below). `MOCK_HOTSPOT=1` starts the simulated device on its hotspot, with no clock. |
