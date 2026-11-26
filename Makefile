@@ -24,7 +24,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build validate-s3 build-s3 flash-s3 ota-s3 logs-s3 firmware-test flash status kill-port ota ip logs webui webui-test card i18n-check ha-files i18n-export i18n-import mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test clean
+.PHONY: validate build validate-s3 build-s3 flash-s3 ota-s3 s3-ota-guard logs-s3 firmware-test flash status kill-port ota ip logs webui webui-test card i18n-check ha-files i18n-export i18n-import mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate: webui
@@ -160,6 +160,9 @@ logs:
 # (pool-panel-bench.local, its own hotspot), so it never clashes with the
 # controller in place; without it, the device is pool-controller, as the WROOM.
 # HOST= and PORT= work as for the WROOM's targets.
+# ota-s3 refuses to run without BENCH=1: until the swap (S11 of the plan),
+# pool-controller.local is the WROOM running the pool, which nothing on this
+# branch may write to. LIVE=1 lifts the guard, for the S3 once it runs the pool.
 S3_CONFIG := pool-controller-s3.yaml
 S3_NAME := $(if $(BENCH),pool-panel-bench,pool-controller)
 S3_ARGS := $(if $(BENCH),-s device_name $(S3_NAME))
@@ -184,7 +187,11 @@ flash-s3: build-s3
 
 ota-s3 logs-s3: HOSTNAME = $(S3_NAME).local
 
-ota-s3: build-s3
+# Before the build, so a forgotten BENCH=1 fails at once.
+s3-ota-guard:
+	@test -n "$(BENCH)$(LIVE)" || (echo "make ota-s3 needs BENCH=1: without it, it would upload to pool-controller.local, the controller running the pool. LIVE=1 only once the S3 is that controller (docs/plans/s3-panel.md, S11)." && exit 1)
+
+ota-s3: s3-ota-guard build-s3
 	@test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
 	@test -n "$(OTA_PASSWORD)" || (echo "No OTA password: put the controller's OTA Password in .ota-password, or pass OTA_PASSWORD=..." && exit 1)
 	@$(ESPHOME) $(S3_ARGS) -s ota_password "$(OTA_PASSWORD)" upload $(S3_CONFIG) --device $(HOST)

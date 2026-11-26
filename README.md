@@ -109,7 +109,9 @@ updates are off. Its targets mirror the ones above: `make validate-s3`,
 `make build-s3`, `make flash-s3`, `make ota-s3`, `make logs-s3`. Add
 `BENCH=1` for a board on the bench: it is then `pool-panel-bench`
 (`pool-panel-bench.local`, hotspot `pool-panel-bench`), so it never clashes
-with the controller in place.
+with the controller in place. `make ota-s3` refuses to run without it,
+since `pool-controller.local` is the controller running the pool: `LIVE=1`
+lifts that guard, once an S3 is that controller.
 
 A controller running your own build still checks the published releases:
 your build reports `git describe`'s version (`v1.5.0-3-g1a2b3c4`, `dev`),

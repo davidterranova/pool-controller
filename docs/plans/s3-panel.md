@@ -657,7 +657,7 @@ Only S6 waits for the display.
 - [ ] The swap, with each step dated here:
   1. Export the controller's entity ids from Home Assistant.
   2. Run `make transfer FROM=pool-controller.local TO=pool-panel-bench.local` dry, then with `APPLY=1`.
-  3. Rebuild the S3 with the default `device_name` (`make ota-s3`). Power the WROOM off and keep it as it is.
+  3. Rebuild the S3 with the default `device_name` (`make ota-s3 LIVE=1 HOST=<the bench board's IP>`: LIVE=1 lifts the guard that keeps `ota-s3` off the live controller). Power the WROOM off and keep it as it is.
   4. Move the wiring: relays to the pump's DI terminals, the three probes, the water meter. Then power on.
   5. Home Assistant: take the rehearsed path. Check that the HomeKit Bridge still exposes Pump.
   6. Check A7 on the pool, A4, A5 and A11.
