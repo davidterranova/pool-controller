@@ -16,6 +16,11 @@ jobs:
       - name: No !secret in the firmware's sources
         run: python3 tools/release/secret_guard.py pool-controller.yaml
 
+      # The ESP32-S3 build (docs/plans/s3-panel.md) includes the WROOM's and
+      # adds its own files: the same guard over them.
+      - name: No !secret in the S3 build's sources
+        run: python3 tools/release/secret_guard.py pool-controller-s3.yaml
+
       # The firmware's manifest.json (tools/release/manifest.py), on made-up
       # images: what the install page and the update check read.
       - name: Release manifest tests
@@ -29,6 +34,11 @@ jobs:
       # With the Makefile's pinned ESPHome (ESPHOME_VERSION).
       - name: make validate
         run: make validate
+
+      # The ESP32-S3 build's config (pool-controller-s3.yaml): pool-controller.yaml
+      # as a package under the S3's board, pins and panel.
+      - name: make validate-s3
+        run: make validate-s3
 
       # Host tests of the firmware's pure C++ helpers (tools/tests/).
       - name: make firmware-test
@@ -62,6 +72,19 @@ jobs:
       # values: never a secrets.yaml or a controller here.
       - name: make migrate-test
         run: make migrate-test
+
+  # The ESP32-S3 build compiled (make build-s3), on pull requests: the S3 has
+  # no release yet (S12 of docs/plans/s3-panel.md publishes it), so a broken
+  # compile would show nowhere else. Its own job, in parallel with the checks.
+  build-s3:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: make build-s3
+        run: make build-s3
 
   # The pool card in every situation of tools/card-preview/ (scenarios.js), on each of its tabs, at a phone's
   # and a screen's width: fails on a page or console error, or on « undefined » / « NaN » in what it shows.
