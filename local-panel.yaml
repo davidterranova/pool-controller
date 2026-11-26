@@ -1,0 +1,197 @@
+# The touch panel (ESP32-S3 build; docs/plans/s3-panel.md): fonts, LVGL pages, the panel's entities.
+# pool-controller-s3.yaml includes it as a package, and so does the preview (tools/panel-preview/), so it names its
+# hardware only by id: panel_display (the ST7796), panel_touch (the FT6336U), panel_backlight and auto_button come
+# from the S3's hardware block, or from the preview's stand-ins. It reads the controller's own entities by their ids
+# in pool-controller.yaml (manual_override, manual_override_timeout_minutes, override_since_ms, last_commanded,
+# the probes' sensors, fill_today_sensor, local_time).
+#
+# S3 (scaffolding) state: the fonts, Panel Language and a placeholder home screen that proves the texts, the fonts
+# and the preview. S4 replaces the placeholder with the panel's screens (home, the pump-mode sheet, status), its
+# sleep and wake, Panel Sleep After and Panel Ignored Touches.
+#
+# Texts: every one through panel_ui.h's T() / tr_prefix() from panel_i18n.h, never a literal
+# (.claude/rules/translations.md). panel_i18n.h is generated from i18n-panel/{en,fr,es}.json: make panel-i18n.
+#
+# Stable, never renamed (an NVS key is the md5 of its global's id; Home Assistant keys on the names):
+#   Panel Language (select, options en, fr, es)   global panel_lang (uint8_t, panel_i18n::Lang), default en
+
+esphome:
+  # A list: pool-controller.yaml has its own. panel_ui.h includes panel_i18n.h, so both are copied.
+  includes:
+    - panel_i18n.h
+    - panel_ui.h
+  on_boot:
+    # After the globals are restored, before the first draw.
+    - priority: -100
+      then:
+        - lambda: |-
+            panel_ui::set_lang((panel_i18n::Lang) id(panel_lang));
+            panel_ui::on_missing = [](const char *key) { ESP_LOGW("panel", "no text for %s", key); };
+            id(panel_language).publish_state(panel_ui::lang_code(panel_ui::current_lang));
+        - script.execute: panel_refresh
+
+globals:
+  - id: panel_lang
+    type: uint8_t
+    restore_value: true
+    initial_value: '0'
+
+select:
+  # The panel's language, as a code (en, fr, es): the page shows the languages' names (S5), and the setup wizard
+  # sets it to the page's language. A change relabels the panel at once.
+  - platform: template
+    name: "Panel Language"
+    id: panel_language
+    icon: mdi:translate
+    entity_category: config
+    options: ["en", "fr", "es"]
+    set_action:
+      - lambda: |-
+          panel_ui::set_lang(panel_ui::lang_from_code(x.c_str()));
+          id(panel_lang) = panel_ui::current_lang;
+          id(panel_language).publish_state(x);
+          ESP_LOGI("panel", "Panel Language: %s", x.c_str());
+      - script.execute: panel_refresh
+
+# Montserrat (LVGL's own face) with GF_Latin_Core, which holds every accent of the three languages, ° and …; plus
+# ³ for m³. tools/i18n/panel-header.mjs reads these glyph sets: make panel-i18n fails when a text needs a character
+# a font lacks. Sizes are S4's to settle (their flash cost).
+font:
+  - file: "gfonts://Montserrat"
+    id: panel_font_s
+    size: 16
+    bpp: 4
+    glyphsets: [GF_Latin_Core]
+    glyphs: "³"
+  - file: "gfonts://Montserrat"
+    id: panel_font_m
+    size: 20
+    bpp: 4
+    glyphsets: [GF_Latin_Core]
+    glyphs: "³"
+  - file:
+      type: gfonts
+      family: Montserrat
+      weight: 600
+    id: panel_font_l
+    size: 28
+    bpp: 4
+    glyphsets: [GF_Latin_Core]
+    glyphs: "³"
+
+lvgl:
+  displays: [panel_display]
+  touchscreens: [panel_touch]
+  default_font: panel_font_m
+  bg_color: 0xF4F6F8
+  pages:
+    # Placeholder (S3): the mode line, Change, and the five tiles. S4's home screen replaces it.
+    - id: panel_home
+      widgets:
+        - label:
+            id: panel_mode_line
+            x: 12
+            y: 14
+            width: 340
+            long_mode: wrap
+            text_font: panel_font_m
+            text: ""
+        - button:
+            id: panel_change
+            x: 360
+            y: 8
+            width: 108
+            height: 44
+            widgets:
+              - label:
+                  id: panel_change_label
+                  align: center
+                  text_font: panel_font_s
+                  text: ""
+        - obj:
+            x: 12
+            y: 100
+            width: 148
+            height: 96
+            pad_all: 10
+            scrollbar_mode: "OFF"
+            widgets:
+              - label: {id: panel_water_name, x: 0, y: 0, width: 128, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - label: {id: panel_water_value, align: bottom_left, x: 0, y: 0, text_font: panel_font_l, text: ""}
+        - obj:
+            x: 166
+            y: 100
+            width: 148
+            height: 96
+            pad_all: 10
+            scrollbar_mode: "OFF"
+            widgets:
+              - label: {id: panel_pad_name, x: 0, y: 0, width: 128, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - label: {id: panel_pad_value, align: bottom_left, x: 0, y: 0, text_font: panel_font_l, text: ""}
+        - obj:
+            x: 320
+            y: 100
+            width: 148
+            height: 96
+            pad_all: 10
+            scrollbar_mode: "OFF"
+            widgets:
+              - label: {id: panel_outdoor_name, x: 0, y: 0, width: 128, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - label: {id: panel_outdoor_value, align: bottom_left, x: 0, y: 0, text_font: panel_font_l, text: ""}
+        - obj:
+            x: 12
+            y: 206
+            width: 225
+            height: 96
+            pad_all: 10
+            scrollbar_mode: "OFF"
+            widgets:
+              - label: {id: panel_fill_today_name, x: 0, y: 0, width: 205, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - label: {id: panel_fill_today_value, align: bottom_left, x: 0, y: 0, text_font: panel_font_l, text: ""}
+        - obj:
+            x: 243
+            y: 206
+            width: 225
+            height: 96
+            pad_all: 10
+            scrollbar_mode: "OFF"
+            widgets:
+              - label: {id: panel_fill_month_name, x: 0, y: 0, width: 205, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - label: {id: panel_fill_month_value, align: bottom_left, x: 0, y: 0, text_font: panel_font_l, text: ""}
+
+script:
+  # Every text of the placeholder, in the panel's language: on boot, on a Panel Language change, every 5 s.
+  - id: panel_refresh
+    mode: queued
+    then:
+      - lambda: |-
+          using namespace panel_ui;
+          Mode mode;
+          mode_from_option(id(manual_override).current_option().c_str(), mode);
+          int now_minute = -1, now_second = 0;
+          auto now = id(local_time).now();
+          if (now.is_valid()) {
+            now_minute = now.hour * 60 + now.minute;
+            now_second = now.second;
+          }
+          OverrideTime t = override_time(id(override_since_ms), millis(), id(manual_override_timeout_minutes).state);
+          std::string line = mode_line(mode, id(last_commanded), -1, t, now_minute, now_second, current_lang);
+          lv_label_set_text(id(panel_mode_line), line.c_str());
+          lv_label_set_text(id(panel_change_label), T("panel.home.change"));
+          lv_label_set_text(id(panel_water_name), T("panel.home.tile.water"));
+          lv_label_set_text(id(panel_pad_name), T("panel.home.tile.pad"));
+          lv_label_set_text(id(panel_outdoor_name), T("panel.home.tile.outdoor"));
+          lv_label_set_text(id(panel_fill_today_name), T("panel.home.tile.fill_today"));
+          lv_label_set_text(id(panel_fill_month_name), T("panel.home.tile.fill_month"));
+          const char *celsius = T("panel.unit.celsius"), *litre = T("panel.unit.litre");
+          lv_label_set_text(id(panel_water_value), quantity(id(pool_return_temp).state, 1, celsius, current_lang).c_str());
+          lv_label_set_text(id(panel_pad_value), quantity(id(pad_ambient_temp).state, 1, celsius, current_lang).c_str());
+          lv_label_set_text(id(panel_outdoor_value), quantity(id(outdoor_temp).state, 1, celsius, current_lang).c_str());
+          lv_label_set_text(id(panel_fill_today_value), quantity(id(fill_today_sensor).state, 0, litre, current_lang).c_str());
+          // This month's fill (closed days plus today) is S4's: unknown on the placeholder.
+          lv_label_set_text(id(panel_fill_month_value), quantity(NAN, 0, litre, current_lang).c_str());
+
+interval:
+  - interval: 5s
+    then:
+      - script.execute: panel_refresh

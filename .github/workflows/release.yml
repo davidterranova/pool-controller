@@ -75,7 +75,10 @@ jobs:
       # (components/) and the device's page (webui/, which also bundles the card).
       - name: A changed card or firmware has a new VERSION
         run: |
-          git fetch --depth=1 origin "${{ github.base_ref }}"
+          # No --depth: on this full clone it would graft the history at the
+          # base's tip, and the next step's diff from the last release would
+          # find no merge base (always, on a branch other than main).
+          git fetch origin "${{ github.base_ref }}"
           changed=$(git diff --name-only FETCH_HEAD -- home-assistant/piscine-card.js home-assistant/i18n.js home-assistant/i18n webui components ':(glob)*.yaml' ':(glob)*.h')
           if [ -z "$changed" ]; then
             echo "Neither the card nor the firmware changed."
