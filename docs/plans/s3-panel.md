@@ -401,7 +401,7 @@ Tick each one only with its evidence (PR, command, or the date of the hardware c
 | S5 | 1 (any time) | Controller page + mock: « Screen », wizard | contract | — | todo | — |
 | S6 | 1 | Screen on the bench: wiring, rotation, touch, the panel checked on it | S2, S4, display delivered | — | todo | — |
 | S7 | 2 | Relays and a bench probe: pump safety on the S3 | M1 | — | todo | — |
-| S8 | 3 (any time) | History Import (every build) | contract | `feat/s3-panel-s8-history` | in progress | — |
+| S8 | 3 (any time) | History Import (every build) | contract | `feat/s3-panel-s8-history` | in progress (bench check waits for hardware) | [#90](https://github.com/davidterranova/pool-controller/pull/90) |
 | S9 | 3 (any time) | Transfer tool | S8 | — | todo | — |
 | S10 | 3 | Probes, water meter, box: the full wiring on the bench | M2 | — | todo | — |
 | S11 | 3 | Burn-in, swap and go-live on the pool | S9, S10 | — | todo | — |
