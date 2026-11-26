@@ -416,7 +416,7 @@ Tick each one only with its evidence (PR, command, or the date of the hardware c
 
 | WP | Phase | What | Depends on | Branch | Status | PR |
 |---|---|---|---|---|---|---|
-| S1 | 1 | S3 target, Make targets, CI | — | `feat/s3-panel-s1-target` | in progress | — |
+| S1 | 1 | S3 target, Make targets, CI | — | `feat/s3-panel-s1-target` | done | [#88](https://github.com/davidterranova/pool-controller/pull/88) |
 | S2 | 1 | Board bring-up without the screen: board checks, antenna, Auto button, the full firmware | S1, board delivered | — | todo | — |
 | S3 | 1 (any time) | Panel scaffolding: `panel_ui.h` + tests, translations pipeline, fonts, preview | contract | — | todo | — |
 | S4 | 1 (no screen) | Panel UI (LVGL) in the preview, then on the board with no screen attached | S1, S3; S2 for the board check | — | todo | — |
@@ -444,25 +444,27 @@ Only S6 waits for the display.
 ### Phase 1: software, screen and Auto button
 
 #### S1: S3 target, Make targets, CI
-- [ ] `pool-controller-s3.yaml`:
+- [x] `pool-controller-s3.yaml`:
   - packages: `core: !include pool-controller.yaml`, plus a stub `local-panel.yaml` until S4;
   - substitutions: the pin map and `device_name`;
   - `esp32:` board `esp32-s3-devkitc-1`, `variant: esp32s3`, `flash_size: 16MB`, the framework the spike picks, with `!remove` on the WROOM-only advanced options (`minimum_chip_revision`, `sram1_as_iram`);
   - `psram:` `mode: octal`, `speed: 80MHz`;
   - Auto Update off and Update Check Interval `on_request` until S12.
-- [ ] Spike, with its findings recorded in Decisions:
+- [x] Spike, with its findings recorded in Decisions:
   - (a) the package override (substitutions, `!remove`, the resolution of `esphome.includes` and `!include` from a second top-level file) leaves `pool-controller.yaml` untouched; if not, the smallest refactor, with A2's diff;
   - (b) ESP-IDF against Arduino on the S3: build both and pick;
   - (c) how `http_request` updates pick a manifest build;
   - (d) the partition table ESPHome generates for 16 MB, and the app slot size;
   - (e) whether `lvgl.pause` stops input processing, so the first touch only wakes.
-- [ ] Makefile: the S3 targets of the contract, with a build dir per config. Keep the WROOM targets as they are.
-- [ ] `validate.yml`: the secret guard on `pool-controller-s3.yaml`, `make validate-s3`, and `make build-s3` on PRs.
-- [ ] Done when:
+- [x] Makefile: the S3 targets of the contract, with a build dir per config. Keep the WROOM targets as they are.
+- [x] `validate.yml`: the secret guard on `pool-controller-s3.yaml`, `make validate-s3`, and `make build-s3` on PRs.
+- [x] Done when:
   - A1 holds;
   - `esphome config pool-controller.yaml` is unchanged from main's;
   - CI is green.
-- [ ] **Docs:**
+
+  A1 holds but for its PSRAM figure: the build uses no PSRAM statically, and its size and use show on the board only (S2, then S4 with LVGL). Flash and RAM: Decisions (S1's spike) and [#88](https://github.com/davidterranova/pool-controller/pull/88).
+- [x] **Docs:**
   - the header comment of `pool-controller-s3.yaml` (what it overrides and why);
   - the Makefile comments of the new targets;
   - README's build section mentions the S3 targets.
