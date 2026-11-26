@@ -391,7 +391,7 @@ Tick each one only with its evidence (PR, command, or the date of the hardware c
 
 | WP | Phase | What | Depends on | Branch | Status | PR |
 |---|---|---|---|---|---|---|
-| S1 | 1 | S3 target, Make targets, CI | — | — | todo | — |
+| S1 | 1 | S3 target, Make targets, CI | — | `feat/s3-panel-s1-target` | in progress | — |
 | S2 | 1 | Board bring-up without the screen: board checks, antenna, Auto button, the full firmware | S1, board delivered | — | todo | — |
 | S3 | 1 (any time) | Panel scaffolding: `panel_ui.h` + tests, translations pipeline, fonts, preview | contract | — | todo | — |
 | S4 | 1 (no screen) | Panel UI (LVGL) in the preview, then on the board with no screen attached | S1, S3; S2 for the board check | — | todo | — |
