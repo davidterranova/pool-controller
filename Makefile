@@ -301,13 +301,15 @@ card-preview-check: $(if $(CARD_BUNDLE),card)
 # once per ESPHOME_VERSION by panel-preview-image). No board, no controller. One build, then each scenario of
 # preview.h in each language:
 #   panel-shots          tools/panel-preview/shots/<lang>-<screen>-<state>.png at 480×320 (gitignored);
-#                        SCENARIO=auto,off for some, LANGS=fr for one language (LANGS, not LANG: the shell's locale)
+#                        SCENARIO=auto,off for some, SCREEN=home,sheet,status for some screens, LANGS=fr for one
+#                        language (LANGS, not LANG: the shell's locale)
 #   panel-preview-check  the same, failing on a dictionary key, « nan » or a missing text drawn instead of a text,
-#                        or a run that logs an error (CI runs it)
+#                        or a run that logs an error; then the flows (shoot.py's FLOWS: taps and the Auto button,
+#                        checked against the panel's log). CI runs it
 PANEL_PREVIEW_IMAGE := pool-panel-preview:$(ESPHOME_VERSION)
 PANEL_PREVIEW_PROGRAM := tools/panel-preview/.esphome/build/pool-panel-preview/.pioenvs/pool-panel-preview/program
 PANEL_SHOOT = docker run --rm -v "$(CURDIR):/config" -w /config --entrypoint python3 $(PANEL_PREVIEW_IMAGE) -I tools/panel-preview/shoot.py \
-	$(PANEL_PREVIEW_PROGRAM) $(if $(SCENARIO),--only $(SCENARIO)) $(if $(LANGS),--lang $(LANGS))
+	$(PANEL_PREVIEW_PROGRAM) $(if $(SCENARIO),--only $(SCENARIO)) $(if $(SCREEN),--screen $(SCREEN)) $(if $(LANGS),--lang $(LANGS))
 
 panel-preview-image:
 	docker build -q --build-arg ESPHOME_IMAGE=$(ESPHOME_IMAGE) -t $(PANEL_PREVIEW_IMAGE) tools/panel-preview >/dev/null

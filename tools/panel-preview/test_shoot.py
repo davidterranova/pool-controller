@@ -33,6 +33,18 @@ class CheckTest(unittest.TestCase):
         found = shoot.problems_in("[W][panel:041]: no text for common.speed.Turbo\n[E][lvgl:100]: something broke\n")
         self.assertEqual(len(found), 2)
 
+    def test_flows_tap_what_the_panel_draws(self):
+        kinds = {"tap", "send", "expect", "absent", "label", "no_label", "wait"}
+        for title, scenario, env, steps in shoot.FLOWS:
+            self.assertIn(scenario, shoot.scenarios(), title)
+            for kind, arg in steps:
+                self.assertIn(kind, kinds, title)
+                if kind == "tap":
+                    x, y = shoot.AT[arg]
+                    self.assertTrue(0 <= x < shoot.WIDTH and 0 <= y < shoot.HEIGHT, f"{title}: {arg}")
+                if kind == "send":
+                    self.assertIn(arg.split(" ")[0], {"dump", "auto", "lang"}, title)
+
     def test_scenarios_come_from_preview_h(self):
         names = shoot.scenarios()
         self.assertIn("auto", names)
