@@ -154,3 +154,13 @@ export function lastPulse(text, now = new Date()) {
   const when = at.toDateString() === now.toDateString() ? "today" : at.toDateString() === y.toDateString() ? "yesterday" : "date";
   return { when, at, otherYear: at.getFullYear() !== now.getFullYear() };
 }
+
+/**
+ * Finishing the wizard on a controller with a touch panel (local-panel.yaml): the option Panel Language should take so
+ * the screen speaks the page's language, or null when there is nothing to write (no panel, already that language, or a
+ * language the panel doesn't offer). `panel` is the select's state ({state, attributes: {options}}), undefined without one.
+ */
+export function panelLangToSet(panel, lang) {
+  if (!panel || panel.state === lang) return null;
+  return (panel.attributes?.options || []).includes(lang) ? lang : null;
+}

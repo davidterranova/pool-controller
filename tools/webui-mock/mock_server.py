@@ -22,10 +22,18 @@ Usage (from the repo root; `make mock-ui` wraps this):
     python3 tools/webui-mock/mock_server.py --check pool-controller.yaml
     python3 tools/webui-mock/mock_server.py --extra my-package.yaml [--hotspot] pool-controller.yaml
     python3 tools/webui-mock/mock_server.py --fresh [--idle 60] pool-controller.yaml
+    python3 tools/webui-mock/mock_server.py --panel pool-controller.yaml
+    python3 tools/webui-mock/mock_server.py --check pool-controller-s3.yaml
 
 The config's own `packages:` (`name: !include file.yaml`) are loaded like ESPHome
-does, for their entities and sorting groups. --extra loads one more package the
-same way, for designing against entities the firmware doesn't have yet.
+does, for their entities and sorting groups, and theirs in turn: the S3 build's
+pool-controller-s3.yaml includes pool-controller.yaml, which includes wifi-setup.yaml
+and the others. --extra loads one more package the same way, for designing against
+entities the firmware doesn't have yet.
+--panel adds the S3 build's touch panel (docs/plans/s3-panel.md): Panel Language,
+Panel Sleep After and Panel Ignored Touches, from local-panel.yaml beside the config,
+or from panel-stand-in.yaml (this directory) on a branch that doesn't have it yet.
+The page shows its « Screen » section (« Écran ») only with them.
 --hotspot starts the simulated device on its fallback hotspot, with no clock.
 --no-release has no firmware published yet, so every update check fails (the
 manifest on GitHub Pages is a 404), as before a project's first release.
@@ -174,25 +182,58 @@ class Layout:
     web: dict  # the web_server block, for the index page it builds
 
 
+def _package_files(config: dict, base: str) -> list[str]:
+    """The files a config's `packages:` include: `name: !include file.yaml` (loaded as the plain file name, see
+    _Loader) or `name: !include {file: file.yaml, vars: …}`."""
+    files = []
+    for v in (config.get("packages") or {}).values():
+        if isinstance(v, dict):
+            v = v.get("file")
+        if isinstance(v, str):
+            files.append(os.path.join(base, v))
+    return files
+
+
+def _merge_package(config: dict, package: dict):
+    """A package's entities, sorting groups and the esphome/web_server keys the config doesn't set, merged like
+    ESPHome's packages: the config's own keys win, entity lists are appended."""
+    for domain in SUPPORTED_DOMAINS + UNSUPPORTED_DOMAINS:
+        if package.get(domain):
+            config[domain] = list(config.get(domain) or []) + list(package[domain])
+    for key in ("esphome", "web_server"):
+        theirs = package.get(key)
+        if isinstance(theirs, dict):
+            mine = config.get(key) or {}
+            merged = {**theirs, **mine}
+            if key == "web_server":
+                merged["sorting_groups"] = list(mine.get("sorting_groups") or []) + list(theirs.get("sorting_groups") or [])
+            config[key] = merged
+
+
 def load_layout(path: str, extras: list[str] | None = None) -> Layout:
     with open(path, encoding="utf-8") as f:
         config = yaml.load(f, Loader=_Loader) or {}
-    # `name: !include file.yaml` loads as the plain file name (see _Loader).
-    included = [os.path.join(os.path.dirname(os.path.abspath(path)), v)
-                for v in (config.get("packages") or {}).values() if isinstance(v, str)]
-    packages = included + [e for e in extras or [] if os.path.abspath(e) not in included]
-    for extra in packages:
-        # A package's entities and sorting groups, appended like ESPHome's packages: merge would.
-        with open(extra, encoding="utf-8") as f:
+    root = os.path.abspath(path)
+    packages: list[str] = []
+
+    def include(file: str):
+        """A package and, depth first, the packages it includes itself; each file once."""
+        file = os.path.abspath(file)
+        if file == root or file in packages:
+            return
+        if not os.path.exists(file):
+            # ESPHome would refuse the config; the mock shows the rest, e.g. an S3 config before its panel exists.
+            print(f"[mock] {os.path.relpath(file)}: no such package, skipped", file=sys.stderr, flush=True)
+            return
+        packages.append(file)
+        with open(file, encoding="utf-8") as f:
             package = yaml.load(f, Loader=_Loader) or {}
-        for domain in SUPPORTED_DOMAINS + UNSUPPORTED_DOMAINS:
-            if package.get(domain):
-                config[domain] = list(config.get(domain) or []) + list(package[domain])
-        groups = (package.get("web_server") or {}).get("sorting_groups")
-        if groups:
-            web = config.setdefault("web_server", {}) or {}
-            web["sorting_groups"] = list(web.get("sorting_groups") or []) + list(groups)
-            config["web_server"] = web
+        _merge_package(config, package)
+        for sub in _package_files(package, os.path.dirname(file)):
+            include(sub)
+
+    for file in _package_files(config, os.path.dirname(root)) + list(extras or []):
+        include(file)
 
     core = config.get("esphome", {})
     web = config.get("web_server") or {}
@@ -365,7 +406,16 @@ F = {
     "ack": "Acknowledge Fill Alarm",
     "acked": "Fill Alarm Acknowledged",
 }
-SIMULATED = set(N.values()) | set(W.values()) | set(S.values()) | set(U.values()) | set(F.values())
+# The S3 build's touch panel (local-panel.yaml, or panel-stand-in.yaml with --panel): settings the page writes, and
+# the touches the panel ignored while asleep, seeded with a few as after a damp night.
+P = {
+    "lang": "Panel Language",
+    "sleep": "Panel Sleep After",
+    "ignored": "Panel Ignored Touches",
+}
+PANEL_DEFAULTS = {P["lang"]: "en", P["sleep"]: 60.0, P["ignored"]: 3.0}
+SIMULATED = (set(N.values()) | set(W.values()) | set(S.values()) | set(U.values()) | set(F.values())
+             | set(P.values()))
 
 # The simulated probe bus: made-up addresses, as ESPHome writes them (family
 # code 28 last), and what each probe measures. A fourth one hangs loose on the
@@ -1093,10 +1143,13 @@ class PoolSim:
             if e.name in SIMULATED and e.name in S.values():
                 continue  # SettingsSim holds them
             if e.domain == "number" and e.name not in self.numbers:
-                self.numbers[e.name] = float(e.get("initial_value", e.get("min_value", 0)))
+                # A setting restored from a global has no initial_value: its default is the firmware's.
+                self.numbers[e.name] = float(e.get("initial_value", PANEL_DEFAULTS.get(e.name, e.get("min_value", 0))))
             elif e.domain == "select" and e.name not in self.selects:
                 options = e.get("options", [])
-                self.selects[e.name] = e.get("initial_option", options[0] if options else "")
+                self.selects[e.name] = e.get("initial_option", PANEL_DEFAULTS.get(e.name, options[0] if options else ""))
+            elif e.name == P["ignored"]:
+                self.static.setdefault(e.name, PANEL_DEFAULTS[e.name])
             elif e.name not in SIMULATED and e.name not in self.static:
                 self.static[e.name] = {"sensor": 0.0, "binary_sensor": False, "fan": False,
                                        "switch": False, "text_sensor": "--"}.get(e.domain)
@@ -2152,6 +2205,13 @@ def check(config_path: str, extras: list[str] | None = None) -> int:
     return 0
 
 
+def panel_package(config_path: str) -> str:
+    """The touch panel's package for --panel: local-panel.yaml beside the config once the branch has it, else the
+    stand-in with the same entities."""
+    real = os.path.join(os.path.dirname(os.path.abspath(config_path)), "local-panel.yaml")
+    return real if os.path.exists(real) else os.path.join(os.path.dirname(os.path.abspath(__file__)), "panel-stand-in.yaml")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("config", help="path to the ESPHome YAML (pool-controller.yaml)")
@@ -2170,11 +2230,15 @@ def main() -> int:
                         help="start with the fill meter turned off (Fill Meter)")
     parser.add_argument("--long-fill", action="store_true",
                         help="start with a fill running past Fill Alarm After: its alarm is on")
+    parser.add_argument("--panel", action="store_true",
+                        help="add the S3 build's touch panel entities (local-panel.yaml, else panel-stand-in.yaml)")
     parser.add_argument("--fresh", action="store_true",
                         help="start as a controller not set up yet (on its hotspot, nothing set)")
     parser.add_argument("--idle", type=float, default=6 * 3600, metavar="SECONDS",
                         help="end a login session after this long without a request (the device: 6 h)")
     args = parser.parse_args()
+    if args.panel:
+        args.extra.append(panel_package(args.config))
 
     if args.check:
         return check(args.config, args.extra)

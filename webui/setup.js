@@ -13,6 +13,8 @@
  *   - The fill meter (fill-meter.yaml) is optional, so not a Setup State item: the wizard's step 4 asks about it
  *     (« J'ai un compteur » runs its pulse test, « Pas de compteur » turns it off) without ever blocking a step, and
  *     Réglages contrôleur › Compteur d'eau has the switch, the test, the last pulse and « Alarme après ».
+ *   - On a controller with a touch panel (the S3 build, local-panel.yaml), finishing the wizard sets Panel Language to
+ *     the page's language, so the screen speaks the language its owner set it up in.
  *
  * Every text is the page's language (page-i18n.js, keys setup.*): the HTML is rebuilt from t() at each render, and
  * paint() redraws what changed, so a change of language redraws in place and the wizard stays on its step.
@@ -24,10 +26,10 @@
 import {
   SETUP_ITEMS, parseSetupState, nextStep, parseDetectedProbes, shortAddress, probeTrend,
   passwordProblem, validApiKey, parseDegrees, degreesInput, WAITING_FOR, sunTimes,
-  FILL_DETECT, FILL_ALARM, fillStatus, parseAlarmMinutes, lastPulse,
+  FILL_DETECT, FILL_ALARM, fillStatus, parseAlarmMinutes, lastPulse, panelLangToSet,
 } from "./setup-model.js";
 import { TIMEZONES, posixOf, validPosix, validZoneName, browserZone, clockIn } from "./timezones.js";
-import { t, fmt, andList, onLang } from "./page-i18n.js";
+import { t, fmt, andList, onLang, pageLang } from "./page-i18n.js";
 
 /** The steps, in Setup State's order (SETUP_ITEMS): their short name (the step list) and title, setup.step.<item>. */
 const stepName = (i) => t(`setup.step.${SETUP_ITEMS[i]}.name`);
@@ -708,11 +710,20 @@ export function mountSetup({ hass, E, login, ui }) {
       if (step === 4 && !(await confirmed("probes"))) return toast(t("setup.wz4.not_confirmed"), true);
       if (step === 5 && isMissing("api_key")) return;
       wz.step = nextStep(missing() || [], step);
+      if (wz.step === 6) panelLangToPage();
       scrollTo({ top: 0 });
     } finally {
       view.busy = false;
       render();
     }
+  }
+  /**
+   * Finishing the wizard: a controller with a touch panel (Panel Language, the S3 build) shows the language its owner
+   * set it up in. Written on reaching the last step and again on leaving it, as the language may change in between.
+   */
+  function panelLangToPage() {
+    const lang = panelLangToSet(st(E.panelLang), pageLang());
+    if (lang) hass.select(E.panelLang, lang).catch(refused);
   }
   /** Not configured, and the wizard closed (put off, or a key forgotten since): say so above the page. */
   function renderBanner() {
@@ -740,6 +751,7 @@ export function mountSetup({ hass, E, login, ui }) {
         openWizard(missing() || []);
         break;
       case "wz-finish":
+        panelLangToPage();
         wz.open = false;
         location.hash = "#controle";
         toast(t("setup.nav.configured_toast"));

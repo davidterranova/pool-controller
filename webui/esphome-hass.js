@@ -143,6 +143,13 @@ export const E = {
   restart: "button/Restart",
   logoutAll: "button/Logout All Devices", // ends every login session (docs/plans/page-login.md)
   waitingFor: "text_sensor/Schedule Waiting For",
+  // From local-panel.yaml (the S3 build's touch panel, docs/plans/s3-panel.md): Réglages contrôleur › Écran, shown
+  // only on a controller that has them.
+  panelLang: "select/Panel Language",
+  panelSleep: "number/Panel Sleep After",
+  panelIgnored: "sensor/Panel Ignored Touches",
+  // Write-only, like Fill Water Import: a one-off tool for moving to a new board (history-import.yaml), kept off the page.
+  historyImport: "text/History Import",
 };
 
 /** What the recorder keeps (every change): the card draws today's overrides from it. */

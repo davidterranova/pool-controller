@@ -106,6 +106,16 @@
       "pw_short": "Contraseña: al menos 8 caracteres o vacía para una red abierta.",
       "confirm_switch": "El controlador va a dejar « {from} » por « {to} ». Esta página perderá la conexión: vuelve a encontrarlo en {url}. ¿Continuar?"
     },
+    "screen": {
+      "heading": "Pantalla",
+      "title": "Pantalla táctil",
+      "lang": "Idioma de la pantalla",
+      "lang_sub": "El idioma de los textos en la pantalla del controlador",
+      "sleep": "Apagar la pantalla tras",
+      "sleep_sub": "Sin tocarla. Un toque o el botón Auto la vuelve a encender.",
+      "ignored": "Toques ignorados en reposo",
+      "ignored_sub": "Desde el último reinicio. Un número que no deja de subir indica condensación en el cristal."
+    },
     "fw": {
       "version": "Versión",
       "new_version": "la nueva versión",
