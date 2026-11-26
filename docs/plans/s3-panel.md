@@ -139,6 +139,16 @@ The display can arrive after the board, so nothing in phase 1 waits for it but S
 - **S6 wires the screen**, sets the rotation, the touch transform and the bus speed it shows, and checks the panel on it. That closes M1.
 - The phases keep their order: the relays still wait for M1.
 
+**2026-11-26: S3, panel scaffolding**
+- **Texts are checked at compile time.** `panel_ui.h`'s `T("panel.home.change")` looks the key up in `panel_i18n.h` with a `consteval` constructor: a key the header lacks doesn't build. The firmware builds with `-fno-exceptions`, so the failure is a call to an undefined function named `no_such_key_in_panel_i18n_h`, not a `throw`.
+- **`panel_i18n.h` carries the panel's keys plus only the card's keys the panel uses**, by key or by `tr_prefix("prefix.", code)`. No plurals: the panel writes units (« {m} min »).
+- **Formats come from the dictionaries** (`panel.fmt.*`: the decimal separator, « {value} {unit} » with a no-break space, « {h} h {m} min », « — »), so a new language needs no code.
+- **Fonts:** `°` and `…` are already in `GF_Latin_Core`; only `³` is added. The generator reads the glyph sets from `tools/i18n/panel-glyphsets.json`, written from the ESPHome image's `esphome-glyphsets` (`make panel-glyphsets`).
+- **The preview's scenarios are picked at run time** (`PANEL_SCENARIO`, `PANEL_LANG`; `tools/panel-preview/preview.h`), not as substitutions: a host build takes about 2.5 min, and one build serves every shot.
+- **The ignored-touch burst:** 5 ignored touches within 10 min, reported once until they slow down.
+- **`status.*` codes:** the card has no `status.*` keys (Update Status's codes are `card.fw.*` in the card, `page.fw.*` in the page). S4 adds the panel's own `panel.status.*` keys, or reads the card's through `tr_prefix`.
+- **`local-panel.yaml`** is S3's real file (fonts, Panel Language, a placeholder home screen), not S1's stub. It names `panel_display` and `panel_touch`, so `pool-controller-s3.yaml` needs them before it includes it (S4's hardware block): whichever of S1 and S3 merges second reconciles the two.
+
 ## Open questions (each settled in its WP, then moved to Decisions)
 
 - ESP-IDF or Arduino on the S3 (S1). Default: ESP-IDF, which ESPHome recommends for LVGL on the S3. The firmware uses no Arduino-only API, and its web server already runs on ESP-IDF's.
@@ -466,20 +476,20 @@ Only S6 waits for the display.
 - [ ] **Docs:** a draft of POOL-CONTROLLER.md's S3 hardware section (pin map, antenna mod, Auto button). S6 adds the display wiring, and S10 finishes it.
 
 #### S3: panel scaffolding (helpers, translations, preview), any time
-- [ ] `panel_ui.h`, tested in `tools/tests/panel_ui_test.cpp`:
+- [x] `panel_ui.h`, tested in `tools/tests/panel_ui_test.cpp`:
   - the sheet's state: staged mode and minutes, what Apply writes, the hint for each combination;
   - time left and « Auto at HH:MM » from the override's start and the timeout;
   - number and duration formats per language (decimal comma in fr/es, 24-hour clock, « — » for unknown);
   - the asleep-touch counter and its burst threshold.
-- [ ] Translations:
+- [x] Translations:
   - `i18n-panel/{en,fr,es}.json`;
   - a generator `tools/i18n/panel-header.mjs` → `panel_i18n.h`, plus `make panel-i18n`;
   - the `panel` surface in `surfaces.mjs`, with code usage, checked to see the C++ calls;
   - `make i18n-check` fails when `panel_i18n.h` is stale, as it does for the HA files;
   - « screen » in the glossary.
-- [ ] Fonts: Montserrat with `GF_Latin_Core` + `°³…`. The generator fails if a dictionary uses a character no font covers.
-- [ ] Preview (`tools/panel-preview/`):
-  - a `host` + `sdl` build of `local-panel.yaml`, with stand-in entities under the firmware's ids, and scenarios as substitutions;
+- [x] Fonts: Montserrat with `GF_Latin_Core` + `°³…`. The generator fails if a dictionary uses a character no font covers.
+- [x] Preview (`tools/panel-preview/`):
+  - a `host` + `sdl` build of `local-panel.yaml`, with stand-in entities under the firmware's ids, and scenarios picked at run time (Decisions, 2026-11-26: S3);
   - a Docker image (the ESPHome image + SDL2 + Xvfb);
   - `make panel-shots` → `tools/panel-preview/shots/<lang>-<screen>-<state>.png` at 480×320;
   - `make panel-preview-check` fails on a key shown instead of its text;
@@ -487,7 +497,7 @@ Only S6 waits for the display.
 - [ ] Done when:
   - the host tests pass;
   - the preview draws a placeholder screen in each language, in CI.
-- [ ] **Docs:**
+- [x] **Docs:**
   - the header comment of `panel_ui.h`;
   - README « Working on the panel without hardware »;
   - the panel in `.claude/rules/translations.md`'s « Where text goes ».
