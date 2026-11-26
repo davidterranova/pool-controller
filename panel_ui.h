@@ -34,6 +34,11 @@ using panel_i18n::Lang;
 
 // ------------------------------------------------------------------ texts
 
+/// Never defined, never called at run time: Key's lookup calls it for a key that isn't in panel_i18n.h, which is
+/// no constant expression, so the build stops there with this name in the error (the firmware builds without
+/// exceptions, so no throw).
+void no_such_key_in_panel_i18n_h();
+
 /// A key of panel_i18n.h, looked up at compile time: a literal key that isn't there is a compile error.
 struct Key {
   uint16_t index;
@@ -44,9 +49,9 @@ struct Key {
     for (int i = 0; i < panel_i18n::KEY_COUNT; i++)
       if (key == panel_i18n::KEYS[i])
         return (uint16_t) i;
-    // Not a constant expression, so the build stops here: add the key to i18n-panel/en.json (and fr, es), then
-    // run `make panel-i18n`.
-    throw "panel_ui::Key: no such key in panel_i18n.h";
+    // Add the key to i18n-panel/en.json (and fr, es), then run `make panel-i18n`.
+    no_such_key_in_panel_i18n_h();
+    return 0;
   }
 };
 

@@ -47,7 +47,7 @@ select:
     options: ["en", "fr", "es"]
     set_action:
       - lambda: |-
-          panel_ui::set_lang(panel_ui::lang_from_code(x));
+          panel_ui::set_lang(panel_ui::lang_from_code(x.c_str()));
           id(panel_lang) = panel_ui::current_lang;
           id(panel_language).publish_state(x);
           ESP_LOGI("panel", "Panel Language: %s", x.c_str());
@@ -113,41 +113,51 @@ lvgl:
             y: 100
             width: 148
             height: 96
+            pad_all: 10
+            scrollbar_mode: "OFF"
             widgets:
-              - label: {id: panel_water_name, x: -4, y: -4, width: 124, long_mode: wrap, text_font: panel_font_s, text: ""}
-              - label: {id: panel_water_value, align: bottom_left, x: -4, y: 4, text_font: panel_font_l, text: ""}
+              - label: {id: panel_water_name, x: 0, y: 0, width: 128, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - label: {id: panel_water_value, align: bottom_left, x: 0, y: 0, text_font: panel_font_l, text: ""}
         - obj:
             x: 166
             y: 100
             width: 148
             height: 96
+            pad_all: 10
+            scrollbar_mode: "OFF"
             widgets:
-              - label: {id: panel_pad_name, x: -4, y: -4, width: 124, long_mode: wrap, text_font: panel_font_s, text: ""}
-              - label: {id: panel_pad_value, align: bottom_left, x: -4, y: 4, text_font: panel_font_l, text: ""}
+              - label: {id: panel_pad_name, x: 0, y: 0, width: 128, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - label: {id: panel_pad_value, align: bottom_left, x: 0, y: 0, text_font: panel_font_l, text: ""}
         - obj:
             x: 320
             y: 100
             width: 148
             height: 96
+            pad_all: 10
+            scrollbar_mode: "OFF"
             widgets:
-              - label: {id: panel_outdoor_name, x: -4, y: -4, width: 124, long_mode: wrap, text_font: panel_font_s, text: ""}
-              - label: {id: panel_outdoor_value, align: bottom_left, x: -4, y: 4, text_font: panel_font_l, text: ""}
+              - label: {id: panel_outdoor_name, x: 0, y: 0, width: 128, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - label: {id: panel_outdoor_value, align: bottom_left, x: 0, y: 0, text_font: panel_font_l, text: ""}
         - obj:
             x: 12
             y: 206
             width: 225
             height: 96
+            pad_all: 10
+            scrollbar_mode: "OFF"
             widgets:
-              - label: {id: panel_fill_today_name, x: -4, y: -4, width: 200, long_mode: wrap, text_font: panel_font_s, text: ""}
-              - label: {id: panel_fill_today_value, align: bottom_left, x: -4, y: 4, text_font: panel_font_l, text: ""}
+              - label: {id: panel_fill_today_name, x: 0, y: 0, width: 205, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - label: {id: panel_fill_today_value, align: bottom_left, x: 0, y: 0, text_font: panel_font_l, text: ""}
         - obj:
             x: 243
             y: 206
             width: 225
             height: 96
+            pad_all: 10
+            scrollbar_mode: "OFF"
             widgets:
-              - label: {id: panel_fill_month_name, x: -4, y: -4, width: 200, long_mode: wrap, text_font: panel_font_s, text: ""}
-              - label: {id: panel_fill_month_value, align: bottom_left, x: -4, y: 4, text_font: panel_font_l, text: ""}
+              - label: {id: panel_fill_month_name, x: 0, y: 0, width: 205, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - label: {id: panel_fill_month_value, align: bottom_left, x: 0, y: 0, text_font: panel_font_l, text: ""}
 
 script:
   # Every text of the placeholder, in the panel's language: on boot, on a Panel Language change, every 5 s.
@@ -157,7 +167,7 @@ script:
       - lambda: |-
           using namespace panel_ui;
           Mode mode;
-          mode_from_option(id(manual_override).current_option(), mode);
+          mode_from_option(id(manual_override).current_option().c_str(), mode);
           int now_minute = -1, now_second = 0;
           auto now = id(local_time).now();
           if (now.is_valid()) {
