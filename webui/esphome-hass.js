@@ -81,6 +81,9 @@ export const E = {
   // Write-only, a one-off tool Home Assistant drives (its history into the record above): known, so the page lists
   // it nowhere (not under Capteurs internes › Autres entités).
   fillImport: "text/Fill Water Import",
+  // Write-only, a one-off tool (history-import.yaml: another controller's 7-day record and today's values, when a board
+  // is replaced): known, so the page lists it nowhere (not under Capteurs internes › Autres entités).
+  historyImport: "text/History Import",
   // From fill-meter.yaml: the meter as an option, its pulse test and its long-fill alarm. A firmware without them
   // counts the meter always: the page shows Remplissage and no « Compteur d'eau ».
   fillEnabled: "switch/Fill Meter",
@@ -140,6 +143,13 @@ export const E = {
   restart: "button/Restart",
   logoutAll: "button/Logout All Devices", // ends every login session (docs/plans/page-login.md)
   waitingFor: "text_sensor/Schedule Waiting For",
+  // From local-panel.yaml (the S3 build's touch panel, docs/plans/s3-panel.md): Réglages contrôleur › Écran, shown
+  // only on a controller that has them.
+  panelLang: "select/Panel Language",
+  panelSleep: "number/Panel Sleep After",
+  panelIgnored: "sensor/Panel Ignored Touches",
+  // Write-only, like Fill Water Import: a one-off tool for moving to a new board (history-import.yaml), kept off the page.
+  historyImport: "text/History Import",
 };
 
 /** What the recorder keeps (every change): the card draws today's overrides from it. */

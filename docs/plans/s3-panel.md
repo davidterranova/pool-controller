@@ -306,13 +306,16 @@ Each line is tagged, because Daily History and Daily Plan History share a format
 | `daily:` | Daily History's own line (« 2026-11-13: 6.42 h 25.9/26.6 °C, … ») | the 7-day record's dates, filtration minutes and water min/max |
 | `plan:` | Daily Plan History's | planned minutes, for dates already in the record |
 | `outdoor:` | Daily Outdoor History's | outdoor min/max, for dates already in the record |
-| `today:` | `YYYY-MM-DD filtration=<min> water=<lo>/<hi> outdoor=<lo>/<hi> fill=<L>` (`-` for unknown) | today's running values, only if the date is the device's today |
+| `pad:` | Daily Equipment Pad History's (added by S8: the contract predates that sensor) | the pad's min/max, for dates already in the record |
+| `today:` | `YYYY-MM-DD filtration=<min> water=<lo>/<hi> outdoor=<lo>/<hi> fill=<L>`, optional `pad=<lo>/<hi>`, any order (`-` for unknown) | today's running values, only if the date is the device's today |
 
 - **Outcome codes:**
-  - `imported:daily:N`, `imported:plan:N`, `imported:outdoor:N`, `imported:today`;
+  - `imported:daily:N`, `imported:plan:N`, `imported:outdoor:N`, `imported:pad:N`, `imported:today`;
   - `refused:no_clock`, `refused:format`, `refused:tag`, `refused:date`, `refused:value`, `refused:too_many`, `refused:future`, `refused:record_ahead`, `refused:not_today`.
 - A refused line changes nothing.
-- A `daily:` line never replaces a record holding newer days.
+- A `daily:` line never replaces a record holding newer days. It replaces the record's dates; the other series keep their value for a date that stays, and are unknown for a new one.
+- `plan:`, `outdoor:` and `pad:` are each their series' whole truth: a record day the line leaves out becomes unknown, so the target prints the source's string exactly. A date not in the record refuses the line (`refused:date`).
+- `today:` copies the source's values: `-` makes a min/max unknown and Fill Water Today 0; without `pad=` the pad's stay.
 - Hours parse back to within one minute, because the sensors print hundredths of an hour.
 - Like Fill Water Import's codes, these show in Home Assistant's device page only, so no UI translates them.
 
@@ -336,7 +339,7 @@ Each line is tagged, because Daily History and Daily Plan History share a format
   - Pool/Pad/Outdoor Probe, after a Rescan Probes on the target;
   - Fill Meter and Fill Alarm After;
   - Fill Water Import (days, months);
-  - History Import (`daily`, `plan`, `outdoor`, `today`).
+  - History Import (`daily`, `plan`, `outdoor`, `pad`, `today`).
 - It then reads everything back and exits non-zero on any mismatch.
 - It never writes to the source.
 - It doesn't move, and says so at the end:
@@ -430,10 +433,10 @@ Tick each one only with its evidence (PR, command, or the date of the hardware c
 | S2 | 1 | Board bring-up without the screen: board checks, antenna, Auto button, the full firmware | S1, board delivered | — | todo | — |
 | S3 | 1 (any time) | Panel scaffolding: `panel_ui.h` + tests, translations pipeline, fonts, preview | contract | `feat/s3-panel-s3-scaffold` | done | [#89](https://github.com/davidterranova/pool-controller/pull/89) |
 | S4 | 1 (no screen) | Panel UI (LVGL) in the preview, then on the board with no screen attached | S1, S3; S2 for the board check | `feat/s3-panel-s4-panel` | in progress | — |
-| S5 | 1 (any time) | Controller page + mock: « Screen », wizard | contract | — | todo | — |
+| S5 | 1 (any time) | Controller page + mock: « Screen », wizard | contract | `feat/s3-panel-s5-page` | done | [#87](https://github.com/davidterranova/pool-controller/pull/87) |
 | S6 | 1 | Screen on the bench: wiring, rotation, touch, the panel checked on it | S2, S4, display delivered | — | todo | — |
 | S7 | 2 | Relays and a bench probe: pump safety on the S3 | M1 | — | todo | — |
-| S8 | 3 (any time) | History Import (every build) | contract | — | todo | — |
+| S8 | 3 (any time) | History Import (every build) | contract | `feat/s3-panel-s8-history` | in progress (bench check waits for hardware) | [#90](https://github.com/davidterranova/pool-controller/pull/90) |
 | S9 | 3 (any time) | Transfer tool | S8 | — | todo | — |
 | S10 | 3 | Probes, water meter, box: the full wiring on the bench | M2 | — | todo | — |
 | S11 | 3 | Burn-in, swap and go-live on the pool | S9, S10 | — | todo | — |
@@ -558,18 +561,18 @@ Only S6 waits for the display.
   - POOL-CONTROLLER.md « Local touch panel »: how to use it.
 
 #### S5: controller page and mock, any time
-- [ ] `webui/app.js`: « Controller settings » › « Screen » (« Réglages contrôleur » › « Écran »), shown only when the panel's entities exist:
+- [x] `webui/app.js`: « Controller settings » › « Screen » (« Réglages contrôleur » › « Écran »), shown only when the panel's entities exist:
   - Panel Language, shown as language names;
   - Panel Sleep After;
   - Panel Ignored Touches.
-- [ ] Setup wizard: when Panel Language exists, finishing the wizard sets it to the page's language.
-- [ ] `webui/esphome-hass.js` `E`: the new entities, so they aren't listed under « Other entities ». History Import stays off the page.
-- [ ] Mock:
+- [x] Setup wizard: when Panel Language exists, finishing the wizard sets it to the page's language.
+- [x] `webui/esphome-hass.js` `E`: the new entities, so they aren't listed under « Other entities ». History Import stays off the page.
+- [x] Mock:
   - a `--panel` flag in `tools/webui-mock/` adds the panel's entities;
   - `make mock-ui-check` reads `pool-controller-s3.yaml` too.
-- [ ] The page's keys in en, fr and es. Mock screenshots with and without the panel, in each language, at 390 px.
-- [ ] Done when `make webui-test`, `make mock-ui-check` and `make i18n-check` are green, with screenshots in the PR.
-- [ ] **Docs:**
+- [x] The page's keys in en, fr and es. Mock screenshots with and without the panel, in each language, at 390 px.
+- [x] Done when `make webui-test`, `make mock-ui-check` and `make i18n-check` are green, with screenshots in the PR.
+- [x] **Docs:**
   - the `app.js` header comment;
   - POOL-CONTROLLER.md « Local web UI »;
   - the mock's flag in README.
@@ -615,16 +618,16 @@ Only S6 waits for the display.
 ### Phase 3: full install with water metering
 
 #### S8: History Import (every build), any time
-- [ ] `history-import.yaml`, included by `pool-controller.yaml`, and `history_import.h`, tested in `tools/tests/history_import_test.cpp`:
+- [x] `history-import.yaml`, included by `pool-controller.yaml`, and `history_import.h`, tested in `tools/tests/history_import_test.cpp`:
   - the contract's lines and codes;
   - writes the 7-day record and today's running values;
   - refuses a whole line on any error, and never overwrites newer days;
   - republishes Daily History, Daily Plan History, Daily Outdoor History and today's sensors.
-- [ ] Round trip: every string the firmware's own lambdas print parses back to the same record, hours within one minute.
+- [x] Round trip: every string the firmware's own lambdas print parses back to the same record, hours within one minute.
 - [ ] Done when:
-  - the tests are green;
-  - on the bench S3, a `daily:` line copied from the live controller's Daily History (read-only) imports, and Daily History reads the same.
-- [ ] **Docs:**
+  - [x] the tests are green;
+  - [ ] on the bench S3 (waits for hardware), a `daily:` line copied from the live controller's Daily History (read-only) imports, and Daily History reads the same.
+- [x] **Docs:**
   - the package's header comment: formats, codes, the globals it writes;
   - POOL-CONTROLLER.md « Moving to a new board ».
 
