@@ -1,0 +1,93 @@
+# The pool controller on an ESP32-S3 with a touch panel
+# (docs/plans/s3-panel.md): the second build target, beside the ESP32-WROOM's
+# pool-controller.yaml. `make validate-s3`, `make build-s3`, `make flash-s3`,
+# `make ota-s3`, `make logs-s3` (the Makefile); BENCH=1 builds it as the bench
+# device, pool-panel-bench.
+#
+# The firmware is pool-controller.yaml's, included whole as a package, so
+# every 1.x change to it reaches this build and the WROOM's files stay
+# untouched. This file only overrides what differs on the S3 board:
+#   - the name (device_name), so a bench board never clashes with the
+#     controller in place, and its own build directory;
+#   - the chip: an ESP32-S3-DevKitC-1 N16R8 (16 MB flash, 8 MB octal PSRAM),
+#     its framework, and the WROOM-only advanced options removed (`!remove`);
+#   - the pins (the plan's pin map), as substitutions over the WROOM's;
+#   - firmware updates: off until the S3 build has its own manifest (S12), so
+#     a bench board never installs anything by itself;
+# and adds the panel (local-panel.yaml) and, from S2/S4, its hardware: the
+# display, the touch controller, the backlight and the Auto button.
+#
+# Packages are merged under this file: a key set here replaces the package's,
+# `!remove` deletes it, and a list entry `id: !extend <id>` is merged into the
+# package's entry with that id (a plain `id:` would add a second one).
+
+substitutions:
+  # The ESPHome name, hostname (<device_name>.local) and hotspot. `make … BENCH=1`
+  # passes `-s device_name pool-panel-bench`. Keep the default for the board
+  # that runs the pool, so Home Assistant keeps the controller's entity ids.
+  device_name: pool-controller
+
+  # Pin map (docs/plans/s3-panel.md « Hardware »). Never 0, 3, 45, 46 (boot
+  # straps), 19, 20 (USB), 26–37 (flash and octal PSRAM), 43, 44 (serial log).
+  # The WROOM's, overridden:
+  relay_v1_pin: GPIO4     # Relay 1 -> pump DI1 (Speed V1)
+  relay_v2_pin: GPIO5     # Relay 2 -> pump DI2 (Speed V2)
+  relay_v3_pin: GPIO6     # Relay 3 -> pump DI3 (Speed V3)
+  relay_run_pin: GPIO7    # Relay 4 -> pump DI4 (Run/Stop)
+  onewire_pin: GPIO15
+  water_meter_pin: GPIO16 # the WROOM's GPIO33 is an octal-PSRAM pin on the S3
+  # The S3's own (the display's, wired in S6; the Auto button's, in S2):
+  display_sck_pin: GPIO12
+  display_mosi_pin: GPIO11
+  display_cs_pin: GPIO10
+  display_dc_pin: GPIO9
+  display_reset_pin: GPIO8
+  backlight_pin: GPIO14
+  touch_sda_pin: GPIO1
+  touch_scl_pin: GPIO2
+  touch_int_pin: GPIO21
+  touch_reset_pin: GPIO18
+  auto_button_pin: GPIO17
+
+packages:
+  core: !include pool-controller.yaml
+  panel: !include local-panel.yaml
+
+esphome:
+  name: ${device_name}
+  # .esphome/build/pool-controller-s3/ (the path is relative to .esphome/),
+  # not .esphome/build/<name>/ as pool-controller.yaml's: the WROOM's build
+  # stays apart, whatever device_name is.
+  build_path: build/pool-controller-s3
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+    advanced:
+      # The WROOM's: an ESP32 chip revision, and its SRAM1 layout.
+      minimum_chip_revision: !remove
+      sram1_as_iram: !remove
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+wifi:
+  ap:
+    # pool-controller.yaml's hotspot is « pool-controller »: the bench board's
+    # gets its own name.
+    ssid: ${device_name}
+
+# Updates off until S12 publishes the S3 build and its manifest: Auto Update
+# off and Update Check Interval `on_request` for a board that has saved no
+# choice (updates.yaml's globals; their ids, so their NVS keys, are the same).
+# Should a check run anyway, the update entity only takes a manifest build
+# whose chipFamily is ESP32-S3, and the WROOM's manifest has none.
+globals:
+  - id: !extend auto_update_enabled
+    initial_value: 'false'
+  - id: !extend update_check_hours
+    initial_value: '0'
