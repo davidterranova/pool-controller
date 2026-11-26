@@ -304,7 +304,7 @@ Each line is tagged, because Daily History and Daily Plan History share a format
   - Pool/Pad/Outdoor Probe, after a Rescan Probes on the target;
   - Fill Meter and Fill Alarm After;
   - Fill Water Import (days, months);
-  - History Import (`daily`, `plan`, `outdoor`, `today`).
+  - History Import (`daily`, `plan`, `outdoor`, `pad`, `today`).
 - It then reads everything back and exits non-zero on any mismatch.
 - It never writes to the source.
 - It doesn't move, and says so at the end:
