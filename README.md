@@ -21,6 +21,7 @@ tooling, and building the firmware yourself.
 | File | Purpose |
 |---|---|
 | `pool-controller.yaml` | The ESPHome device config — this *is* the firmware source. |
+| `pool-controller-s3.yaml`, `local-panel.yaml` | The ESP32-S3 build with a touch panel, in progress on `feat/s3-panel` ([plan](docs/plans/s3-panel.md)): `pool-controller.yaml` included as a package, under the S3's board, pins and panel (see [The ESP32-S3 build](#the-esp32-s3-build)). `local-panel.yaml` is a stub until the panel is written. |
 | `wifi-setup.yaml` | Package included by `pool-controller.yaml`: fallback hotspot, joining a network from the page, Wi-Fi statistics, clock from the browser (see below). |
 | `device-settings.yaml`, `device_settings.h` | Package included by `pool-controller.yaml`: the controller's settings, set at run time and kept on the device (page and OTA passwords, API key, position, timezone, probe roles, Setup State, Factory Reset). Nothing personal is compiled in. |
 | `fill-meter.yaml`, `fill_meter.h` | Package included by `pool-controller.yaml`: the fill-line water meter as an option (Fill Meter on/off, its pulse test, the long-fill alarm and its acknowledgement). `fill_meter.h` is pure logic, tested on the host (`make firmware-test`). |
@@ -97,6 +98,21 @@ For a change to the firmware, or other GPIOs than the published ones.
    (« Controller settings » (« Réglages contrôleur ») › « Access » (« Accès »)) — read from `.ota-password` (one line, gitignored)
    or `OTA_PASSWORD=…`, and given to the upload only, never compiled in.
 
+### The ESP32-S3 build
+
+`pool-controller-s3.yaml` builds the same firmware for an
+ESP32-S3-DevKitC-1 N16R8 (16 MB flash, 8 MB octal PSRAM), the board of the
+touch panel ([docs/plans/s3-panel.md](docs/plans/s3-panel.md)). It includes
+`pool-controller.yaml` whole and overrides only the board, its pins (the
+`substitutions:` at its top) and the name; it has no release yet, so its
+updates are off. Its targets mirror the ones above: `make validate-s3`,
+`make build-s3`, `make flash-s3`, `make ota-s3`, `make logs-s3`. Add
+`BENCH=1` for a board on the bench: it is then `pool-panel-bench`
+(`pool-panel-bench.local`, hotspot `pool-panel-bench`), so it never clashes
+with the controller in place. `make ota-s3` refuses to run without it,
+since `pool-controller.local` is the controller running the pool: `LIVE=1`
+lifts that guard, once an S3 is that controller.
+
 A controller running your own build still checks the published releases:
 your build reports `git describe`'s version (`v1.5.0-3-g1a2b3c4`, `dev`),
 which never matches a release's, so with Auto Update on the next scheduled
@@ -125,6 +141,7 @@ the [plan](docs/plans/secret-free-firmware.md).
 | `make build` | Compile the firmware (also catches errors inside C++ lambdas, which `validate` can't). |
 | `make webui` | Bundle the page in `webui/` into the two files the firmware embeds (`webui/dist/`). Run by `validate`, `build` (so `ota` and `flash`) and `mock-ui` whenever a page source changed. |
 | `make flash` | Rebuild, then flash over USB via esptool. Auto-detects the serial port; override with `PORT=/dev/cu.xxxx`. |
+| `make validate-s3`, `make build-s3`, `make flash-s3`, `make ota-s3`, `make logs-s3` | The same for the ESP32-S3 build, `pool-controller-s3.yaml` (see [The ESP32-S3 build](#the-esp32-s3-build)). `BENCH=1` names it `pool-panel-bench`. `make build-s3` runs in CI on pull requests. |
 | `make status` | Query the connected board over USB: chip type, revision, MAC address. |
 | `make kill-port` | Kill whatever process (a leftover `screen`/monitor session, usually) is holding the serial port open. |
 | `make ota` | Rebuild, then push the firmware over Wi-Fi instead of USB. Only works once the device has already joined Wi-Fi at least once; the OTA Password comes from `.ota-password` or `OTA_PASSWORD=`. |

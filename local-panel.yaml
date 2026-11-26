@@ -1,0 +1,13 @@
+# The touch panel of the ESP32-S3 build (docs/plans/s3-panel.md). A stub
+# until S4 writes the panel: pool-controller-s3.yaml includes it already, so
+# the S3 build's layout is the final one from its first commit.
+#
+# S4 fills it with the fonts, the LVGL pages, their bindings to the
+# controller's entities, sleep and wake, and the panel's own entities (Panel
+# Language, Panel Sleep After, Panel Ignored Touches). It names its hardware
+# only by id (panel_display, panel_touch, panel_backlight, auto_button),
+# which pool-controller-s3.yaml defines, so tools/panel-preview/ can stand in
+# for it.
+
+# Nothing yet: an empty package.
+substitutions: {}
