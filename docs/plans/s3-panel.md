@@ -175,6 +175,13 @@ The display can arrive after the board, so nothing in phase 1 waits for it but S
 - **`status.*` codes:** the card has no `status.*` keys (Update Status's codes are `card.fw.*` in the card, `page.fw.*` in the page). S4 adds the panel's own `panel.status.*` keys, or reads the card's through `tr_prefix`.
 - **`local-panel.yaml`** is S3's real file (fonts, Panel Language, a placeholder home screen), not S1's stub. It names `panel_display` and `panel_touch`, so `pool-controller-s3.yaml` doesn't include it yet: S4 adds the hardware block and the `panel:` package together.
 
+**2026-11-26: S9, the transfer tool**
+- **A probe role moves only when its probe is on the target's bus.** The firmware's probe selects take only « none » or an address the bus answered for (or one the role already holds), so after Rescan Probes the tool sets each role whose probe the target sees, and lists the others under « Not moved » rather than failing. In S11 the transfer runs before the wiring moves (step 2, then step 4), so the roles are picked on the S3's page once the probes are on it; A10's « every setting equal » holds for the rest.
+- **Waiting for a write:** after each value it waits until the target shows it; after an import, for the import's next outcome code (`imported:…`, else the write counts as refused). Then the check reads everything again on a new connection, so a value the device didn't keep shows.
+- **today:** is dated in the source's Timezone (its POSIX string), the day both controllers are in once Timezone has moved.
+- **Safety:** the source is opened through a reader with no write method, and a target with the source's MAC is refused before anything is written. Manual Override is never copied.
+- **The fake controller** (`tools/transfer/fake_controller.py`) speaks the native API in plaintext, so the tests run aioesphomeapi itself. The encrypted (Noise) handshake is aioesphomeapi's own and only runs against a real controller: A10.
+
 ## Open questions (each settled in its WP, then moved to Decisions)
 
 - One manifest with both builds, or one per target (S12), with S1's finding (c).
@@ -632,10 +639,10 @@ Only S6 waits for the display.
   - POOL-CONTROLLER.md « Moving to a new board ».
 
 #### S9: transfer tool, any time after S8
-- [ ] `tools/transfer/transfer.py`: the contract's `make transfer`, run in the ESPHome image with aioesphomeapi, as `tools/migrate/` does. The keys come from the environment or a file, never from the repo.
-- [ ] `make transfer-test` (CI): a fake API server pair with made-up values. No real controller in CI.
-- [ ] Done when A10 holds on the bench, with the live WROOM as a read-only source.
-- [ ] **Docs:**
+- [x] `tools/transfer/transfer.py`: the contract's `make transfer`, run in the ESPHome image with aioesphomeapi, as `tools/migrate/` does. The keys come from the environment or a file, never from the repo.
+- [x] `make transfer-test` (CI): a fake API server pair with made-up values. No real controller in CI.
+- [ ] Done when A10 holds on the bench, with the live WROOM as a read-only source (waits for hardware).
+- [x] **Docs:**
   - README « Moving a controller to a new board »;
   - the Makefile comment.
 
