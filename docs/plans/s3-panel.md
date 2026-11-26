@@ -139,10 +139,45 @@ The display can arrive after the board, so nothing in phase 1 waits for it but S
 - **S6 wires the screen**, sets the rotation, the touch transform and the bus speed it shows, and checks the panel on it. That closes M1.
 - The phases keep their order: the relays still wait for M1.
 
+**2026-11-26: S1's spike** (ESPHome 2026.11.0b6, the Makefile's pin)
+- **(a) The package override works with `pool-controller.yaml` untouched.**
+  - `pool-controller-s3.yaml` includes it whole (`packages: core: !include pool-controller.yaml`). Its `esphome.includes`, `!include`s, nested packages, `components/` and `webui/dist/` resolve as they do for the WROOM, both files being at the root.
+  - Substitutions set in the top-level file win over the package's (the pins, `device_name`); `-s device_name …` on the command line wins over both.
+  - `!remove` drops the WROOM-only `minimum_chip_revision` and `sram1_as_iram`.
+  - A list entry merges into the package's only as `id: !extend <id>`; a plain `id:` adds a second entry and the config fails (`globals:` needs `type`). The S3 file sets Auto Update's and Update Check Interval's initial values that way.
+  - `esphome: build_path:` is relative to `.esphome/`: `build/pool-controller-s3` gives `.esphome/build/pool-controller-s3/`.
+  - No refactor: every firmware source (`*.yaml`, `*.h`, `components/`, `webui/`) is identical to main's, so `esphome config pool-controller.yaml` is too (A2).
+- **(b) ESP-IDF, not Arduino.** Both build the whole firmware with no change and no warning:
+
+  | Framework | App (flash) | Static RAM | Build (cold toolchain) |
+  |---|---|---|---|
+  | ESP-IDF 5.5.6 | 1,261,599 B (15.5 % of the slot) | 123,863 B (36.2 % of 341,760) | 8 min |
+  | Arduino (on IDF) | 1,277,979 B (15.7 %) | 123,347 B (36.1 %) | 6 min |
+
+  ESP-IDF is 16 KB smaller, is what ESPHome recommends for LVGL on the S3, and the firmware uses no Arduino API. The WROOM stays on Arduino.
+- **(c) An `http_request` update picks its build by `chipFamily`.** It takes the first build whose `chipFamily` equals the firmware's variant (`ESP32-S3` here, `ESP32` on the WROOM), and fails the check (« Failed to parse manifest JSON ») when none matches. ESP Web Tools picks the same way. So:
+  - one manifest holding both builds works for both targets, and the WROOMs in the field ignore the S3's entry;
+  - but a manifest has one `version`: with « firmware only when it changed » per target (S12), a release that rebuilds the S3 alone would show every WROOM a new version. One manifest per target avoids that. S12 decides, with this.
+  - Until S12, should a bench S3 check the WROOM's manifest anyway, it finds no ESP32-S3 build and installs nothing.
+- **(d) Partitions on 16 MB** (ESPHome's own table, no `partitions:` needed): otadata 0x9000 (8 KB), phy_init 0xb000 (4 KB), app0 0x10000 and app1 0x7d0000 (7,936 KB each), nvs 0xf90000 (448 KB). The app slot is 7.75 MB, so the firmware uses 15.5 % of it before LVGL. The nvs partition sits after both app slots, so `make flash-s3`'s factory image at 0x0 (1.3 MB) keeps the settings.
+- **(e) `lvgl.pause` stops input: a first touch only wakes.** While paused, LVGL's touch listener hands LVGL no press (`touch_pressed_` stays false), and on release, with `resume_on_input` (on by default), LVGL resumes. No widget sees that touch. For S4:
+  - resuming by touch doesn't light the backlight: do it in `lvgl: on_resume:`;
+  - count ignored touches in the touchscreen's `on_touch` (the press, while still paused), not `on_release`, which runs after LVGL has resumed.
+- **Static use before the panel:** 1.26 MB of flash, 124 KB of internal RAM, no PSRAM. PSRAM's size and mode show in the boot log only (S2), and its use once LVGL draws (S4).
+
+**2026-11-26: S3, panel scaffolding**
+- **Texts are checked at compile time.** `panel_ui.h`'s `T("panel.home.change")` looks the key up in `panel_i18n.h` with a `consteval` constructor: a key the header lacks doesn't build. The firmware builds with `-fno-exceptions`, so the failure is a call to an undefined function named `no_such_key_in_panel_i18n_h`, not a `throw`.
+- **`panel_i18n.h` carries the panel's keys plus only the card's keys the panel uses**, by key or by `tr_prefix("prefix.", code)`. No plurals: the panel writes units (« {m} min »).
+- **Formats come from the dictionaries** (`panel.fmt.*`: the decimal separator, « {value} {unit} » with a no-break space, « {h} h {m} min », « — »), so a new language needs no code.
+- **Fonts:** `°` and `…` are already in `GF_Latin_Core`; only `³` is added. The generator reads the glyph sets from `tools/i18n/panel-glyphsets.json`, written from the ESPHome image's `esphome-glyphsets` (`make panel-glyphsets`).
+- **The preview's scenarios are picked at run time** (`PANEL_SCENARIO`, `PANEL_LANG`; `tools/panel-preview/preview.h`), not as substitutions: a host build takes about 2.5 min, and one build serves every shot.
+- **The ignored-touch burst:** 5 ignored touches within 10 min, reported once until they slow down.
+- **`status.*` codes:** the card has no `status.*` keys (Update Status's codes are `card.fw.*` in the card, `page.fw.*` in the page). S4 adds the panel's own `panel.status.*` keys, or reads the card's through `tr_prefix`.
+- **`local-panel.yaml`** is S3's real file (fonts, Panel Language, a placeholder home screen), not S1's stub. It names `panel_display` and `panel_touch`, so `pool-controller-s3.yaml` doesn't include it yet: S4 adds the hardware block and the `panel:` package together.
+
 ## Open questions (each settled in its WP, then moved to Decisions)
 
-- ESP-IDF or Arduino on the S3 (S1). Default: ESP-IDF, which ESPHome recommends for LVGL on the S3. The firmware uses no Arduino-only API, and its web server already runs on ESP-IDF's.
-- How `update: platform: http_request` picks a build in a manifest, by `chipFamily` or the first one (S1). This decides whether S12 ships one manifest with both builds or one manifest per target.
+- One manifest with both builds, or one per target (S12), with S1's finding (c).
 - How Home Assistant keeps the entity ids across the swap (rehearsed on the bench board, then done in S11):
   - the ESPHome integration's device replacement, if it accepts a new MAC for the same name;
   - otherwise remove the old device, add the new one, and rename the ids back.
@@ -271,13 +306,16 @@ Each line is tagged, because Daily History and Daily Plan History share a format
 | `daily:` | Daily History's own line (« 2026-11-13: 6.42 h 25.9/26.6 °C, … ») | the 7-day record's dates, filtration minutes and water min/max |
 | `plan:` | Daily Plan History's | planned minutes, for dates already in the record |
 | `outdoor:` | Daily Outdoor History's | outdoor min/max, for dates already in the record |
-| `today:` | `YYYY-MM-DD filtration=<min> water=<lo>/<hi> outdoor=<lo>/<hi> fill=<L>` (`-` for unknown) | today's running values, only if the date is the device's today |
+| `pad:` | Daily Equipment Pad History's (added by S8: the contract predates that sensor) | the pad's min/max, for dates already in the record |
+| `today:` | `YYYY-MM-DD filtration=<min> water=<lo>/<hi> outdoor=<lo>/<hi> fill=<L>`, optional `pad=<lo>/<hi>`, any order (`-` for unknown) | today's running values, only if the date is the device's today |
 
 - **Outcome codes:**
-  - `imported:daily:N`, `imported:plan:N`, `imported:outdoor:N`, `imported:today`;
+  - `imported:daily:N`, `imported:plan:N`, `imported:outdoor:N`, `imported:pad:N`, `imported:today`;
   - `refused:no_clock`, `refused:format`, `refused:tag`, `refused:date`, `refused:value`, `refused:too_many`, `refused:future`, `refused:record_ahead`, `refused:not_today`.
 - A refused line changes nothing.
-- A `daily:` line never replaces a record holding newer days.
+- A `daily:` line never replaces a record holding newer days. It replaces the record's dates; the other series keep their value for a date that stays, and are unknown for a new one.
+- `plan:`, `outdoor:` and `pad:` are each their series' whole truth: a record day the line leaves out becomes unknown, so the target prints the source's string exactly. A date not in the record refuses the line (`refused:date`).
+- `today:` copies the source's values: `-` makes a min/max unknown and Fill Water Today 0; without `pad=` the pad's stay.
 - Hours parse back to within one minute, because the sensors print hundredths of an hour.
 - Like Fill Water Import's codes, these show in Home Assistant's device page only, so no UI translates them.
 
@@ -301,7 +339,7 @@ Each line is tagged, because Daily History and Daily Plan History share a format
   - Pool/Pad/Outdoor Probe, after a Rescan Probes on the target;
   - Fill Meter and Fill Alarm After;
   - Fill Water Import (days, months);
-  - History Import (`daily`, `plan`, `outdoor`, `today`).
+  - History Import (`daily`, `plan`, `outdoor`, `pad`, `today`).
 - It then reads everything back and exits non-zero on any mismatch.
 - It never writes to the source.
 - It doesn't move, and says so at the end:
@@ -391,14 +429,14 @@ Tick each one only with its evidence (PR, command, or the date of the hardware c
 
 | WP | Phase | What | Depends on | Branch | Status | PR |
 |---|---|---|---|---|---|---|
-| S1 | 1 | S3 target, Make targets, CI | — | — | todo | — |
+| S1 | 1 | S3 target, Make targets, CI | — | `feat/s3-panel-s1-target` | done | [#88](https://github.com/davidterranova/pool-controller/pull/88) |
 | S2 | 1 | Board bring-up without the screen: board checks, antenna, Auto button, the full firmware | S1, board delivered | — | todo | — |
-| S3 | 1 (any time) | Panel scaffolding: `panel_ui.h` + tests, translations pipeline, fonts, preview | contract | — | todo | — |
+| S3 | 1 (any time) | Panel scaffolding: `panel_ui.h` + tests, translations pipeline, fonts, preview | contract | `feat/s3-panel-s3-scaffold` | done | [#89](https://github.com/davidterranova/pool-controller/pull/89) |
 | S4 | 1 (no screen) | Panel UI (LVGL) in the preview, then on the board with no screen attached | S1, S3; S2 for the board check | — | todo | — |
 | S5 | 1 (any time) | Controller page + mock: « Screen », wizard | contract | `feat/s3-panel-s5-page` | done | [#87](https://github.com/davidterranova/pool-controller/pull/87) |
 | S6 | 1 | Screen on the bench: wiring, rotation, touch, the panel checked on it | S2, S4, display delivered | — | todo | — |
 | S7 | 2 | Relays and a bench probe: pump safety on the S3 | M1 | — | todo | — |
-| S8 | 3 (any time) | History Import (every build) | contract | — | todo | — |
+| S8 | 3 (any time) | History Import (every build) | contract | `feat/s3-panel-s8-history` | in progress (bench check waits for hardware) | [#90](https://github.com/davidterranova/pool-controller/pull/90) |
 | S9 | 3 (any time) | Transfer tool | S8 | — | todo | — |
 | S10 | 3 | Probes, water meter, box: the full wiring on the bench | M2 | — | todo | — |
 | S11 | 3 | Burn-in, swap and go-live on the pool | S9, S10 | — | todo | — |
@@ -419,25 +457,27 @@ Only S6 waits for the display.
 ### Phase 1: software, screen and Auto button
 
 #### S1: S3 target, Make targets, CI
-- [ ] `pool-controller-s3.yaml`:
+- [x] `pool-controller-s3.yaml`:
   - packages: `core: !include pool-controller.yaml`, plus a stub `local-panel.yaml` until S4;
   - substitutions: the pin map and `device_name`;
   - `esp32:` board `esp32-s3-devkitc-1`, `variant: esp32s3`, `flash_size: 16MB`, the framework the spike picks, with `!remove` on the WROOM-only advanced options (`minimum_chip_revision`, `sram1_as_iram`);
   - `psram:` `mode: octal`, `speed: 80MHz`;
   - Auto Update off and Update Check Interval `on_request` until S12.
-- [ ] Spike, with its findings recorded in Decisions:
+- [x] Spike, with its findings recorded in Decisions:
   - (a) the package override (substitutions, `!remove`, the resolution of `esphome.includes` and `!include` from a second top-level file) leaves `pool-controller.yaml` untouched; if not, the smallest refactor, with A2's diff;
   - (b) ESP-IDF against Arduino on the S3: build both and pick;
   - (c) how `http_request` updates pick a manifest build;
   - (d) the partition table ESPHome generates for 16 MB, and the app slot size;
   - (e) whether `lvgl.pause` stops input processing, so the first touch only wakes.
-- [ ] Makefile: the S3 targets of the contract, with a build dir per config. Keep the WROOM targets as they are.
-- [ ] `validate.yml`: the secret guard on `pool-controller-s3.yaml`, `make validate-s3`, and `make build-s3` on PRs.
-- [ ] Done when:
+- [x] Makefile: the S3 targets of the contract, with a build dir per config. Keep the WROOM targets as they are.
+- [x] `validate.yml`: the secret guard on `pool-controller-s3.yaml`, `make validate-s3`, and `make build-s3` on PRs.
+- [x] Done when:
   - A1 holds;
   - `esphome config pool-controller.yaml` is unchanged from main's;
   - CI is green.
-- [ ] **Docs:**
+
+  A1 holds but for its PSRAM figure: the build uses no PSRAM statically, and its size and use show on the board only (S2, then S4 with LVGL). Flash and RAM: Decisions (S1's spike) and [#88](https://github.com/davidterranova/pool-controller/pull/88).
+- [x] **Docs:**
   - the header comment of `pool-controller-s3.yaml` (what it overrides and why);
   - the Makefile comments of the new targets;
   - README's build section mentions the S3 targets.
@@ -466,28 +506,28 @@ Only S6 waits for the display.
 - [ ] **Docs:** a draft of POOL-CONTROLLER.md's S3 hardware section (pin map, antenna mod, Auto button). S6 adds the display wiring, and S10 finishes it.
 
 #### S3: panel scaffolding (helpers, translations, preview), any time
-- [ ] `panel_ui.h`, tested in `tools/tests/panel_ui_test.cpp`:
+- [x] `panel_ui.h`, tested in `tools/tests/panel_ui_test.cpp`:
   - the sheet's state: staged mode and minutes, what Apply writes, the hint for each combination;
   - time left and « Auto at HH:MM » from the override's start and the timeout;
   - number and duration formats per language (decimal comma in fr/es, 24-hour clock, « — » for unknown);
   - the asleep-touch counter and its burst threshold.
-- [ ] Translations:
+- [x] Translations:
   - `i18n-panel/{en,fr,es}.json`;
   - a generator `tools/i18n/panel-header.mjs` → `panel_i18n.h`, plus `make panel-i18n`;
   - the `panel` surface in `surfaces.mjs`, with code usage, checked to see the C++ calls;
   - `make i18n-check` fails when `panel_i18n.h` is stale, as it does for the HA files;
   - « screen » in the glossary.
-- [ ] Fonts: Montserrat with `GF_Latin_Core` + `°³…`. The generator fails if a dictionary uses a character no font covers.
-- [ ] Preview (`tools/panel-preview/`):
-  - a `host` + `sdl` build of `local-panel.yaml`, with stand-in entities under the firmware's ids, and scenarios as substitutions;
+- [x] Fonts: Montserrat with `GF_Latin_Core` + `°³…`. The generator fails if a dictionary uses a character no font covers.
+- [x] Preview (`tools/panel-preview/`):
+  - a `host` + `sdl` build of `local-panel.yaml`, with stand-in entities under the firmware's ids, and scenarios picked at run time (Decisions, 2026-11-26: S3);
   - a Docker image (the ESPHome image + SDL2 + Xvfb);
   - `make panel-shots` → `tools/panel-preview/shots/<lang>-<screen>-<state>.png` at 480×320;
   - `make panel-preview-check` fails on a key shown instead of its text;
   - CI runs the check.
-- [ ] Done when:
+- [x] Done when:
   - the host tests pass;
   - the preview draws a placeholder screen in each language, in CI.
-- [ ] **Docs:**
+- [x] **Docs:**
   - the header comment of `panel_ui.h`;
   - README « Working on the panel without hardware »;
   - the panel in `.claude/rules/translations.md`'s « Where text goes ».
@@ -578,16 +618,16 @@ Only S6 waits for the display.
 ### Phase 3: full install with water metering
 
 #### S8: History Import (every build), any time
-- [ ] `history-import.yaml`, included by `pool-controller.yaml`, and `history_import.h`, tested in `tools/tests/history_import_test.cpp`:
+- [x] `history-import.yaml`, included by `pool-controller.yaml`, and `history_import.h`, tested in `tools/tests/history_import_test.cpp`:
   - the contract's lines and codes;
   - writes the 7-day record and today's running values;
   - refuses a whole line on any error, and never overwrites newer days;
   - republishes Daily History, Daily Plan History, Daily Outdoor History and today's sensors.
-- [ ] Round trip: every string the firmware's own lambdas print parses back to the same record, hours within one minute.
+- [x] Round trip: every string the firmware's own lambdas print parses back to the same record, hours within one minute.
 - [ ] Done when:
-  - the tests are green;
-  - on the bench S3, a `daily:` line copied from the live controller's Daily History (read-only) imports, and Daily History reads the same.
-- [ ] **Docs:**
+  - [x] the tests are green;
+  - [ ] on the bench S3 (waits for hardware), a `daily:` line copied from the live controller's Daily History (read-only) imports, and Daily History reads the same.
+- [x] **Docs:**
   - the package's header comment: formats, codes, the globals it writes;
   - POOL-CONTROLLER.md « Moving to a new board ».
 
@@ -630,7 +670,7 @@ Only S6 waits for the display.
 - [ ] The swap, with each step dated here:
   1. Export the controller's entity ids from Home Assistant.
   2. Run `make transfer FROM=pool-controller.local TO=pool-panel-bench.local` dry, then with `APPLY=1`.
-  3. Rebuild the S3 with the default `device_name` (`make ota-s3`). Power the WROOM off and keep it as it is.
+  3. Rebuild the S3 with the default `device_name` (`make ota-s3 LIVE=1 HOST=<the bench board's IP>`: LIVE=1 lifts the guard that keeps `ota-s3` off the live controller). Power the WROOM off and keep it as it is.
   4. Move the wiring: relays to the pump's DI terminals, the three probes, the water meter. Then power on.
   5. Home Assistant: take the rehearsed path. Check that the HomeKit Bridge still exposes Pump.
   6. Check A7 on the pool, A4, A5 and A11.

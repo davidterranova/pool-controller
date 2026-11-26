@@ -1,0 +1,132 @@
+# The panel preview (docs/plans/s3-panel.md, S3): local-panel.yaml built for the host with ESPHome's SDL display,
+# against stand-ins for the controller's entities under the firmware's own ids, so the panel is drawn and checked
+# with no board and no controller. Built and run in tools/panel-preview/Dockerfile's image (the ESPHome image plus
+# SDL2 and Xvfb):
+#   make panel-shots            every scenario in every language → tools/panel-preview/shots/<lang>-<screen>-<state>.png
+#   make panel-preview-check    the same, failing on a key, « nan » or a missing text instead of a text
+#
+# One build serves every shot: the scenario and the language are picked at run time (PANEL_SCENARIO, PANEL_LANG;
+# preview.h), since a build takes minutes. The scenarios are preview.h's SCENARIOS.
+#
+# Stand-ins (template entities, no logic): what local-panel.yaml reads of pool-controller.yaml, and the S3's
+# hardware block (panel_display, panel_touch, panel_backlight, auto_button). S4 adds what its screens read.
+
+esphome:
+  name: pool-panel-preview
+  includes:
+    - preview.h
+  on_boot:
+    # After the stand-ins' own setup, before local-panel.yaml's first draw (priority -100).
+    - priority: -10
+      then:
+        - lambda: |-
+            const auto &s = preview::scenario();
+            ESP_LOGI("preview", "scenario %s, language %s", s.name, preview::lang().c_str());
+            id(manual_override).make_call().set_option(s.mode).perform();
+            id(manual_override_timeout_minutes).publish_state(s.timeout_min);
+            id(override_since_ms) = std::string(s.mode) == "Auto" ? 0 : millis() - s.elapsed_min * 60000u;
+            id(last_commanded) = s.speed;
+            id(pool_return_temp).publish_state(s.water);
+            id(pad_ambient_temp).publish_state(s.pad);
+            id(outdoor_temp).publish_state(s.outdoor);
+            id(fill_today_sensor).publish_state(s.fill_today);
+            id(panel_language).make_call().set_option(preview::lang()).perform();
+    # Once LVGL has drawn: the labels for the check, then « ready » for the screenshot.
+    - priority: -200
+      then:
+        - delay: 1500ms
+        - lambda: 'preview::dump();'
+
+host:
+
+logger:
+  level: DEBUG
+  logs:
+    lvgl: INFO
+    component: ERROR
+
+time:
+  - platform: host
+    id: local_time
+
+# --- the S3's hardware block, stood in for -------------------------------------------------------------------------
+display:
+  - platform: sdl
+    id: panel_display
+    dimensions:
+      width: 480
+      height: 320
+    auto_clear_enabled: false
+    update_interval: never
+
+touchscreen:
+  - platform: sdl
+    id: panel_touch
+    display: panel_display
+
+output:
+  - platform: template
+    id: panel_backlight_output
+    type: float
+    write_action:
+      - logger.log:
+          format: "backlight %.0f %%"
+          args: ['state * 100']
+
+light:
+  - platform: monochromatic
+    id: panel_backlight
+    output: panel_backlight_output
+    restore_mode: ALWAYS_ON
+
+binary_sensor:
+  - platform: template
+    id: auto_button
+
+# --- pool-controller.yaml's entities, stood in for (same ids) ------------------------------------------------------
+globals:
+  - id: override_since_ms
+    type: uint32_t
+    initial_value: '0'
+  - id: last_commanded
+    type: std::string
+    initial_value: '"unknown"'
+
+select:
+  - platform: template
+    id: manual_override
+    name: "Manual Override"
+    options: ["Auto", "Off", "Low", "Medium", "High"]
+    initial_option: "Auto"
+    optimistic: true
+
+number:
+  - platform: template
+    id: manual_override_timeout_minutes
+    name: "Manual Override Timeout"
+    min_value: 0
+    max_value: 480
+    step: 5
+    initial_value: 60
+    optimistic: true
+
+sensor:
+  - platform: template
+    id: pool_return_temp
+    name: "Pool Return Temperature"
+    update_interval: never
+  - platform: template
+    id: pad_ambient_temp
+    name: "Equipment Pad Temperature"
+    update_interval: never
+  - platform: template
+    id: outdoor_temp
+    name: "Outdoor Temperature"
+    update_interval: never
+  - platform: template
+    id: fill_today_sensor
+    name: "Fill Water Today"
+    update_interval: never
+
+packages:
+  panel: !include ../../local-panel.yaml
