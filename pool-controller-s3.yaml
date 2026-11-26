@@ -14,8 +14,9 @@
 #   - the pins (the plan's pin map), as substitutions over the WROOM's;
 #   - firmware updates: off until the S3 build has its own manifest (S12), so
 #     a bench board never installs anything by itself;
-# and, from S2/S4, adds the panel (local-panel.yaml) and its hardware: the
-# display, the touch controller, the backlight and the Auto button.
+# and adds the panel (local-panel.yaml) and its hardware (the block at the
+# end): the display, the touch controller, the backlight, the Auto button,
+# and the Wi-Fi as the panel reads it.
 #
 # Packages are merged under this file: a key set here replaces the package's,
 # `!remove` deletes it, and a list entry `id: !extend <id>` is merged into the
@@ -51,9 +52,10 @@ substitutions:
 
 packages:
   core: !include pool-controller.yaml
-  # The panel (local-panel.yaml) joins in S4, with the hardware block that
-  # defines what it names: panel_display, panel_touch, panel_backlight. Until
-  # then the S3 build is the controller alone.
+  # The touch panel: its screens, fonts and entities. It names its hardware
+  # by id only (the block at the end of this file), so the preview
+  # (tools/panel-preview/) builds the same file against stand-ins.
+  panel: !include local-panel.yaml
 
 esphome:
   name: ${device_name}
@@ -93,3 +95,121 @@ globals:
     initial_value: 'false'
   - id: !extend update_check_hours
     initial_value: '0'
+
+# --- The S3's hardware block: what local-panel.yaml names by id ---------------
+# Written from Elecrow's drawing (DLS30035B1) and the pin map; S6 corrects the
+# rotation, the touch transform and the bus speed on the screen. Until S6 the
+# display's pins are unconnected: the firmware draws to nothing, and the touch
+# controller doesn't answer (its setup fails, the rest runs).
+
+spi:
+  - id: panel_spi
+    clk_pin: ${display_sck_pin}
+    mosi_pin: ${display_mosi_pin}
+    # No MISO: the module's SDO stays unconnected (nothing is read back).
+
+display:
+  - platform: mipi_spi
+    id: panel_display
+    model: ST7796
+    spi_id: panel_spi
+    cs_pin: ${display_cs_pin}
+    dc_pin: ${display_dc_pin}
+    reset_pin: ${display_reset_pin}
+    data_rate: 40MHz
+    # Landscape, 480×320 (the panel is 320×480 portrait), turned by the
+    # controller itself: LVGL won't take a display `rotation:`. S6 sets the
+    # mirrors from what the screen shows.
+    dimensions:
+      width: 480
+      height: 320
+    transform:
+      swap_xy: true
+      mirror_x: true
+      mirror_y: false
+    # LVGL draws the screen; its buffer goes in PSRAM.
+    auto_clear_enabled: false
+    update_interval: never
+
+i2c:
+  - id: panel_i2c
+    sda: ${touch_sda_pin}
+    scl: ${touch_scl_pin}
+
+touchscreen:
+  - platform: ft63x6
+    id: panel_touch
+    i2c_id: panel_i2c
+    display: panel_display
+    interrupt_pin: ${touch_int_pin}
+    reset_pin: ${touch_reset_pin}
+    # No transform until S6 sees where a tap lands.
+
+output:
+  - platform: ledc
+    id: panel_backlight_output
+    pin: ${backlight_pin}
+    frequency: 20kHz
+
+light:
+  # The backlight, internal: the panel lights it on wake and turns it off on
+  # sleep (Panel Sleep After).
+  - platform: monochromatic
+    id: panel_backlight
+    output: panel_backlight_output
+    internal: true
+    restore_mode: ALWAYS_ON
+    default_transition_length: 250ms
+
+binary_sensor:
+  # The Auto button: a press sets Manual Override to Auto, whatever the panel
+  # does (asleep, fogged, unplugged). local-panel.yaml also wakes the screen
+  # on it. Pressed = pulled to GND.
+  - platform: gpio
+    id: auto_button
+    internal: true
+    pin:
+      number: ${auto_button_pin}
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    filters:
+      - delayed_on: 30ms
+      - delayed_off: 30ms
+    on_press:
+      - lambda: 'ESP_LOGI("panel", "Auto button: Manual Override %s -> Auto", id(manual_override).current_option().c_str());'
+      - select.set:
+          id: manual_override
+          option: "Auto"
+
+# The Wi-Fi as the panel shows it (status bar, Status screen). Here, not in
+# local-panel.yaml: the preview's host build has no Wi-Fi component.
+text_sensor:
+  - platform: template
+    id: panel_wifi_ssid
+    internal: true
+    update_interval: 10s
+    lambda: |-
+      if (!wifi::global_wifi_component->is_connected()) return std::string();
+      char buf[wifi::SSID_BUFFER_SIZE];
+      return std::string(wifi::global_wifi_component->wifi_ssid_to(buf));
+  - platform: template
+    id: panel_wifi_ip
+    internal: true
+    update_interval: 10s
+    lambda: |-
+      if (!wifi::global_wifi_component->is_connected()) return std::string();
+      auto ips = wifi::global_wifi_component->wifi_sta_ip_addresses();
+      if (!ips[0].is_set()) return std::string();
+      char buf[network::IP_ADDRESS_BUFFER_SIZE];
+      return std::string(ips[0].str_to(buf));
+
+sensor:
+  - platform: template
+    id: panel_wifi_rssi
+    internal: true
+    update_interval: 30s
+    lambda: |-
+      if (!wifi::global_wifi_component->is_connected()) return NAN;
+      return (float) wifi::global_wifi_component->wifi_rssi();
