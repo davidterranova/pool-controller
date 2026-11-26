@@ -24,7 +24,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build validate-s3 build-s3 flash-s3 ota-s3 s3-ota-guard logs-s3 firmware-test flash status kill-port ota ip logs webui webui-test card i18n-check ha-files i18n-export i18n-import mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test clean
+.PHONY: validate build validate-s3 build-s3 flash-s3 ota-s3 s3-ota-guard logs-s3 firmware-test panel-i18n panel-glyphsets panel-preview-image panel-preview-build panel-shots panel-preview-check flash status kill-port ota ip logs webui webui-test card i18n-check ha-files i18n-export i18n-import mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate: webui
@@ -40,7 +40,7 @@ build: webui
 # Import; fill_meter.h's fills, long-fill alarm and pulse test;
 # components/page_login's HMAC, sessions, nonces and lockout), with the
 # ESPHome image's g++.
-FIRMWARE_TESTS := updates_test fill_import_test fill_meter_test page_login_test
+FIRMWARE_TESTS := updates_test fill_import_test fill_meter_test page_login_test panel_ui_test
 firmware-test:
 	docker run --rm -v "$(CURDIR):/config" -w /config --entrypoint sh $(ESPHOME_IMAGE) -c \
 		'set -e; for t in $(FIRMWARE_TESTS); do g++ -std=c++20 -Wall -Wextra -Werror -o /tmp/$$t tools/tests/$$t.cpp; /tmp/$$t; done'
@@ -296,6 +296,31 @@ card-shots:
 card-preview-check: $(if $(CARD_BUNDLE),card)
 	$(PLAYWRIGHT) --check $(if $(CARD_BUNDLE),--bundle) $(if $(LANG),--lang $(LANG))
 
+# The touch panel's preview (tools/panel-preview/): local-panel.yaml built for the host with ESPHome's SDL display,
+# against stand-ins for the controller's entities, in the ESPHome image plus SDL2 and Xvfb (its Dockerfile, built
+# once per ESPHOME_VERSION by panel-preview-image). No board, no controller. One build, then each scenario of
+# preview.h in each language:
+#   panel-shots          tools/panel-preview/shots/<lang>-<screen>-<state>.png at 480×320 (gitignored);
+#                        SCENARIO=auto,off for some, LANGS=fr for one language (LANGS, not LANG: the shell's locale)
+#   panel-preview-check  the same, failing on a dictionary key, « nan » or a missing text drawn instead of a text,
+#                        or a run that logs an error (CI runs it)
+PANEL_PREVIEW_IMAGE := pool-panel-preview:$(ESPHOME_VERSION)
+PANEL_PREVIEW_PROGRAM := tools/panel-preview/.esphome/build/pool-panel-preview/.pioenvs/pool-panel-preview/program
+PANEL_SHOOT = docker run --rm -v "$(CURDIR):/config" -w /config --entrypoint python3 $(PANEL_PREVIEW_IMAGE) -I tools/panel-preview/shoot.py \
+	$(PANEL_PREVIEW_PROGRAM) $(if $(SCENARIO),--only $(SCENARIO)) $(if $(LANGS),--lang $(LANGS))
+
+panel-preview-image:
+	docker build -q --build-arg ESPHOME_IMAGE=$(ESPHOME_IMAGE) -t $(PANEL_PREVIEW_IMAGE) tools/panel-preview >/dev/null
+
+panel-preview-build: panel-preview-image
+	docker run --rm -v "$(CURDIR):/config" $(PANEL_PREVIEW_IMAGE) compile tools/panel-preview/preview.yaml
+
+panel-shots: panel-preview-build
+	$(PANEL_SHOOT)
+
+panel-preview-check: panel-preview-build
+	$(PANEL_SHOOT) --check
+
 # Unit tests of the pages' pure modules (webui/test/: the setup's logic, the
 # time zone table; tools/tests/install-page.test.mjs: the install page's
 # states), with Node's own test runner, in the same node image.
@@ -310,11 +335,23 @@ webui-test:
 #   i18n-export   every text in English as one Markdown file, .i18n/translations.en.md, for any translation tool
 #   i18n-import   the translated file back into each surface's <TO>.json: make i18n-import TO=es FILE=~/Downloads/x.md
 #                 (DRY_RUN=1: only report). TO, not LANG: LANG is the shell's locale.
+#   panel-i18n    panel_i18n.h, the touch panel's texts compiled in, from i18n-panel/{en,fr,es}.json and the card's
+#                 keys the panel uses (tools/i18n/panel-header.mjs); fails on a plural, a missing language, or a
+#                 character no font of local-panel.yaml covers. i18n-check fails when panel_i18n.h is stale.
+#   panel-glyphsets  tools/i18n/panel-glyphsets.json, the characters of the fonts' glyph sets, from the ESPHome
+#                 image's esphome-glyphsets: after an ESPHOME_VERSION bump
 I18N_NODE := docker run --rm -v "$(CURDIR):/src" -w /src node:22-alpine node
 
 i18n-check:
 	$(I18N_NODE) tools/i18n/check.mjs
 	$(I18N_NODE) tools/i18n/ha-files.mjs --check
+	$(I18N_NODE) tools/i18n/panel-header.mjs --check
+
+panel-i18n:
+	$(I18N_NODE) tools/i18n/panel-header.mjs
+
+panel-glyphsets:
+	docker run --rm -v "$(CURDIR):/config" --entrypoint python3 $(ESPHOME_IMAGE) -I /config/tools/i18n/panel-glyphsets.py > tools/i18n/panel-glyphsets.json
 
 ha-files:
 	$(I18N_NODE) tools/i18n/ha-files.mjs

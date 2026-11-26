@@ -14,7 +14,7 @@
 #   - the pins (the plan's pin map), as substitutions over the WROOM's;
 #   - firmware updates: off until the S3 build has its own manifest (S12), so
 #     a bench board never installs anything by itself;
-# and adds the panel (local-panel.yaml) and, from S2/S4, its hardware: the
+# and, from S2/S4, adds the panel (local-panel.yaml) and its hardware: the
 # display, the touch controller, the backlight and the Auto button.
 #
 # Packages are merged under this file: a key set here replaces the package's,
@@ -51,7 +51,9 @@ substitutions:
 
 packages:
   core: !include pool-controller.yaml
-  panel: !include local-panel.yaml
+  # The panel (local-panel.yaml) joins in S4, with the hardware block that
+  # defines what it names: panel_display, panel_touch, panel_backlight. Until
+  # then the S3 build is the controller alone.
 
 esphome:
   name: ${device_name}

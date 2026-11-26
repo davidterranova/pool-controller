@@ -31,6 +31,11 @@ jobs:
       - name: Firmware-or-not tests
         run: python3 -I tools/release/test_firmware_release.py
 
+      # The panel preview's check (tools/panel-preview/shoot.py) on made-up logs; the preview itself runs in
+      # the panel-preview job below.
+      - name: Panel preview check tests
+        run: python3 -I tools/panel-preview/test_shoot.py
+
       # With the Makefile's pinned ESPHome (ESPHOME_VERSION).
       - name: make validate
         run: make validate
@@ -99,3 +104,24 @@ jobs:
 
       - name: make card-preview-check
         run: make card-preview-check CARD_BUNDLE=1
+
+  # The touch panel (local-panel.yaml) built for the host with ESPHome's SDL display, against stand-ins for the
+  # controller's entities, and drawn in every scenario of tools/panel-preview/preview.h in English, French and
+  # Spanish: fails on a dictionary key, « nan » or a missing text drawn instead of a text, or on a run that logs an
+  # error. Its own job, in parallel: the build takes minutes. The screenshots are kept as the run's artifact.
+  panel-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: make panel-preview-check
+        run: make panel-preview-check
+
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: panel-shots
+          path: tools/panel-preview/shots/
+          if-no-files-found: ignore

@@ -1,0 +1,4 @@
+{
+  "about": "The characters of the font glyph sets the panel uses (local-panel.yaml, font: glyphsets:), from esphome-glyphsets 0.2.0 in the ESPHome image: tools/i18n/panel-header.mjs fails when a text needs a character no font covers. Regenerate with make panel-glyphsets.",
+  "GF_Latin_Core": " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ ¡¢£¥§¨©ª«®¯°´¶·¸º»¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿĀāĂăĄąĆćĊċČčĎďĐđĒēĖėĘęĚěĞğĠġĢģĦħĪīĮįİıĶķĹĺĻļĽľŁłŃńŅņŇňŐőŒœŔŕŘřŚśŞşŠšŤťŪūŮůŰűŲųŴŵŶŷŸŹźŻżŽžȘșȚțȷˆˇ˘˙˚˛˜˝̧̨̦̀́̂̃̄̆̇̈̊̋̌ẀẁẂẃẄẅẞỲỳ–—‘’‚“”„•…‹›€™−"
+}

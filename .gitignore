@@ -9,3 +9,4 @@ __pycache__/
 .migrate/
 .card-preview/
 tools/card-preview/shots/
+tools/panel-preview/shots/
