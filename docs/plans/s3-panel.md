@@ -139,10 +139,35 @@ The display can arrive after the board, so nothing in phase 1 waits for it but S
 - **S6 wires the screen**, sets the rotation, the touch transform and the bus speed it shows, and checks the panel on it. That closes M1.
 - The phases keep their order: the relays still wait for M1.
 
+**2026-11-26: S1's spike** (ESPHome 2026.11.0b6, the Makefile's pin)
+- **(a) The package override works with `pool-controller.yaml` untouched.**
+  - `pool-controller-s3.yaml` includes it whole (`packages: core: !include pool-controller.yaml`). Its `esphome.includes`, `!include`s, nested packages, `components/` and `webui/dist/` resolve as they do for the WROOM, both files being at the root.
+  - Substitutions set in the top-level file win over the package's (the pins, `device_name`); `-s device_name …` on the command line wins over both.
+  - `!remove` drops the WROOM-only `minimum_chip_revision` and `sram1_as_iram`.
+  - A list entry merges into the package's only as `id: !extend <id>`; a plain `id:` adds a second entry and the config fails (`globals:` needs `type`). The S3 file sets Auto Update's and Update Check Interval's initial values that way.
+  - `esphome: build_path:` is relative to `.esphome/`: `build/pool-controller-s3` gives `.esphome/build/pool-controller-s3/`.
+  - No refactor: every firmware source (`*.yaml`, `*.h`, `components/`, `webui/`) is identical to main's, so `esphome config pool-controller.yaml` is too (A2).
+- **(b) ESP-IDF, not Arduino.** Both build the whole firmware with no change and no warning:
+
+  | Framework | App (flash) | Static RAM | Build (cold toolchain) |
+  |---|---|---|---|
+  | ESP-IDF 5.5.6 | 1,261,599 B (15.5 % of the slot) | 123,863 B (36.2 % of 341,760) | 8 min |
+  | Arduino (on IDF) | 1,277,979 B (15.7 %) | 123,347 B (36.1 %) | 6 min |
+
+  ESP-IDF is 16 KB smaller, is what ESPHome recommends for LVGL on the S3, and the firmware uses no Arduino API. The WROOM stays on Arduino.
+- **(c) An `http_request` update picks its build by `chipFamily`.** It takes the first build whose `chipFamily` equals the firmware's variant (`ESP32-S3` here, `ESP32` on the WROOM), and fails the check (« Failed to parse manifest JSON ») when none matches. ESP Web Tools picks the same way. So:
+  - one manifest holding both builds works for both targets, and the WROOMs in the field ignore the S3's entry;
+  - but a manifest has one `version`: with « firmware only when it changed » per target (S12), a release that rebuilds the S3 alone would show every WROOM a new version. One manifest per target avoids that. S12 decides, with this.
+  - Until S12, should a bench S3 check the WROOM's manifest anyway, it finds no ESP32-S3 build and installs nothing.
+- **(d) Partitions on 16 MB** (ESPHome's own table, no `partitions:` needed): otadata 0x9000 (8 KB), phy_init 0xb000 (4 KB), app0 0x10000 and app1 0x7d0000 (7,936 KB each), nvs 0xf90000 (448 KB). The app slot is 7.75 MB, so the firmware uses 15.5 % of it before LVGL. The nvs partition sits after both app slots, so `make flash-s3`'s factory image at 0x0 (1.3 MB) keeps the settings.
+- **(e) `lvgl.pause` stops input: a first touch only wakes.** While paused, LVGL's touch listener hands LVGL no press (`touch_pressed_` stays false), and on release, with `resume_on_input` (on by default), LVGL resumes. No widget sees that touch. For S4:
+  - resuming by touch doesn't light the backlight: do it in `lvgl: on_resume:`;
+  - count ignored touches in the touchscreen's `on_touch` (the press, while still paused), not `on_release`, which runs after LVGL has resumed.
+- **Static use before the panel:** 1.26 MB of flash, 124 KB of internal RAM, no PSRAM. PSRAM's size and mode show in the boot log only (S2), and its use once LVGL draws (S4).
+
 ## Open questions (each settled in its WP, then moved to Decisions)
 
-- ESP-IDF or Arduino on the S3 (S1). Default: ESP-IDF, which ESPHome recommends for LVGL on the S3. The firmware uses no Arduino-only API, and its web server already runs on ESP-IDF's.
-- How `update: platform: http_request` picks a build in a manifest, by `chipFamily` or the first one (S1). This decides whether S12 ships one manifest with both builds or one manifest per target.
+- One manifest with both builds, or one per target (S12), with S1's finding (c).
 - How Home Assistant keeps the entity ids across the swap (rehearsed on the bench board, then done in S11):
   - the ESPHome integration's device replacement, if it accepts a new MAC for the same name;
   - otherwise remove the old device, add the new one, and rename the ids back.
