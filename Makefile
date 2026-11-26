@@ -176,13 +176,24 @@ mock-ui: webui
 # MOCK_INSTALL_FAIL=1: every install fails at 60 % of its download.
 # MOCK_FILL=off starts with the fill meter turned off; MOCK_LONG_FILL=1 with a
 # fill already past Fill Alarm After, its alarm on (fill-meter.yaml).
+# MOCK_PANEL=1 adds the S3 build's touch panel (Panel Language, Panel Sleep
+# After, Panel Ignored Touches): Réglages contrôleur shows its « Screen » section.
 mock-webui:
-	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh) $(if $(MOCK_NO_RELEASE),--no-release) $(if $(filter off,$(MOCK_FILL)),--fill-off) $(if $(MOCK_LONG_FILL),--long-fill) $(if $(MOCK_INSTALL_FAIL),--install-fail) $(if $(MOCK_IDLE),--idle $(MOCK_IDLE))"
+	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh) $(if $(MOCK_NO_RELEASE),--no-release) $(if $(filter off,$(MOCK_FILL)),--fill-off) $(if $(MOCK_LONG_FILL),--long-fill) $(if $(MOCK_INSTALL_FAIL),--install-fail) $(if $(MOCK_PANEL),--panel) $(if $(MOCK_IDLE),--idle $(MOCK_IDLE))"
 
 # Prints the page layout (sections, order, which entities the simulation
-# drives) and fails if $(CONFIG) has an entity type the mock can't render.
+# drives) and fails if $(CONFIG) has an entity type the mock can't render;
+# then the same with the touch panel (--panel), and for the S3 build's
+# config, $(CONFIG_S3), once the branch has it (docs/plans/s3-panel.md).
+CONFIG_S3 ?= pool-controller-s3.yaml
 mock-ui-check:
 	$(MOCK) --check $(MOCK_ARGS) /config/$(CONFIG)
+	$(MOCK) --check --panel $(MOCK_ARGS) /config/$(CONFIG) > /dev/null
+ifneq ($(wildcard $(CONFIG_S3)),)
+	$(MOCK) --check $(MOCK_ARGS) /config/$(CONFIG_S3)
+else
+	@echo "mock-ui-check: no $(CONFIG_S3) on this branch yet, skipped"
+endif
 
 # Checks home-assistant/dashboard/ (the dashboard components and the scripts piscine-card calls, each
 # language's file that make ha-files generates) and home-assistant/blueprints/ against $(CONFIG): every
