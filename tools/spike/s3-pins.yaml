@@ -1,0 +1,123 @@
+# S2 spike (docs/plans/s3-panel.md): checks the S3 pin map against the board's
+# silkscreen, and shows the PSRAM's size and mode in the boot log. Throwaway:
+# not a firmware for the pool, no Wi-Fi, nothing but the log.
+#
+# Every pin of the map is an input with its pull-up. Touch each one to GND with
+# a jumper wire, in the map's order: the log must name the pin you touched.
+#   docker run --rm -v "$PWD:/config" ghcr.io/esphome/esphome:2026.11.0b6 \
+#     compile tools/spike/s3-pins.yaml
+#   esptool --chip esp32s3 --port /dev/cu.usbmodem… write-flash \
+#     0x0 tools/spike/.esphome/build/s3-pins/build/firmware.factory.bin
+# It keeps the NVS partition, so `make flash-s3 BENCH=1` afterwards brings the
+# bench firmware back with its settings.
+
+esphome:
+  name: s3-pins
+  on_boot:
+    priority: -100
+    then:
+      - logger.log:
+          level: INFO
+          format: "S2 pin check: touch each pin to GND, in the map's order"
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  # CONFIG and below: the psram component's summary (size, mode, speed).
+  level: DEBUG
+
+binary_sensor:
+  - platform: gpio
+    name: "GPIO12 Display SCK"
+    pin: {number: GPIO12, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO12 (Display SCK) to GND"}}
+  - platform: gpio
+    name: "GPIO11 Display SDI (MOSI)"
+    pin: {number: GPIO11, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO11 (Display SDI (MOSI)) to GND"}}
+  - platform: gpio
+    name: "GPIO10 Display LCD_CS"
+    pin: {number: GPIO10, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO10 (Display LCD_CS) to GND"}}
+  - platform: gpio
+    name: "GPIO9 Display LCD_RS (DC)"
+    pin: {number: GPIO9, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO9 (Display LCD_RS (DC)) to GND"}}
+  - platform: gpio
+    name: "GPIO8 Display LCD_RST"
+    pin: {number: GPIO8, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO8 (Display LCD_RST) to GND"}}
+  - platform: gpio
+    name: "GPIO14 Display LED (backlight)"
+    pin: {number: GPIO14, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO14 (Display LED (backlight)) to GND"}}
+  - platform: gpio
+    name: "GPIO1 Touch CTP_SDA"
+    pin: {number: GPIO1, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO1 (Touch CTP_SDA) to GND"}}
+  - platform: gpio
+    name: "GPIO2 Touch CTP_SCL"
+    pin: {number: GPIO2, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO2 (Touch CTP_SCL) to GND"}}
+  - platform: gpio
+    name: "GPIO21 Touch CTP_INT"
+    pin: {number: GPIO21, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO21 (Touch CTP_INT) to GND"}}
+  - platform: gpio
+    name: "GPIO18 Touch CTP_RST"
+    pin: {number: GPIO18, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO18 (Touch CTP_RST) to GND"}}
+  - platform: gpio
+    name: "GPIO17 Auto button"
+    pin: {number: GPIO17, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO17 (Auto button) to GND"}}
+  - platform: gpio
+    name: "GPIO4 Relay V1"
+    pin: {number: GPIO4, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO4 (Relay V1) to GND"}}
+  - platform: gpio
+    name: "GPIO5 Relay V2"
+    pin: {number: GPIO5, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO5 (Relay V2) to GND"}}
+  - platform: gpio
+    name: "GPIO6 Relay V3"
+    pin: {number: GPIO6, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO6 (Relay V3) to GND"}}
+  - platform: gpio
+    name: "GPIO7 Relay Run"
+    pin: {number: GPIO7, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO7 (Relay Run) to GND"}}
+  - platform: gpio
+    name: "GPIO15 OneWire probes"
+    pin: {number: GPIO15, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO15 (OneWire probes) to GND"}}
+  - platform: gpio
+    name: "GPIO16 Water meter"
+    pin: {number: GPIO16, inverted: true, mode: {input: true, pullup: true}}
+    filters: [delayed_on: 20ms, delayed_off: 20ms]
+    on_press: {logger.log: {level: INFO, format: "PIN GPIO16 (Water meter) to GND"}}
