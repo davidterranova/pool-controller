@@ -179,7 +179,9 @@ The display can arrive after the board, so nothing in phase 1 waits for it but S
 - **The board read back** (esptool, then the bench firmware's boot log): ESP32-S3 (QFN56) rev v0.2, 8 MB embedded PSRAM, 16 MB Boya flash (quad in eFuse, DIO at boot), ESPHome's 16 MB partition table as S1's spike gave it. It came with ESP-IDF's TinyUSB console example, which holds the USB port: the first flash needs BOOT + RST by hand. After a flash, esptool's reset leaves it in download mode: press RST once.
 - **No `flash_chip: boya`**, though ESPHome suggests it to save IRAM: it drops the other vendors' flash drivers, and the published S3 build must boot on any N16R8 clone.
 - **The Auto button came with S4** (#92), in `pool-controller-s3.yaml`'s hardware block as this plan asks (GPIO 17, pull-up, inverted, debounced, logged under `panel`). S2 doesn't write a second one: it checks S4's on the bench.
-- **The pin check** is `tools/spike/s3-pins.yaml`: every pin of the map as an input with its pull-up, touched to GND one by one, the log naming each. At DEBUG it also prints the PSRAM's mode, which the bench firmware (INFO) doesn't.
+- **The pin check** is `tools/spike/s3-pins.yaml`: every pin of the map as an input with its pull-up, touched to GND one by one. It reads the raw levels every 100 ms and logs the pins read low on a change and every 2 s, with GPIO0 (the BOOT button) as a reference that needs no wire. Its binary sensors' interrupts are a second reading.
+- **Pin check, 2026-11-27: the silkscreen matches the map.** All 17 pins (12, 11, 10, 9, 8, 14, 1, 2, 21, 18, 17, 4, 5, 6, 7, 15, 16) read low in that order, one at a time, none with another. A first run saw nothing: a broken jumper wire, found by holding BOOT (`low: GPIO0`) and then 17 with another wire.
+- **PSRAM: 8 MB, octal**, found and usable (`psram: Available: YES, Size: 8192 KB` with `mode: octal`). ESPHome's summary doesn't print the mode; a wrong mode would fail to find it.
 
 ## Open questions (each settled in its WP, then moved to Decisions)
 

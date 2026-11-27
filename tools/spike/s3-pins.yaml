@@ -121,3 +121,22 @@ binary_sensor:
     pin: {number: GPIO16, inverted: true, mode: {input: true, pullup: true}}
     filters: [delayed_on: 20ms, delayed_off: 20ms]
     on_press: {logger.log: {level: INFO, format: "PIN GPIO16 (Water meter) to GND"}}
+
+# A second reading, independent of the binary sensors' interrupts and filters:
+# every 100 ms, the raw level of every pin; a change, and every 2 s, logs the
+# pins read low. GPIO0 is the BOOT button: a reference that needs no wire.
+interval:
+  - interval: 100ms
+    then:
+      - lambda: |-
+          static const gpio_num_t pins[] = {GPIO_NUM_0, GPIO_NUM_12, GPIO_NUM_11, GPIO_NUM_10, GPIO_NUM_9, GPIO_NUM_8, GPIO_NUM_14, GPIO_NUM_1, GPIO_NUM_2, GPIO_NUM_21, GPIO_NUM_18, GPIO_NUM_17, GPIO_NUM_4, GPIO_NUM_5, GPIO_NUM_6, GPIO_NUM_7, GPIO_NUM_15, GPIO_NUM_16};
+          static std::string last = "-";
+          std::string low;
+          for (auto p : pins)
+            if (gpio_get_level(p) == 0) low += "GPIO" + std::to_string((int) p) + " ";
+          static uint32_t beat = 0;
+          if (low != last || millis() - beat > 2000) {
+            beat = millis();
+            ESP_LOGI("pins", "low: %s", low.empty() ? "none" : low.c_str());
+            last = low;
+          }
