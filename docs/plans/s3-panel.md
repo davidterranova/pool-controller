@@ -175,6 +175,19 @@ The display can arrive after the board, so nothing in phase 1 waits for it but S
 - **`status.*` codes:** the card has no `status.*` keys (Update Status's codes are `card.fw.*` in the card, `page.fw.*` in the page). S4 adds the panel's own `panel.status.*` keys, or reads the card's through `tr_prefix`.
 - **`local-panel.yaml`** is S3's real file (fonts, Panel Language, a placeholder home screen), not S1's stub. It names `panel_display` and `panel_touch`, so `pool-controller-s3.yaml` doesn't include it yet: S4 adds the hardware block and the `panel:` package together.
 
+**2026-11-26: S4, the panel**
+- **Font sizes: Montserrat 16, 20 and 28 (600)**, plus LVGL's built-in Montserrat 20 for the Wi-Fi sign alone. Names, hints and badges at 16, the mode line and buttons at 20, readings at 28. Flash: the fonts take about 135 KB (16 px ≈ 25 KB, 20 px ≈ 33 KB, 28 px semibold ≈ 59 KB, the built-in ≈ 17 KB). The whole panel, LVGL included, adds 409 KB to S1's build (1,670,679 B before S8 merged, 1,676,439 B with History Import: 20.6 % of the slot); static RAM 130,959 B (+7 KB). PSRAM use shows on the board only.
+- **Panel Sleep After stays 60 s by default.**
+- **Landscape by the display's own transform** (`swap_xy`, `mirror_x`), with `dimensions` 480×320: LVGL refuses a display `rotation:`. S6 sets the mirrors from what the screen shows.
+- **The panel reads the Wi-Fi through `panel_wifi_ssid`, `panel_wifi_ip` and `panel_wifi_rssi`**, internal template sensors in the S3's hardware block: the preview's host build has no Wi-Fi component, so local-panel.yaml can't call it. The preview stands in for them.
+- **The Auto button's GPIO block is written here** (S2 hadn't started): `pool-controller-s3.yaml`, GPIO 17, pull-up, inverted, 30 ms debounce, internal, a press sets Auto and logs under `panel`. S2 checks it on the board.
+- **The freeze badge is the firmware's own test** (Pool Return Temperature below Freeze Protection Temperature, `panel_ui::freeze_active`): no entity or code says « freeze protection forces Low now ». The fill badge is Fill Running Too Long, with Fill Meter on.
+- **« Fill this month »** is Fill Water Months' this-month value: the closed days in `fill_months[0]` when `fill_months_key` is this month, plus Fill Water Today; today alone before a day of the month has closed (`panel_ui::fill_month`).
+- **The sheet and the touch counter live in `panel_ui.h`** (`panel_ui::sheet`, `panel_ui::touch_guard`), not as `globals:`: ESPHome declares its globals before the includes, so a global can't have a type from `panel_ui.h`.
+- **The panel follows Manual Override at once**, from whoever changes it (`id: !extend manual_override` adds a redraw to its `on_value`), and redraws everything every 5 s; a label is only touched when its text changes.
+- **ESPHome config lessons:** `id: !extend` appends to an automation list (the Auto button's `on_press` gets the panel's wake after the hardware block's « set Auto »), and works across packages. A YAML merge key (`<<: *anchor`) keeps the anchor's keys and drops the ones written beside it, so the panel writes every widget out.
+- **The preview's flows check A4** (`tools/panel-preview/shoot.py`'s `FLOWS`, in `make panel-preview-check`): taps by xdotool on the SDL window and commands on the program's stdin (the Auto button, a language, a dump of the labels), each step against the log. The preview's stand-in for Manual Override does the firmware's expiry every second.
+
 ## Open questions (each settled in its WP, then moved to Decisions)
 
 - One manifest with both builds, or one per target (S12), with S1's finding (c).
@@ -183,7 +196,6 @@ The display can arrive after the board, so nothing in phase 1 waits for it but S
   - otherwise remove the old device, add the new one, and rename the ids back.
 - Rotation direction and touch transform (S6), with the connector's side as the box will mount it (S10).
 - Whether the board runs the LVGL build with no screen attached, with only the touch controller failed (S4). Expected: the SPI bus has no handshake, and a failed FT6336 setup marks only that component failed.
-- Font sizes and their flash cost (S4). Default Panel Sleep After: 60 s (S4).
 
 ## Hardware
 
@@ -372,6 +384,8 @@ Tick each one only with its evidence (PR, command, or the date of the hardware c
   - A touch on a sleeping screen only wakes it.
   - The screen sleeps after Panel Sleep After.
   - The override expires back to Auto, and the panel follows.
+
+  In the preview (S4): every item, by `make panel-preview-check`'s flows. On the screen: S6.
 - [ ] **A5 Auto button:**
   - returns to Auto on the board with no screen attached (S2), and still does once the panel runs (S4);
   - then with the screen awake, asleep, and with the touch flex unplugged (S6).
@@ -381,6 +395,8 @@ Tick each one only with its evidence (PR, command, or the date of the hardware c
   - `make i18n-check` passes with `panel` strict.
   - Panel Language switches the panel at once.
   - The page's « Screen » section works in the three languages (S5).
+
+  S4: the shots (9 states × 3 screens × 3 languages, no clipped text), `make i18n-check` with `panel` strict, and the language flow.
 
 **M2: relays (phase 2)**
 - [ ] **A7 Pump safety on the S3:**
@@ -432,7 +448,7 @@ Tick each one only with its evidence (PR, command, or the date of the hardware c
 | S1 | 1 | S3 target, Make targets, CI | — | `feat/s3-panel-s1-target` | done | [#88](https://github.com/davidterranova/pool-controller/pull/88) |
 | S2 | 1 | Board bring-up without the screen: board checks, antenna, Auto button, the full firmware | S1, board delivered | — | todo | — |
 | S3 | 1 (any time) | Panel scaffolding: `panel_ui.h` + tests, translations pipeline, fonts, preview | contract | `feat/s3-panel-s3-scaffold` | done | [#89](https://github.com/davidterranova/pool-controller/pull/89) |
-| S4 | 1 (no screen) | Panel UI (LVGL) in the preview, then on the board with no screen attached | S1, S3; S2 for the board check | — | todo | — |
+| S4 | 1 (no screen) | Panel UI (LVGL) in the preview, then on the board with no screen attached | S1, S3; S2 for the board check | `feat/s3-panel-s4-panel` | in progress (the board check waits for hardware) | [#92](https://github.com/davidterranova/pool-controller/pull/92) |
 | S5 | 1 (any time) | Controller page + mock: « Screen », wizard | contract | `feat/s3-panel-s5-page` | done | [#87](https://github.com/davidterranova/pool-controller/pull/87) |
 | S6 | 1 | Screen on the bench: wiring, rotation, touch, the panel checked on it | S2, S4, display delivered | — | todo | — |
 | S7 | 2 | Relays and a bench probe: pump safety on the S3 | M1 | — | todo | — |
@@ -533,7 +549,7 @@ Only S6 waits for the display.
   - the panel in `.claude/rules/translations.md`'s « Where text goes ».
 
 #### S4: panel UI (LVGL) in the preview, then on the board with no screen
-- [ ] `local-panel.yaml`, built and checked in the preview (S3):
+- [x] `local-panel.yaml`, built and checked in the preview (S3):
   - the contract's entities and LVGL pages (home, pump-mode sheet, status), bound by id;
   - `on_idle` after Panel Sleep After: backlight off and `lvgl.pause`;
   - a touch while paused only resumes and lights up;
@@ -541,22 +557,24 @@ Only S6 waits for the display.
   - a Panel Language change relabels every widget;
   - sleep discards the sheet;
   - every text from `panel_i18n.h`, with no literal.
-- [ ] Display and touch in `pool-controller-s3.yaml`'s hardware block, written from Elecrow's drawing and the pin map. S6 corrects them on the screen:
+- [x] Display and touch in `pool-controller-s3.yaml`'s hardware block, written from Elecrow's drawing and the pin map. S6 corrects them on the screen:
   - `spi` (SCK 12, MOSI 11, no MISO);
   - `display` (ST7796, CS 10, DC 9, reset 8, landscape, 40 MHz), its LVGL buffer in PSRAM;
   - `touchscreen: ft63x6` on I²C 1/2 (INT 21, reset 18), with no transform;
   - `output: ledc` on 14 and the backlight as an internal light.
-- [ ] `panel` log tag: wake, sleep, every Apply with what it wrote, the Auto button, ignored-touch bursts.
+- [x] `panel` log tag: wake, sleep, every Apply with what it wrote, the Auto button, ignored-touch bursts.
 - [ ] On the bench board, with no screen attached (`make flash-s3 BENCH=1`):
   - it boots and runs LVGL, and the log shows only the touch controller failing (settles the open question; if the whole build stalls instead, the fix goes in this WP);
   - the page and the panel's entities work, and the Auto button still sets Auto;
   - flash, RAM and PSRAM use with LVGL, against S1's figures.
-- [ ] Screenshots in the PR: every screen × state × language from `make panel-shots`.
+- [x] Screenshots in the PR: every screen × state × language from `make panel-shots`.
 - [ ] Done when:
   - A4 holds in the preview;
   - A6's preview part holds;
   - the board runs the panel build with no screen attached.
-- [ ] **Docs:**
+
+  A4 and A6's preview part hold (`make panel-preview-check`: 81 shots and 10 flows). The board's check waits for the board (S2).
+- [x] **Docs:**
   - the header comment of `local-panel.yaml`: screens, behaviour, entities, and the stable globals;
   - POOL-CONTROLLER.md « Local touch panel »: how to use it.
 

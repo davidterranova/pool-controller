@@ -1,15 +1,17 @@
-# The panel preview (docs/plans/s3-panel.md, S3): local-panel.yaml built for the host with ESPHome's SDL display,
+# The panel preview (docs/plans/s3-panel.md, S3, S4): local-panel.yaml built for the host with ESPHome's SDL display,
 # against stand-ins for the controller's entities under the firmware's own ids, so the panel is drawn and checked
 # with no board and no controller. Built and run in tools/panel-preview/Dockerfile's image (the ESPHome image plus
-# SDL2 and Xvfb):
-#   make panel-shots            every scenario in every language → tools/panel-preview/shots/<lang>-<screen>-<state>.png
-#   make panel-preview-check    the same, failing on a key, « nan » or a missing text instead of a text
+# SDL2, Xvfb and xdotool):
+#   make panel-shots            every screen × scenario × language → tools/panel-preview/shots/<lang>-<screen>-<state>.png
+#   make panel-preview-check    the same, failing on a key, « nan » or a missing text instead of a text, then the
+#                               flows: taps and commands checked against the panel's log (shoot.py's FLOWS)
 #
-# One build serves every shot: the scenario and the language are picked at run time (PANEL_SCENARIO, PANEL_LANG;
-# preview.h), since a build takes minutes. The scenarios are preview.h's SCENARIOS.
+# One build serves every shot: the scenario, the language and the screen are picked at run time (PANEL_SCENARIO,
+# PANEL_LANG, PANEL_SCREEN; preview.h), since a build takes minutes. The scenarios are preview.h's SCENARIOS.
 #
-# Stand-ins (template entities, no logic): what local-panel.yaml reads of pool-controller.yaml, and the S3's
-# hardware block (panel_display, panel_touch, panel_backlight, auto_button). S4 adds what its screens read.
+# Stand-ins (template entities, no logic but the override's expiry): what local-panel.yaml reads of
+# pool-controller.yaml, and the S3's hardware block (panel_display, panel_touch, panel_backlight, auto_button, the
+# Wi-Fi's panel_wifi_*). The Auto button's stand-in sets Auto as the S3's block does.
 
 esphome:
   name: pool-panel-preview
@@ -21,19 +23,46 @@ esphome:
       then:
         - lambda: |-
             const auto &s = preview::scenario();
-            ESP_LOGI("preview", "scenario %s, language %s", s.name, preview::lang().c_str());
+            ESP_LOGI("preview", "scenario %s, language %s, screen %s", s.name, preview::lang().c_str(),
+                     preview::screen().c_str());
             id(manual_override).make_call().set_option(s.mode).perform();
             id(manual_override_timeout_minutes).publish_state(s.timeout_min);
-            id(override_since_ms) = std::string(s.mode) == "Auto" ? 0 : millis() - s.elapsed_min * 60000u;
+            uint32_t elapsed_ms = s.elapsed_min * 60000u;
+            int left = preview::env_int("PANEL_LEFT_S");
+            if (left >= 0 && s.timeout_min > 0)
+              elapsed_ms = (uint32_t) (s.timeout_min * 60000.0f) - (uint32_t) left * 1000u;
+            id(override_since_ms) = std::string(s.mode) == "Auto" ? 0 : millis() - elapsed_ms;
             id(last_commanded) = s.speed;
+            auto now = id(local_time).now();
+            id(sched_next_change) = s.next_change_min < 0 || !now.is_valid() ? 0 : now.timestamp + s.next_change_min * 60;
             id(pool_return_temp).publish_state(s.water);
             id(pad_ambient_temp).publish_state(s.pad);
             id(outdoor_temp).publish_state(s.outdoor);
-            id(fill_today_sensor).publish_state(s.fill_today);
+            id(fill_meter_enabled) = s.fill_meter;
+            id(fill_today_sensor).publish_state(s.fill_meter ? s.fill_today : NAN);
+            id(fill_months)[0] = s.fill_month_closed;
+            id(fill_months_key) = now.is_valid() ? now.year * 100u + now.month : 0;
+            id(fill_too_long_sensor).publish_state(s.fill_too_long);
+            id(auto_button).publish_state(false);  // released: a press is a change from here
+            id(panel_wifi_ssid).publish_state(s.wifi ? "Pool-Net" : "");
+            id(panel_wifi_ip).publish_state(s.wifi ? "192.168.1.42" : "");
+            id(panel_wifi_rssi).publish_state(s.wifi ? -61 : NAN);
+            id(uptime_sensor).publish_state(3 * 86400 + 5 * 3600 + 12 * 60);
+            id(firmware_version_text).publish_state("v2.0.0");
+            id(update_status).publish_state(s.update);
+            id(setup_state).publish_state(s.setup);
+            int sleep_s = preview::env_int("PANEL_SLEEP_S");
+            if (sleep_s > 0)
+              id(panel_sleep_s) = sleep_s;
             id(panel_language).make_call().set_option(preview::lang()).perform();
-    # Once LVGL has drawn: the labels for the check, then « ready » for the screenshot.
+    # Once LVGL has drawn: the screen asked for, its labels for the check, then « ready » for the screenshot.
     - priority: -200
       then:
+        - lambda: |-
+            if (preview::screen() == "sheet")
+              id(panel_open_sheet).execute();
+            else if (preview::screen() == "status")
+              id(panel_show_status).execute();
         - delay: 1500ms
         - lambda: 'preview::dump();'
 
@@ -44,6 +73,11 @@ logger:
   logs:
     lvgl: INFO
     component: ERROR
+    sensor: INFO
+    text_sensor: INFO
+    binary_sensor: INFO
+    number: INFO
+    light: INFO
 
 time:
   - platform: host
@@ -78,10 +112,19 @@ light:
     id: panel_backlight
     output: panel_backlight_output
     restore_mode: ALWAYS_ON
+    default_transition_length: 0s
 
 binary_sensor:
+  # As the S3's: a press sets Auto.
   - platform: template
     id: auto_button
+    on_press:
+      - lambda: 'ESP_LOGI("panel", "Auto button: Manual Override %s -> Auto", id(manual_override).current_option().c_str());'
+      - select.set:
+          id: manual_override
+          option: "Auto"
+  - platform: template
+    id: fill_too_long_sensor
 
 # --- pool-controller.yaml's entities, stood in for (same ids) ------------------------------------------------------
 globals:
@@ -91,6 +134,18 @@ globals:
   - id: last_commanded
     type: std::string
     initial_value: '"unknown"'
+  - id: sched_next_change
+    type: uint32_t
+    initial_value: '0'
+  - id: fill_meter_enabled
+    type: bool
+    initial_value: 'true'
+  - id: fill_months
+    type: uint32_t[12]
+    initial_value: '{UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX}'
+  - id: fill_months_key
+    type: uint32_t
+    initial_value: '0'
 
 select:
   - platform: template
@@ -99,6 +154,12 @@ select:
     options: ["Auto", "Off", "Low", "Medium", "High"]
     initial_option: "Auto"
     optimistic: true
+    on_value:
+      # As the firmware's: the override's clock, and the commanded speed (no schedule here: Auto keeps the speed).
+      - lambda: |-
+          id(override_since_ms) = (x == "Auto") ? 0 : millis();
+          if (x != "Auto") id(last_commanded) = x;
+          ESP_LOGI("preview", "Manual Override is %s", x.c_str());
 
 number:
   - platform: template
@@ -108,6 +169,18 @@ number:
     max_value: 480
     step: 5
     initial_value: 60
+    optimistic: true
+    on_value:
+      - lambda: |-
+          if (id(override_since_ms) != 0) id(override_since_ms) = millis();
+          ESP_LOGI("preview", "Manual Override Timeout is %.0f min", x);
+  - platform: template
+    id: freeze_protection_c
+    name: "Freeze Protection Temperature"
+    min_value: 0
+    max_value: 10
+    step: 0.5
+    initial_value: 3
     optimistic: true
 
 sensor:
@@ -127,6 +200,58 @@ sensor:
     id: fill_today_sensor
     name: "Fill Water Today"
     update_interval: never
+  - platform: template
+    id: uptime_sensor
+    name: "Uptime"
+    update_interval: never
+  - platform: template
+    id: panel_wifi_rssi
+    update_interval: never
+
+text_sensor:
+  - platform: template
+    id: firmware_version_text
+    name: "Firmware Version"
+  - platform: template
+    id: update_status
+    name: "Update Status"
+  - platform: template
+    id: setup_state
+    name: "Setup State"
+  - platform: template
+    id: panel_wifi_ssid
+  - platform: template
+    id: panel_wifi_ip
+
+interval:
+  # The firmware's expiry, as its 30 s tick does it (pool-controller.yaml), every second here.
+  - interval: 1s
+    then:
+      - lambda: |-
+          if (id(override_since_ms) == 0) return;
+          float timeout = id(manual_override_timeout_minutes).state;
+          if (!(timeout > 0)) return;
+          if (millis() - id(override_since_ms) >= (uint32_t) (timeout * 60000.0f)) {
+            ESP_LOGI("preview", "Manual Override expired: back to Auto");
+            id(manual_override).make_call().set_option("Auto").perform();
+          }
+  # shoot.py's commands (preview.h).
+  - interval: 100ms
+    then:
+      - lambda: |-
+          std::string c = preview::command();
+          if (c.empty()) return;
+          ESP_LOGI("preview", "command: %s", c.c_str());
+          if (c == "dump") {
+            preview::dump("dumped");
+          } else if (c == "auto") {
+            id(auto_button).publish_state(true);
+            id(auto_button).publish_state(false);
+          } else if (c.rfind("lang ", 0) == 0) {
+            id(panel_language).make_call().set_option(c.substr(5)).perform();
+          } else {
+            ESP_LOGE("preview", "no command %s", c.c_str());
+          }
 
 packages:
   panel: !include ../../local-panel.yaml
