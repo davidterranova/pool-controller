@@ -24,7 +24,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build validate-s3 build-s3 flash-s3 ota-s3 s3-ota-guard logs-s3 firmware-test panel-i18n panel-glyphsets panel-preview-image panel-preview-build panel-shots panel-preview-check flash status kill-port ota ip logs webui webui-test card i18n-check ha-files i18n-export i18n-import mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test clean
+.PHONY: validate build validate-s3 build-s3 flash-s3 ota-s3 s3-ota-guard logs-s3 firmware-test panel-i18n panel-glyphsets panel-preview-image panel-preview-build panel-shots panel-preview-check flash status kill-port ota ip logs webui webui-test card i18n-check ha-files i18n-export i18n-import mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test transfer transfer-test clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate: webui
@@ -136,6 +136,45 @@ migrate-clean:
 # migrate.py's own tests: made-up values, no secrets.yaml, no controller.
 migrate-test:
 	docker run --rm -v "$(CURDIR):/config" --entrypoint python3 $(ESPHOME_IMAGE) -I -B /config/tools/migrate/test_migrate.py
+
+# Moves one controller's settings and on-device histories to another, when a
+# board is replaced (docs/plans/s3-panel.md, S9; README « Moving a controller
+# to a new board »):
+#   make transfer FROM=<host> TO=<host> [FROM_KEY=… TO_KEY=…] [APPLY=1] [WITH_UPDATES=1]
+# Without APPLY it only reads FROM and prints every write it would make (TO
+# may be left out). With APPLY=1 it writes to TO, in the contract's order
+# (schedule, then Apply Filtration Config; freeze and override timeout;
+# timezone and position; probes after a Rescan Probes; fill meter; Fill
+# Water Import; History Import), then reads TO back over a new connection
+# and fails on any mismatch. It never writes to FROM, and refuses when FROM
+# and TO are the same controller. Not moved, and said so: the passwords and
+# the API key (write-only), Wi-Fi, the panel's settings, and the update
+# settings unless WITH_UPDATES=1. A probe role whose probe isn't on TO's bus
+# is left for later (Rescan Probes, then pick it on TO's page).
+# The keys are each controller's API encryption key, as Home Assistant has
+# it: FROM_KEY / TO_KEY from the environment (`FROM_KEY=… make transfer …`,
+# kept out of the shell history with a leading space or a file) or
+# FROM_KEY_FILE / TO_KEY_FILE, mounted read-only. They reach the container as
+# environment variables or files, never on a command line, and are never
+# printed. No key: the controller's API is open (not paired yet). The hosts
+# are resolved here (mDNS doesn't cross Docker Desktop's network), as for ota.
+resolve-host = $(or $(shell ping -c1 $(1) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p'),$(1))
+TRANSFER_KEY_MOUNTS = $(if $(FROM_KEY_FILE),-v "$(abspath $(FROM_KEY_FILE)):/run/transfer/from.key:ro") $(if $(TO_KEY_FILE),-v "$(abspath $(TO_KEY_FILE)):/run/transfer/to.key:ro")
+TRANSFER_PY = docker run --rm -v "$(CURDIR)/tools/transfer:/transfer:ro" -e TRANSFER_FROM_KEY -e TRANSFER_TO_KEY $(TRANSFER_KEY_MOUNTS) --entrypoint python3 $(ESPHOME_IMAGE) -I -B /transfer/transfer.py
+TRANSFER_ARGS = --from "$(call resolve-host,$(FROM))" $(if $(TO),--to "$(call resolve-host,$(TO))") \
+	$(if $(FROM_KEY_FILE),--from-key-file /run/transfer/from.key) $(if $(TO_KEY_FILE),--to-key-file /run/transfer/to.key) \
+	$(if $(APPLY),--apply) $(if $(WITH_UPDATES),--with-updates)
+transfer: export TRANSFER_FROM_KEY := $(FROM_KEY)
+transfer: export TRANSFER_TO_KEY := $(TO_KEY)
+transfer:
+	@test -n "$(FROM)" || (echo "make transfer needs FROM=<host>: the controller to read (e.g. FROM=pool-controller.local)." && exit 1)
+	@test -z "$(APPLY)" -o -n "$(TO)" || (echo "make transfer APPLY=1 needs TO=<host>: the controller to write (e.g. TO=pool-panel-bench.local)." && exit 1)
+	@$(TRANSFER_PY) $(TRANSFER_ARGS)
+
+# transfer.py's own tests: a pair of fake controllers speaking the native API
+# on 127.0.0.1 inside the container, made-up values. No real controller.
+transfer-test:
+	docker run --rm -v "$(CURDIR)/tools/transfer:/transfer:ro" --entrypoint python3 $(ESPHOME_IMAGE) -I -B /transfer/test_transfer.py
 
 # Resolves the pool-controller's current IP via mDNS (same lookup `ota` uses).
 ip:

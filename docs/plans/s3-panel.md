@@ -188,6 +188,13 @@ The display can arrive after the board, so nothing in phase 1 waits for it but S
 - **ESPHome config lessons:** `id: !extend` appends to an automation list (the Auto button's `on_press` gets the panel's wake after the hardware block's « set Auto »), and works across packages. A YAML merge key (`<<: *anchor`) keeps the anchor's keys and drops the ones written beside it, so the panel writes every widget out.
 - **The preview's flows check A4** (`tools/panel-preview/shoot.py`'s `FLOWS`, in `make panel-preview-check`): taps by xdotool on the SDL window and commands on the program's stdin (the Auto button, a language, a dump of the labels), each step against the log. The preview's stand-in for Manual Override does the firmware's expiry every second.
 
+**2026-11-26: S9, the transfer tool**
+- **A probe role moves only when its probe is on the target's bus.** The firmware's probe selects take only « none » or an address the bus answered for (or one the role already holds), so after Rescan Probes the tool sets each role whose probe the target sees, and lists the others under « Not moved » rather than failing. In S11 the transfer runs before the wiring moves (step 2, then step 4), so the roles are picked on the S3's page once the probes are on it; A10's « every setting equal » holds for the rest.
+- **Waiting for a write:** after each value it waits until the target shows it; after an import, for the import's next outcome code (`imported:…`, else the write counts as refused). Then the check reads everything again on a new connection, so a value the device didn't keep shows.
+- **today:** is dated in the source's Timezone (its POSIX string), the day both controllers are in once Timezone has moved.
+- **Safety:** the source is opened through a reader with no write method, and a target with the source's MAC is refused before anything is written. Manual Override is never copied.
+- **The fake controller** (`tools/transfer/fake_controller.py`) speaks the native API in plaintext, so the tests run aioesphomeapi itself. The encrypted (Noise) handshake is aioesphomeapi's own and only runs against a real controller: A10.
+
 ## Open questions (each settled in its WP, then moved to Decisions)
 
 - One manifest with both builds, or one per target (S12), with S1's finding (c).
@@ -453,7 +460,7 @@ Tick each one only with its evidence (PR, command, or the date of the hardware c
 | S6 | 1 | Screen on the bench: wiring, rotation, touch, the panel checked on it | S2, S4, display delivered | — | todo | — |
 | S7 | 2 | Relays and a bench probe: pump safety on the S3 | M1 | — | todo | — |
 | S8 | 3 (any time) | History Import (every build) | contract | `feat/s3-panel-s8-history` | in progress (bench check waits for hardware) | [#90](https://github.com/davidterranova/pool-controller/pull/90) |
-| S9 | 3 (any time) | Transfer tool | S8 | — | todo | — |
+| S9 | 3 (any time) | Transfer tool | S8 | `feat/s3-panel-s9-transfer` | in progress (A10 waits for hardware) | [#91](https://github.com/davidterranova/pool-controller/pull/91) |
 | S10 | 3 | Probes, water meter, box: the full wiring on the bench | M2 | — | todo | — |
 | S11 | 3 | Burn-in, swap and go-live on the pool | S9, S10 | — | todo | — |
 | S12 | release | Publish the S3 build: CI, manifests, install page | M3 | — | todo | — |
@@ -650,10 +657,10 @@ Only S6 waits for the display.
   - POOL-CONTROLLER.md « Moving to a new board ».
 
 #### S9: transfer tool, any time after S8
-- [ ] `tools/transfer/transfer.py`: the contract's `make transfer`, run in the ESPHome image with aioesphomeapi, as `tools/migrate/` does. The keys come from the environment or a file, never from the repo.
-- [ ] `make transfer-test` (CI): a fake API server pair with made-up values. No real controller in CI.
-- [ ] Done when A10 holds on the bench, with the live WROOM as a read-only source.
-- [ ] **Docs:**
+- [x] `tools/transfer/transfer.py`: the contract's `make transfer`, run in the ESPHome image with aioesphomeapi, as `tools/migrate/` does. The keys come from the environment or a file, never from the repo.
+- [x] `make transfer-test` (CI): a fake API server pair with made-up values. No real controller in CI.
+- [ ] Done when A10 holds on the bench, with the live WROOM as a read-only source (waits for hardware).
+- [x] **Docs:**
   - README « Moving a controller to a new board »;
   - the Makefile comment.
 

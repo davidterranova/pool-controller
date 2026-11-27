@@ -78,6 +78,11 @@ jobs:
       - name: make migrate-test
         run: make migrate-test
 
+      # make transfer's plan, writes and checks (tools/transfer/), against a
+      # pair of fake controllers with made-up values: no real controller.
+      - name: make transfer-test
+        run: make transfer-test
+
   # The ESP32-S3 build compiled (make build-s3), on pull requests: the S3 has
   # no release yet (S12 of docs/plans/s3-panel.md publishes it), so a broken
   # compile would show nowhere else. Its own job, in parallel with the checks.
