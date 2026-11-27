@@ -250,6 +250,30 @@ timezone, probe roles), and it comes back set up and still paired with
 Home Assistant, with nothing to do on the page. Then it updates like any
 other. See the README.
 
+## Moving to a new board
+
+A replacement board (a spare, or the ESP32-S3 with its touch panel) starts
+with none of the old one's settings and history. Everything a person reads
+on the old one can be written to the new one, while both are on the
+network, the old one only read:
+
+- the settings, through their own entities, then **Apply Filtration
+  Config**;
+- the fill water, through **Fill Water Import** (one line of Fill Water
+  Days, one of Fill Water Months);
+- the 7-day history and today's running values, through **History
+  Import**, in this order: `daily:` (Daily History), then `plan:`,
+  `outdoor:` and `pad:` (Daily Plan, Outdoor and Equipment Pad History),
+  then `today:`. Each line is the old controller's string after its tag,
+  and the new one then shows the same strings.
+
+Passwords, the API key and Wi-Fi are write-only and set again by the
+setup wizard. `make transfer` does all of it in that order, then reads
+everything back and fails on any difference; see the README's « Moving a
+controller to a new board ». A probe role moves only once its probe is on
+the new board's bus (Rescan Probes): until the probes are moved, pick them
+on the new board's page afterwards.
+
 ## Location & clock
 
 The autonomous filtration schedule needs today's sunrise/sunset and true
@@ -535,6 +559,31 @@ Re-evaluated every 30 seconds, highest priority wins:
      yesterday, `refused:no_clock`); the log says it in English. Before
      1.11.0 it was French (`importé : 30 jours`).
      A 30-day line is at most 191 characters, within a text entity's 255.
+   - **History Import** (config, write-only, not on the device's page)
+     fills the 7-day record and today's running values from another
+     controller's, when a board is replaced (see [Moving to a new
+     board](#moving-to-a-new-board)). It takes one line: a tag, then the
+     other controller's own string —
+     - `daily:` + Daily History: the record's days, hours and water
+       min/max. Refused when the record already holds a newer day;
+     - `plan:` + Daily Plan History, `outdoor:` + Daily Outdoor History,
+       `pad:` + Daily Equipment Pad History: for days already in the record
+       (import `daily:` first). Each is that series' whole truth: a day the
+       line leaves out becomes unknown;
+     - `today:2026-11-26 filtration=192 water=25.1/26.0 outdoor=-2.0/8.5
+       fill=40` (Filtration Hours Today in minutes, the Min/Max Today pairs,
+       Fill Water Today; optional `pad=`; `-` for unknown), only when the
+       date is the controller's today.
+
+     Hours read back to within a minute (the sensors print hundredths of an
+     hour), temperatures exactly. Anything off refuses the whole line, which
+     then changes nothing. Its state is a code: `imported:daily:7`,
+     `imported:plan:7`, `imported:outdoor:7`, `imported:pad:7`,
+     `imported:today`, else why it was refused (`refused:format`,
+     `refused:tag`, `refused:date` — also a day not in the record —,
+     `refused:value`, `refused:too_many`, `refused:future`,
+     `refused:record_ahead`, `refused:not_today`, `refused:no_clock`); the
+     log says it in English.
    - **Firmware Version** (diagnostic) is the commit of this repo the
      firmware was compiled from, as `git describe --tags --always --dirty`
      says it: `v1.3.0`, `v1.3.0-4-g1a2b3c4` (4 commits after that tag),
@@ -910,7 +959,7 @@ card's own:
 |---|---|
 | **Control** (« Contrôle », `#controle`) | The pool card's panel (pump state, today's plan timeline, the pool's temperature over the last 7 days, Auto/Manual (« Auto » / « Manuel »), forced speed and duration, and the long-fill alarm's banner with « Acknowledge » (« Acquitter »)), and « Filling » (« Remplissage »): the fill water from the device's own record (Fill Water Today, Days, Months): today, this month, the flow, litres by day over 30 days or by month over 12 (the pool card's water variant). With Fill Meter off, no « Filling » (« Remplissage »): Filtration takes the width |
 | **Settings** (« Réglages », `#reglages`) | Today's plan in detail, the device's sensors, « Filtration and freeze protection » (« Filtration et hors gel »): the filtration settings with their Apply gate, boost pulses and freeze-protection threshold (the pool card's settings variant, as in Home Assistant), the last 7 days (Daily History) |
-| **Controller settings** (« Réglages contrôleur », `#reglages-controleur`) | Wi-Fi: the connection and its statistics, joining another network (see "Wi-Fi and the fallback hotspot" below). Position, « Probes » (« Sondes »), « Water meter » (« Compteur d'eau ») (Fill Meter « Yes » (« Oui ») | « No » (« Non »); while on, the pulse test « Test » (« Tester ») with Fill Meter Status, the last pulse, « Alarm after » (« Alarme après ») in minutes, 0 = never; see [Fill meter](#fill-meter)). Firmware: the version it runs, ESPHome's, its updates (« Check » (« Vérifier »), « Install » (« Installer »), Auto Update, the check interval, Update Status, « Cancel the request » (« Annuler la demande »); see [Updates](#updates)), then « Running for » (« En marche depuis ») with the last restart, and the « Microcontroller temperature » (« Température du microcontrôleur »). « Access » (« Accès ») (page and OTA passwords), Home Assistant, « Reset » (« Réinitialiser ») (see [Controller settings](#controller-settings)). Its live log (« Log » (« Journal »)). |
+| **Controller settings** (« Réglages contrôleur », `#reglages-controleur`) | Wi-Fi: the connection and its statistics, joining another network (see "Wi-Fi and the fallback hotspot" below). Position, « Probes » (« Sondes »), « Water meter » (« Compteur d'eau ») (Fill Meter « Yes » (« Oui ») | « No » (« Non »); while on, the pulse test « Test » (« Tester ») with Fill Meter Status, the last pulse, « Alarm after » (« Alarme après ») in minutes, 0 = never; see [Fill meter](#fill-meter)). « Screen » (« Écran »), only on a controller with the touch panel (the ESP32-S3 build, [docs/plans/s3-panel.md](docs/plans/s3-panel.md)): Panel Language shown as each language's name (English, Français, Español), « Screen off after » (« Mise en veille après », Panel Sleep After, 15 s to 10 min) and « Touches ignored while asleep » (« Touchers ignorés en veille », Panel Ignored Touches: a count that keeps rising points to condensation). Finishing the setup wizard sets Panel Language to the page's language. Firmware: the version it runs, ESPHome's, its updates (« Check » (« Vérifier »), « Install » (« Installer »), Auto Update, the check interval, Update Status, « Cancel the request » (« Annuler la demande »); see [Updates](#updates)), then « Running for » (« En marche depuis ») with the last restart, and the « Microcontroller temperature » (« Température du microcontrôleur »). « Access » (« Accès ») (page and OTA passwords), Home Assistant, « Reset » (« Réinitialiser ») (see [Controller settings](#controller-settings)). Its live log (« Log » (« Journal »)). |
 
 The tabs' old addresses still land: `#avance` on Settings (Réglages), `#controleur` and
 `#wifi` on Controller settings (Réglages contrôleur), `#remplissage` on Control (Contrôle) at its Filling (Remplissage).
@@ -987,6 +1036,69 @@ From [wifi-setup.yaml](wifi-setup.yaml), a package of the firmware:
   15 min without Wi-Fi, unless someone is connected to the hotspot.
 - Diagnostic entities, in HA too: WiFi Mode, Signal, SSID, BSSID, IP and
   MAC Address, Networks Nearby, Disconnects, Hotspot Clients, Clock Source.
+
+## Local touch panel
+
+The ESP32-S3 build (`pool-controller-s3.yaml`, in progress:
+[docs/plans/s3-panel.md](docs/plans/s3-panel.md)) has a 3.5″ touchscreen
+on the box, so the pump can be read and driven there without a phone. It
+writes the same entities the page and Home Assistant write, so freeze
+protection, the override's timeout and the relays' sequencing apply as
+they do from anywhere else. Its texts follow **Panel Language** (English,
+French or Spanish).
+
+**The home screen:**
+- The status bar: the time, then a badge when freeze protection is
+  forcing Low (« Freeze protection », « Hors-gel »), when a fill has run
+  too long (« Fill running too long », « Remplissage trop long ») and when
+  the controller has no Wi-Fi (« No Wi-Fi », « Pas de Wi-Fi »). Tap it for
+  **Status**.
+- The mode card: in Auto, the speed now and the plan's next change
+  (« Medium until 16:00 », « Moyenne jusqu'à 16:00 »); in manual, the speed
+  and the time left (« High · 1 h 12 min left · Auto at 15:32 »), or « no
+  time limit ».
+- Five tiles: Water, Equipment pad, Outdoor, Fill today, Fill this month
+  (this month's closed days plus today, as Fill Water Months counts them).
+  The fill tiles are hidden while Fill Meter is off. A probe with no
+  reading shows « — ».
+
+**Change** (« Changer ») opens the pump-mode sheet, on the current mode and
+the current Manual Override Timeout:
+1. Pick Auto, Off, Low, Medium or High (« Auto », « Arrêt », « Basse »,
+   « Moyenne », « Haute »).
+2. For a speed or Off, pick how long, « For » (« Pendant »): 30 min, 1 h,
+   2 h or Never (« Jamais »). The hint under it says what happens: back to
+   Auto at what time, or with Never, that a restart returns to Auto (and,
+   for Off, that freeze protection still starts the pump).
+3. **Apply** (« Appliquer ») writes Manual Override Timeout, then Manual
+   Override (Auto writes Manual Override only), and logs both under the
+   `panel` tag. **Cancel** (« Annuler ») writes nothing.
+
+**Status** (« État »): the Wi-Fi network and signal, the IP address with a
+QR code of the controller's page (scan it to open the page on a phone), the
+firmware version, how long it has been running, Update Status and Setup
+State. **Back** (« Retour ») returns home.
+
+**Sleep and the Auto button.**
+- After **Panel Sleep After** (default 60 s, 15–600 s) with no touch, the
+  backlight goes off and the panel pauses. A sheet left open is discarded:
+  nothing is written.
+- A touch on a sleeping screen only wakes it: it never presses what is under
+  the finger. Each one counts in **Panel Ignored Touches**; five within
+  10 minutes log a warning, since condensation on the glass shows as
+  touches nobody made.
+- The **Auto button** beside the screen sets Auto at any time, whatever the
+  screen does (asleep, fogged, unplugged): it is wired to the board, not to
+  the touch controller. It also wakes the screen and discards an open
+  sheet.
+
+**Its entities** (the S3 build only):
+
+| Entity | Type | What |
+|---|---|---|
+| Panel Language | select (config) | `en`, `fr` or `es`; a change relabels the panel at once. The setup wizard sets it to the page's language |
+| Panel Sleep After | number (config) | Seconds with no touch before the screen sleeps, 15–600, default 60 |
+| Panel Ignored Touches | sensor (diagnostic) | Touches that only woke the screen, since boot |
 
 ## Changing the freeze-protection threshold
 

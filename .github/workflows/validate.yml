@@ -16,6 +16,11 @@ jobs:
       - name: No !secret in the firmware's sources
         run: python3 tools/release/secret_guard.py pool-controller.yaml
 
+      # The ESP32-S3 build (docs/plans/s3-panel.md) includes the WROOM's and
+      # adds its own files: the same guard over them.
+      - name: No !secret in the S3 build's sources
+        run: python3 tools/release/secret_guard.py pool-controller-s3.yaml
+
       # The firmware's manifest.json (tools/release/manifest.py), on made-up
       # images: what the install page and the update check read.
       - name: Release manifest tests
@@ -26,9 +31,19 @@ jobs:
       - name: Firmware-or-not tests
         run: python3 -I tools/release/test_firmware_release.py
 
+      # The panel preview's check (tools/panel-preview/shoot.py) on made-up logs; the preview itself runs in
+      # the panel-preview job below.
+      - name: Panel preview check tests
+        run: python3 -I tools/panel-preview/test_shoot.py
+
       # With the Makefile's pinned ESPHome (ESPHOME_VERSION).
       - name: make validate
         run: make validate
+
+      # The ESP32-S3 build's config (pool-controller-s3.yaml): pool-controller.yaml
+      # as a package under the S3's board, pins and panel.
+      - name: make validate-s3
+        run: make validate-s3
 
       # Host tests of the firmware's pure C++ helpers (tools/tests/).
       - name: make firmware-test
@@ -63,6 +78,24 @@ jobs:
       - name: make migrate-test
         run: make migrate-test
 
+      # make transfer's plan, writes and checks (tools/transfer/), against a
+      # pair of fake controllers with made-up values: no real controller.
+      - name: make transfer-test
+        run: make transfer-test
+
+  # The ESP32-S3 build compiled (make build-s3), on pull requests: the S3 has
+  # no release yet (S12 of docs/plans/s3-panel.md publishes it), so a broken
+  # compile would show nowhere else. Its own job, in parallel with the checks.
+  build-s3:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: make build-s3
+        run: make build-s3
+
   # The pool card in every situation of tools/card-preview/ (scenarios.js), on each of its tabs, at a phone's
   # and a screen's width: fails on a page or console error, or on « undefined » / « NaN » in what it shows.
   # Its own job, in parallel: Chromium comes in Playwright's image (make card-preview-check). Against the
@@ -76,3 +109,24 @@ jobs:
 
       - name: make card-preview-check
         run: make card-preview-check CARD_BUNDLE=1
+
+  # The touch panel (local-panel.yaml) built for the host with ESPHome's SDL display, against stand-ins for the
+  # controller's entities, and drawn in every scenario of tools/panel-preview/preview.h in English, French and
+  # Spanish: fails on a dictionary key, « nan » or a missing text drawn instead of a text, or on a run that logs an
+  # error. Its own job, in parallel: the build takes minutes. The screenshots are kept as the run's artifact.
+  panel-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: make panel-preview-check
+        run: make panel-preview-check
+
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: panel-shots
+          path: tools/panel-preview/shots/
+          if-no-files-found: ignore

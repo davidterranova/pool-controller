@@ -5,7 +5,8 @@
  * « Réglages » today's plan, the device's sensors, the settings (the card's settings variant) and the
  * last 7 days; « Réglages contrôleur » its Wi-Fi (wifi-setup.yaml: connection, statistics, joining a
  * network), its firmware, what setup.js adds (its position, probes, fill meter, passwords, Home Assistant key and
- * factory reset), and its live log, plus the setup wizard shown instead of the page while the
+ * factory reset), « Écran » on a controller with a touch panel (the S3 build's Panel Language, Panel Sleep After and
+ * Panel Ignored Touches; hidden on a WROOM), and its live log, plus the setup wizard shown instead of the page while the
  * controller isn't set up (device-settings.yaml), and the login screen while it asks for its password (login.js).
  * The device keeps no history of its
  * sensors, so the only charts are of what it records itself: the pool's min/max and filtration of the
@@ -22,7 +23,7 @@ import { mountSetup } from "./setup.js";
 import { WAITING_FOR } from "./setup-model.js";
 import { mountLogin } from "./login.js";
 import { keepAlive } from "./session.js";
-import { t, fmt, setLang, onLang, pageLang, applyStatic, langSwitch } from "./page-i18n.js";
+import { t, fmt, setLang, onLang, pageLang, langName, applyStatic, langSwitch } from "./page-i18n.js";
 
 const hass = new EspHass();
 const $ = (id) => document.getElementById(id);
@@ -195,13 +196,14 @@ function valueRow(host, { id, label, name, sub, iconName, value, problem, visibl
   return row;
 }
 
-/** Number row: slider + value, written when released (the HA entities-card slider row). `name`: the entity's own. */
-function numberRow(host, { id, name }) {
+/**
+ * Number row: slider + value, written when released (the HA entities-card slider row). `name`: the entity's own, as
+ * is; or `label` and `sub`, keys translated at each update.
+ */
+function numberRow(host, { id, name, label, sub }) {
   const row = h(`<div class="erow"><span class="ic"></span><span class="name"><span></span><small hidden></small></span>
     <span class="ctl"><input type="range"><span class="v num"></span></span></div>`);
-  row.querySelector(".name span").textContent = name;
   const input = row.querySelector("input"), out = row.querySelector(".v");
-  input.setAttribute("aria-label", name);
   let editing = 0; // until when the slider wins over pushed states
   const unit = () => st(id)?.attributes.unit_of_measurement || "";
   const decimals = () => {
@@ -223,7 +225,11 @@ function numberRow(host, { id, name }) {
     const e = st(id);
     row.hidden = !e;
     if (!e) return;
-    const a = e.attributes;
+    const a = e.attributes, title = name ?? t(label), subText = sub ? t(sub) : "";
+    row.querySelector(".name span").textContent = title;
+    input.setAttribute("aria-label", title);
+    row.querySelector("small").textContent = subText;
+    row.querySelector("small").hidden = !subText;
     row.querySelector(".ic").innerHTML = icon(a.icon);
     input.min = a.min;
     input.max = a.max;
@@ -236,6 +242,32 @@ function numberRow(host, { id, name }) {
   });
 }
 
+/** A segmented control on a switch or a select: [label, value] pairs, the entity's state picks one. Keys. */
+function segRow(host, { id, label, sub, iconName, options, set }) {
+  const r = h(`<div class="erow"><span class="ic">${icon(iconName)}</span><span class="name"><span></span><small></small></span>
+    <span class="ctl"><span class="seg" role="radiogroup"></span></span></div>`);
+  const seg = r.querySelector(".seg");
+  host.appendChild(r);
+  let drawn = "";
+  updaters.push(() => {
+    r.hidden = !st(id);
+    if (r.hidden) return;
+    const opts = options(), key = JSON.stringify([opts, s(id), pageLang()]);
+    if (key === drawn) return;
+    drawn = key;
+    r.querySelector(".name span").textContent = t(label);
+    r.querySelector("small").textContent = t(sub);
+    seg.setAttribute("aria-label", t(label));
+    seg.innerHTML = "";
+    for (const [text, value] of opts) {
+      const b = h(`<button role="radio" aria-checked="${s(id) === value}"></button>`);
+      b.textContent = text;
+      b.addEventListener("click", () => s(id) !== value && run(set(value)));
+      seg.appendChild(b);
+    }
+  });
+  return r;
+}
 /** Button row: `label`, `sub`, `text` and `ok` (its toast) are keys; `name` an entity's own name, as is. */
 function buttonRow(host, { id, label, name, sub, iconName, text = "page.press", ok, fill, disabled }) {
   const row = h(`<div class="erow"><span class="ic"></span><span class="name"><span></span><small></small></span><button class="btn"></button></div>`);
@@ -637,35 +669,10 @@ const orDash = (id) => () => s(id) || "—";
       pct.textContent = ph.step === 1 && ph.pct != null ? `${Math.floor(ph.pct)} %` : "";
     });
 
-    /** A segmented control on a switch or a select: [label, value] pairs, the entity's state picks one. Keys. */
-    const segRow = ({ id, label, sub, iconName, options, set }) => {
-      const r = h(`<div class="erow"><span class="ic">${icon(iconName)}</span><span class="name"><span></span><small></small></span>
-        <span class="ctl"><span class="seg" role="radiogroup"></span></span></div>`);
-      const seg = r.querySelector(".seg");
-      host.appendChild(r);
-      let drawn = "";
-      updaters.push(() => {
-        r.hidden = !st(id);
-        if (r.hidden) return;
-        const opts = options(), key = JSON.stringify([opts, s(id), pageLang()]);
-        if (key === drawn) return;
-        drawn = key;
-        r.querySelector(".name span").textContent = t(label);
-        r.querySelector("small").textContent = t(sub);
-        seg.setAttribute("aria-label", t(label));
-        seg.innerHTML = "";
-        for (const [text, value] of opts) {
-          const b = h(`<button role="radio" aria-checked="${s(id) === value}"></button>`);
-          b.textContent = text;
-          b.addEventListener("click", () => s(id) !== value && run(set(value)));
-          seg.appendChild(b);
-        }
-      });
-    };
-    segRow({ id: E.autoUpdate, label: "page.fw.auto", iconName: "timer-check", sub: "page.fw.auto_sub",
+    segRow(host, { id: E.autoUpdate, label: "page.fw.auto", iconName: "timer-check", sub: "page.fw.auto_sub",
       options: () => [[t("page.no"), "off"], [t("page.yes"), "on"]],
       set: (v) => hass.callService("switch", v === "on" ? "turn_on" : "turn_off", { entity_id: E.autoUpdate }) });
-    segRow({ id: E.updateInterval, label: "page.fw.interval", iconName: "timer-outline", sub: "page.fw.interval_sub",
+    segRow(host, { id: E.updateInterval, label: "page.fw.interval", iconName: "timer-outline", sub: "page.fw.interval_sub",
       options: () => (st(E.updateInterval)?.attributes.options || []).map((o) => [intervalLabel(o), o]),
       set: (v) => hass.select(E.updateInterval, v) });
   }
@@ -679,6 +686,20 @@ const orDash = (id) => () => s(id) || "—";
   valueRow(host, { id: E.chipTemp, label: "card.fw.chip_temp", iconName: "thermometer-lines",
     value: () => (Number.isFinite(chipC()) ? `${fmt1(chipC())} °C` : "—"),
     sub: () => t(Number.isFinite(chipC()) ? "card.fw.chip_temp_sub" : "card.fw.chip_temp_none") });
+}
+
+/* ---- Écran: the S3 build's touch panel (local-panel.yaml, docs/plans/s3-panel.md): its language, how long it stays lit,
+   and the touches it ignored while asleep (a count that climbs means condensation on the glass). The section exists
+   only on a controller with a panel: a WROOM has none of these entities. */
+{
+  const host = $("screenRows");
+  segRow(host, { id: E.panelLang, label: "page.screen.lang", sub: "page.screen.lang_sub", iconName: "translate",
+    options: () => (st(E.panelLang)?.attributes.options || []).map((o) => [langName(o), o]),
+    set: (v) => hass.select(E.panelLang, v) });
+  numberRow(host, { id: E.panelSleep, label: "page.screen.sleep", sub: "page.screen.sleep_sub" });
+  valueRow(host, { id: E.panelIgnored, label: "page.screen.ignored", sub: "page.screen.ignored_sub", iconName: "gesture-tap",
+    value: () => (Number.isFinite(n(E.panelIgnored)) ? fmt().number(n(E.panelIgnored)) : "—") });
+  updaters.push(() => { $("screenStack").hidden = ![E.panelLang, E.panelSleep, E.panelIgnored].some(st); });
 }
 
 /* ---- Alerts above both tabs: on the hotspot, and a clock that was never set */

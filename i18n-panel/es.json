@@ -1,0 +1,84 @@
+{
+  "panel": {
+    "fmt": {
+      "unknown": "—",
+      "decimal_sep": ",",
+      "quantity": "{value} {unit}",
+      "min": "{m} min",
+      "h": "{h} h",
+      "h_min": "{h} h {m} min"
+    },
+    "unit": {
+      "celsius": "°C",
+      "litre": "L",
+      "dbm": "dBm"
+    },
+    "home": {
+      "change": "Cambiar",
+      "auto_until": "{speed} hasta las {time}",
+      "manual_never": "{speed} · sin límite de tiempo",
+      "manual_left": "{speed} · quedan {left} · Auto a las {time}",
+      "tile": {
+        "water": "Agua",
+        "pad": "Cuarto técnico",
+        "outdoor": "Exterior",
+        "fill_today": "Llenado hoy",
+        "fill_month": "Llenado este mes"
+      },
+      "badge": {
+        "freeze": "Antiheladas",
+        "fill_alarm": "Llenado demasiado largo",
+        "no_wifi": "Sin Wi-Fi"
+      }
+    },
+    "sheet": {
+      "hint": {
+        "off_never": "La filtración sigue apagada hasta que la cambie o el controlador se reinicie. El antiheladas sigue arrancando la bomba.",
+        "never": "Un reinicio vuelve a Auto.",
+        "until": "{speed} hasta las {time}, después vuelve a Auto",
+        "for": "{speed} durante {duration}, después vuelve a Auto"
+      },
+      "title": "Modo de la bomba",
+      "for": "Durante"
+    },
+    "status": {
+      "title": "Estado",
+      "back": "Volver",
+      "network": "Red Wi-Fi",
+      "not_connected": "No conectado",
+      "signal": "Señal",
+      "ip": "Dirección IP",
+      "scan": "Escanee para abrir la página del controlador",
+      "update": {
+        "label": "Actualización",
+        "installing": "Instalando",
+        "checking": "Buscando una nueva versión",
+        "available": "Actualización disponible",
+        "up_to_date": "Al día",
+        "unchecked": "Aún sin comprobar",
+        "pending": {
+          "override": "Espera el fin de la velocidad forzada",
+          "fill": "Espera el fin del llenado"
+        },
+        "error": {
+          "check": "La comprobación no tuvo éxito",
+          "install": "La instalación no tuvo éxito"
+        }
+      },
+      "setup": {
+        "label": "Configuración",
+        "configured": "Completa",
+        "missing": "Falta: {items}",
+        "item": {
+          "page_password": "contraseña",
+          "wifi": "Wi-Fi",
+          "position": "ubicación",
+          "probes": "sonda piscina",
+          "api_key": "Home Assistant"
+        }
+      },
+      "version": "Versión",
+      "uptime": "Tiempo en marcha"
+    }
+  }
+}

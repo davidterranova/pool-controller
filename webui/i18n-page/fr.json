@@ -106,6 +106,16 @@
       "pw_short": "Mot de passe : 8 caractères minimum, ou vide pour un réseau ouvert.",
       "confirm_switch": "Le contrôleur va quitter « {from} » pour « {to} ». Cette page perdra la liaison : retrouvez-le ensuite sur {url}. Continuer ?"
     },
+    "screen": {
+      "heading": "Écran",
+      "title": "Écran tactile",
+      "lang": "Langue de l'écran",
+      "lang_sub": "La langue des textes sur l'écran du contrôleur",
+      "sleep": "Mise en veille après",
+      "sleep_sub": "Sans contact. Un toucher ou le bouton Auto le rallume.",
+      "ignored": "Touchers ignorés en veille",
+      "ignored_sub": "Depuis le dernier redémarrage. Un nombre qui augmente sans cesse signale de la condensation sur la vitre."
+    },
     "fw": {
       "version": "Version",
       "new_version": "la nouvelle version",

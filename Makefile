@@ -24,7 +24,7 @@ PORT ?= $(shell ls /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbser
 HOSTNAME := pool-controller.local
 HOST ?= $(shell ping -c1 $(HOSTNAME) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p')
 
-.PHONY: validate build firmware-test flash status kill-port ota ip logs webui webui-test card i18n-check ha-files i18n-export i18n-import mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test clean
+.PHONY: validate build validate-s3 build-s3 flash-s3 ota-s3 s3-ota-guard logs-s3 firmware-test panel-i18n panel-glyphsets panel-preview-image panel-preview-build panel-shots panel-preview-check flash status kill-port ota ip logs webui webui-test card i18n-check ha-files i18n-export i18n-import mock-ui mock-webui mock-ui-check ha-dashboard-check card-preview card-shots card-preview-check migrate-build migrate migrate-check migrate-clean migrate-test transfer transfer-test clean
 
 # Parses the YAML and checks component schemas, without compiling any C++.
 validate: webui
@@ -37,10 +37,11 @@ build: webui
 
 # Host tests of the firmware's pure C++ helpers (tools/tests/: updates.h's
 # schedule, install gate and Update Status; fill_import.h's Fill Water
-# Import; fill_meter.h's fills, long-fill alarm and pulse test;
+# Import; history_import.h's History Import and the Daily History strings it
+# reads back; fill_meter.h's fills, long-fill alarm and pulse test;
 # components/page_login's HMAC, sessions, nonces and lockout), with the
 # ESPHome image's g++.
-FIRMWARE_TESTS := updates_test fill_import_test fill_meter_test page_login_test
+FIRMWARE_TESTS := updates_test fill_import_test history_import_test fill_meter_test page_login_test panel_ui_test
 firmware-test:
 	docker run --rm -v "$(CURDIR):/config" -w /config --entrypoint sh $(ESPHOME_IMAGE) -c \
 		'set -e; for t in $(FIRMWARE_TESTS); do g++ -std=c++20 -Wall -Wextra -Werror -o /tmp/$$t tools/tests/$$t.cpp; /tmp/$$t; done'
@@ -136,6 +137,45 @@ migrate-clean:
 migrate-test:
 	docker run --rm -v "$(CURDIR):/config" --entrypoint python3 $(ESPHOME_IMAGE) -I -B /config/tools/migrate/test_migrate.py
 
+# Moves one controller's settings and on-device histories to another, when a
+# board is replaced (docs/plans/s3-panel.md, S9; README « Moving a controller
+# to a new board »):
+#   make transfer FROM=<host> TO=<host> [FROM_KEY=… TO_KEY=…] [APPLY=1] [WITH_UPDATES=1]
+# Without APPLY it only reads FROM and prints every write it would make (TO
+# may be left out). With APPLY=1 it writes to TO, in the contract's order
+# (schedule, then Apply Filtration Config; freeze and override timeout;
+# timezone and position; probes after a Rescan Probes; fill meter; Fill
+# Water Import; History Import), then reads TO back over a new connection
+# and fails on any mismatch. It never writes to FROM, and refuses when FROM
+# and TO are the same controller. Not moved, and said so: the passwords and
+# the API key (write-only), Wi-Fi, the panel's settings, and the update
+# settings unless WITH_UPDATES=1. A probe role whose probe isn't on TO's bus
+# is left for later (Rescan Probes, then pick it on TO's page).
+# The keys are each controller's API encryption key, as Home Assistant has
+# it: FROM_KEY / TO_KEY from the environment (`FROM_KEY=… make transfer …`,
+# kept out of the shell history with a leading space or a file) or
+# FROM_KEY_FILE / TO_KEY_FILE, mounted read-only. They reach the container as
+# environment variables or files, never on a command line, and are never
+# printed. No key: the controller's API is open (not paired yet). The hosts
+# are resolved here (mDNS doesn't cross Docker Desktop's network), as for ota.
+resolve-host = $(or $(shell ping -c1 $(1) 2>/dev/null | sed -nE 's/^PING [^ ]+ \(([0-9.]+)\).*/\1/p'),$(1))
+TRANSFER_KEY_MOUNTS = $(if $(FROM_KEY_FILE),-v "$(abspath $(FROM_KEY_FILE)):/run/transfer/from.key:ro") $(if $(TO_KEY_FILE),-v "$(abspath $(TO_KEY_FILE)):/run/transfer/to.key:ro")
+TRANSFER_PY = docker run --rm -v "$(CURDIR)/tools/transfer:/transfer:ro" -e TRANSFER_FROM_KEY -e TRANSFER_TO_KEY $(TRANSFER_KEY_MOUNTS) --entrypoint python3 $(ESPHOME_IMAGE) -I -B /transfer/transfer.py
+TRANSFER_ARGS = --from "$(call resolve-host,$(FROM))" $(if $(TO),--to "$(call resolve-host,$(TO))") \
+	$(if $(FROM_KEY_FILE),--from-key-file /run/transfer/from.key) $(if $(TO_KEY_FILE),--to-key-file /run/transfer/to.key) \
+	$(if $(APPLY),--apply) $(if $(WITH_UPDATES),--with-updates)
+transfer: export TRANSFER_FROM_KEY := $(FROM_KEY)
+transfer: export TRANSFER_TO_KEY := $(TO_KEY)
+transfer:
+	@test -n "$(FROM)" || (echo "make transfer needs FROM=<host>: the controller to read (e.g. FROM=pool-controller.local)." && exit 1)
+	@test -z "$(APPLY)" -o -n "$(TO)" || (echo "make transfer APPLY=1 needs TO=<host>: the controller to write (e.g. TO=pool-panel-bench.local)." && exit 1)
+	@$(TRANSFER_PY) $(TRANSFER_ARGS)
+
+# transfer.py's own tests: a pair of fake controllers speaking the native API
+# on 127.0.0.1 inside the container, made-up values. No real controller.
+transfer-test:
+	docker run --rm -v "$(CURDIR)/tools/transfer:/transfer:ro" --entrypoint python3 $(ESPHOME_IMAGE) -I -B /transfer/test_transfer.py
+
 # Resolves the pool-controller's current IP via mDNS (same lookup `ota` uses).
 ip:
 	@test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
@@ -147,6 +187,58 @@ ip:
 logs:
 	@test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
 	docker run --rm -it -v "$(CURDIR):/config" $(ESPHOME_IMAGE) logs $(CONFIG) --device $(HOST) --states
+
+# The ESP32-S3 build with a touch panel (pool-controller-s3.yaml,
+# docs/plans/s3-panel.md), beside the WROOM's: the targets above keep building
+# $(CONFIG). Each S3 target mirrors its WROOM twin:
+#   validate-s3  parse + schema-check, no compile
+#   build-s3     compile, into its own build directory (S3_BUILD_DIR)
+#   flash-s3     rebuild, then write the whole factory image at 0x0 over USB (esptool --chip esp32s3)
+#   ota-s3       rebuild, then upload over Wi-Fi, with the OTA password as `make ota`
+#   logs-s3      stream the board's log over Wi-Fi
+# BENCH=1 builds and reaches the bench board, pool-panel-bench
+# (pool-panel-bench.local, its own hotspot), so it never clashes with the
+# controller in place; without it, the device is pool-controller, as the WROOM.
+# HOST= and PORT= work as for the WROOM's targets.
+# ota-s3 refuses to run without BENCH=1: until the swap (S11 of the plan),
+# pool-controller.local is the WROOM running the pool, which nothing on this
+# branch may write to. LIVE=1 lifts the guard, for the S3 once it runs the pool.
+S3_CONFIG := pool-controller-s3.yaml
+S3_NAME := $(if $(BENCH),pool-panel-bench,pool-controller)
+S3_ARGS := $(if $(BENCH),-s device_name $(S3_NAME))
+# esphome: build_path: in $(S3_CONFIG), whatever the name.
+S3_BUILD_DIR := .esphome/build/pool-controller-s3/build
+
+validate-s3: webui
+	$(ESPHOME) $(S3_ARGS) config $(S3_CONFIG)
+
+build-s3: webui
+	$(ESPHOME) $(S3_ARGS) -s firmware_version $(FW_VERSION) compile $(S3_CONFIG)
+
+# The factory image holds the bootloader (at 0x0 on the S3), the partition
+# table, otadata and the first app slot, at the offsets the build chose. The
+# settings survive: on 16 MB, ESPHome puts nvs after both app slots
+# (0xf90000), beyond the image's end.
+flash-s3: build-s3
+	@test -n "$(PORT)" || (echo "No ESP32 serial port found. Plug in the board or pass PORT=/dev/cu.xxxx explicitly." && exit 1)
+	$(ESPTOOL) --chip esp32s3 --port $(PORT) --baud 460800 \
+		--before default-reset --after hard-reset write-flash \
+		0x0 $(S3_BUILD_DIR)/firmware.factory.bin
+
+ota-s3 logs-s3: HOSTNAME = $(S3_NAME).local
+
+# Before the build, so a forgotten BENCH=1 fails at once.
+s3-ota-guard:
+	@test -n "$(BENCH)$(LIVE)" || (echo "make ota-s3 needs BENCH=1: without it, it would upload to pool-controller.local, the controller running the pool. LIVE=1 only once the S3 is that controller (docs/plans/s3-panel.md, S11)." && exit 1)
+
+ota-s3: s3-ota-guard build-s3
+	@test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
+	@test -n "$(OTA_PASSWORD)" || (echo "No OTA password: put the controller's OTA Password in .ota-password, or pass OTA_PASSWORD=..." && exit 1)
+	@$(ESPHOME) $(S3_ARGS) -s ota_password "$(OTA_PASSWORD)" upload $(S3_CONFIG) --device $(HOST)
+
+logs-s3:
+	@test -n "$(HOST)" || (echo "Could not resolve $(HOSTNAME) -- is the device on Wi-Fi and reachable? Pass HOST=<ip> to override." && exit 1)
+	docker run --rm -it -v "$(CURDIR):/config" $(ESPHOME_IMAGE) $(S3_ARGS) logs $(S3_CONFIG) --device $(HOST) --states
 
 # Local mock of the device's web UI (tools/webui-mock/), for iterating on the
 # page without a build or a flash: http://localhost:$(MOCK_PORT)/. Serves the
@@ -176,13 +268,24 @@ mock-ui: webui
 # MOCK_INSTALL_FAIL=1: every install fails at 60 % of its download.
 # MOCK_FILL=off starts with the fill meter turned off; MOCK_LONG_FILL=1 with a
 # fill already past Fill Alarm After, its alarm on (fill-meter.yaml).
+# MOCK_PANEL=1 adds the S3 build's touch panel (Panel Language, Panel Sleep
+# After, Panel Ignored Touches): Réglages contrôleur shows its « Screen » section.
 mock-webui:
-	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh) $(if $(MOCK_NO_RELEASE),--no-release) $(if $(filter off,$(MOCK_FILL)),--fill-off) $(if $(MOCK_LONG_FILL),--long-fill) $(if $(MOCK_INSTALL_FAIL),--install-fail) $(if $(MOCK_IDLE),--idle $(MOCK_IDLE))"
+	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh) $(if $(MOCK_NO_RELEASE),--no-release) $(if $(filter off,$(MOCK_FILL)),--fill-off) $(if $(MOCK_LONG_FILL),--long-fill) $(if $(MOCK_INSTALL_FAIL),--install-fail) $(if $(MOCK_PANEL),--panel) $(if $(MOCK_IDLE),--idle $(MOCK_IDLE))"
 
 # Prints the page layout (sections, order, which entities the simulation
-# drives) and fails if $(CONFIG) has an entity type the mock can't render.
+# drives) and fails if $(CONFIG) has an entity type the mock can't render;
+# then the same with the touch panel (--panel), and for the S3 build's
+# config, $(CONFIG_S3), once the branch has it (docs/plans/s3-panel.md).
+CONFIG_S3 ?= pool-controller-s3.yaml
 mock-ui-check:
 	$(MOCK) --check $(MOCK_ARGS) /config/$(CONFIG)
+	$(MOCK) --check --panel $(MOCK_ARGS) /config/$(CONFIG) > /dev/null
+ifneq ($(wildcard $(CONFIG_S3)),)
+	$(MOCK) --check $(MOCK_ARGS) /config/$(CONFIG_S3)
+else
+	@echo "mock-ui-check: no $(CONFIG_S3) on this branch yet, skipped"
+endif
 
 # Checks home-assistant/dashboard/ (the dashboard components and the scripts piscine-card calls, each
 # language's file that make ha-files generates) and home-assistant/blueprints/ against $(CONFIG): every
@@ -244,6 +347,33 @@ card-shots:
 card-preview-check: $(if $(CARD_BUNDLE),card)
 	$(PLAYWRIGHT) --check $(if $(CARD_BUNDLE),--bundle) $(if $(LANG),--lang $(LANG))
 
+# The touch panel's preview (tools/panel-preview/): local-panel.yaml built for the host with ESPHome's SDL display,
+# against stand-ins for the controller's entities, in the ESPHome image plus SDL2 and Xvfb (its Dockerfile, built
+# once per ESPHOME_VERSION by panel-preview-image). No board, no controller. One build, then each scenario of
+# preview.h in each language:
+#   panel-shots          tools/panel-preview/shots/<lang>-<screen>-<state>.png at 480×320 (gitignored);
+#                        SCENARIO=auto,off for some, SCREEN=home,sheet,status for some screens, LANGS=fr for one
+#                        language (LANGS, not LANG: the shell's locale)
+#   panel-preview-check  the same, failing on a dictionary key, « nan » or a missing text drawn instead of a text,
+#                        or a run that logs an error; then the flows (shoot.py's FLOWS: taps and the Auto button,
+#                        checked against the panel's log). CI runs it
+PANEL_PREVIEW_IMAGE := pool-panel-preview:$(ESPHOME_VERSION)
+PANEL_PREVIEW_PROGRAM := tools/panel-preview/.esphome/build/pool-panel-preview/.pioenvs/pool-panel-preview/program
+PANEL_SHOOT = docker run --rm -v "$(CURDIR):/config" -w /config --entrypoint python3 $(PANEL_PREVIEW_IMAGE) -I tools/panel-preview/shoot.py \
+	$(PANEL_PREVIEW_PROGRAM) $(if $(SCENARIO),--only $(SCENARIO)) $(if $(SCREEN),--screen $(SCREEN)) $(if $(LANGS),--lang $(LANGS))
+
+panel-preview-image:
+	docker build -q --build-arg ESPHOME_IMAGE=$(ESPHOME_IMAGE) -t $(PANEL_PREVIEW_IMAGE) tools/panel-preview >/dev/null
+
+panel-preview-build: panel-preview-image
+	docker run --rm -v "$(CURDIR):/config" $(PANEL_PREVIEW_IMAGE) compile tools/panel-preview/preview.yaml
+
+panel-shots: panel-preview-build
+	$(PANEL_SHOOT)
+
+panel-preview-check: panel-preview-build
+	$(PANEL_SHOOT) --check
+
 # Unit tests of the pages' pure modules (webui/test/: the setup's logic, the
 # time zone table; tools/tests/install-page.test.mjs: the install page's
 # states), with Node's own test runner, in the same node image.
@@ -258,11 +388,23 @@ webui-test:
 #   i18n-export   every text in English as one Markdown file, .i18n/translations.en.md, for any translation tool
 #   i18n-import   the translated file back into each surface's <TO>.json: make i18n-import TO=es FILE=~/Downloads/x.md
 #                 (DRY_RUN=1: only report). TO, not LANG: LANG is the shell's locale.
+#   panel-i18n    panel_i18n.h, the touch panel's texts compiled in, from i18n-panel/{en,fr,es}.json and the card's
+#                 keys the panel uses (tools/i18n/panel-header.mjs); fails on a plural, a missing language, or a
+#                 character no font of local-panel.yaml covers. i18n-check fails when panel_i18n.h is stale.
+#   panel-glyphsets  tools/i18n/panel-glyphsets.json, the characters of the fonts' glyph sets, from the ESPHome
+#                 image's esphome-glyphsets: after an ESPHOME_VERSION bump
 I18N_NODE := docker run --rm -v "$(CURDIR):/src" -w /src node:22-alpine node
 
 i18n-check:
 	$(I18N_NODE) tools/i18n/check.mjs
 	$(I18N_NODE) tools/i18n/ha-files.mjs --check
+	$(I18N_NODE) tools/i18n/panel-header.mjs --check
+
+panel-i18n:
+	$(I18N_NODE) tools/i18n/panel-header.mjs
+
+panel-glyphsets:
+	docker run --rm -v "$(CURDIR):/config" --entrypoint python3 $(ESPHOME_IMAGE) -I /config/tools/i18n/panel-glyphsets.py > tools/i18n/panel-glyphsets.json
 
 ha-files:
 	$(I18N_NODE) tools/i18n/ha-files.mjs

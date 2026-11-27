@@ -106,6 +106,16 @@
       "pw_short": "Password: 8 characters at least, or empty for an open network.",
       "confirm_switch": "The controller will leave « {from} » for « {to} ». This page will lose the link: find it again at {url}. Continue?"
     },
+    "screen": {
+      "heading": "Screen",
+      "title": "Touchscreen",
+      "lang": "Screen language",
+      "lang_sub": "The language of the texts on the controller's screen",
+      "sleep": "Screen off after",
+      "sleep_sub": "Without a touch. A touch or the Auto button turns it back on.",
+      "ignored": "Touches ignored while asleep",
+      "ignored_sub": "Since the last restart. A count that keeps rising points to condensation on the glass."
+    },
     "fw": {
       "version": "Version",
       "new_version": "the new version",

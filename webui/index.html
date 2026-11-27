@@ -107,7 +107,7 @@
 
     <!-- ============================================================ Réglages contrôleur -->
     <section id="tab-reglages-controleur" class="cols controller" role="tabpanel" hidden>
-      <!-- Read in this order: Sondes, Compteur d'eau, Position, Firmware (left column on a wide screen), then Accès,
+      <!-- Read in this order: Sondes, Compteur d'eau, Position, Écran, Firmware (left column on a wide screen), then Accès,
            Home Assistant, Wi-Fi, the Journal, Redémarrer and Réinitialiser (right column). One column on a phone, the same order. -->
       <div class="stack col">
         <!-- Sondes, then Position below (setup.js, device-settings.yaml): the wizard's steps 4 and 3, at hand -->
@@ -131,6 +131,14 @@
           <div class="card">
             <h2 data-icon="white-balance-sunny"><span data-i18n="page.pos.title">Sun and local time</span></h2>
             <div class="body" id="posBody"></div>
+          </div>
+        </div>
+        <!-- Écran: the touch panel of the S3 build (app.js, local-panel.yaml); hidden on a controller without one -->
+        <div class="stack" id="screenStack" hidden>
+          <h2 class="heading" data-icon="monitor"><span data-i18n="page.screen.heading">Screen</span></h2>
+          <div class="card">
+            <h2 data-icon="gesture-tap"><span data-i18n="page.screen.title">Touch panel</span></h2>
+            <div class="body"><div class="rows" id="screenRows"></div></div>
           </div>
         </div>
         <!-- Firmware: the version it runs, ESPHome's, and its updates (the controller's own update entity, updates.yaml) -->

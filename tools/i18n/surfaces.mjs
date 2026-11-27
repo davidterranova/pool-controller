@@ -6,7 +6,8 @@
 //   sources   the files that use the keys (globs: one `*` in the file name), never a symlink: the page's
 //             webui/piscine-card.js is the card's file, counted once under `card`
 //   usage     "code": t("key") / this._t('key') / t(`prefix.${…}`) (a used prefix), and in HTML data-i18n="key" /
-//             data-i18n-<attribute>="key"; "template": {{t:key}}
+//             data-i18n-<attribute>="key"; in the panel's C++ (panel_ui.h, local-panel.yaml's lambdas) T("key") and
+//             tr_prefix("prefix.", code) (a used prefix); "template": {{t:key}}
 //   reads     other surfaces whose keys these sources may also use (the page shows the card, so it reads its keys)
 //   strict    once the surface is fully translated (its WP done): a key no source uses, or a French-looking
 //             literal left in its sources, fails the check instead of being reported
@@ -28,6 +29,12 @@ export const SURFACES = [
     dir: "home-assistant/i18n-yaml", sources: ["home-assistant/dashboard/*.tmpl.yaml", "home-assistant/blueprints/*.tmpl.yaml"],
     usage: "template", reads: [], strict: true,
   },
+  {
+    // The ESP32-S3's touch panel (docs/plans/s3-panel.md). Its texts are compiled in: make panel-i18n generates
+    // panel_i18n.h from these dictionaries and the card's keys the panel uses (tools/i18n/panel-header.mjs).
+    id: "panel", title: "The touch panel (ESP32-S3 build)",
+    dir: "i18n-panel", sources: ["local-panel.yaml", "panel_ui.h"], usage: "code", reads: ["card"], strict: true,
+  },
 ];
 
 // Keys whose text is the same as English on purpose (a product name, a word every language uses), as
@@ -47,4 +54,8 @@ export const SAME_AS_ENGLISH = [
   "page:page.fw.version", "page:page.log.pause", "page:page.wifi.signal_line", "page:setup.wz2.signal", "page:setup.pos.lat",
   "page:setup.pos.lon", "page:setup.step.wifi.name", "page:setup.step.wifi.title", "page:setup.step.position.name",
   "page:setup.step.api_key.name", "page:setup.step.api_key.title", "page:page.no", "page:page.uptime.d",
+  // the panel: units and their spacing, written alike in the three languages
+  "panel:panel.fmt.min", "panel:panel.fmt.h", "panel:panel.fmt.h_min", "panel:panel.unit.celsius", "panel:panel.unit.litre", "panel:panel.unit.dbm",
+  // the panel's Status: « Version » (French), and names (Wi-Fi, Home Assistant)
+  "panel:panel.status.version", "panel:panel.status.setup.item.wifi", "panel:panel.status.setup.item.api_key",
 ];

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   SETUP_ITEMS, parseSetupState, nextStep, parseDetectedProbes, probeTrend, passwordProblem,
-  validApiKey, parseDegrees, degreesInput, sunTimes, fillStatus, parseAlarmMinutes, lastPulse,
+  validApiKey, parseDegrees, degreesInput, sunTimes, fillStatus, parseAlarmMinutes, lastPulse, panelLangToSet,
 } from "../setup-model.js";
 import { TIMEZONES, posixOf, validPosix, validZoneName, posixStandardOffset, clockIn } from "../timezones.js";
 
@@ -123,4 +123,14 @@ test("fill meter: its last pulse, from today back", () => {
   assert.deepEqual(lastPulse("2026-07-01 09:15", now), { when: "date", at: new Date(2026, 6, 1, 9, 15), otherYear: false });
   assert.equal(lastPulse("2025-12-30 08:00", now).otherYear, true);
   for (const t of ["--", "", undefined, "unknown"]) assert.deepEqual(lastPulse(t, now), { when: "never" });
+});
+
+test("finishing the wizard: Panel Language takes the page's language, only when the panel has it and differs", () => {
+  const panel = (state, options = ["en", "fr", "es"]) => ({ state, attributes: { options } });
+  assert.equal(panelLangToSet(panel("en"), "fr"), "fr");
+  assert.equal(panelLangToSet(panel("fr"), "es"), "es");
+  assert.equal(panelLangToSet(panel("fr"), "fr"), null); // already
+  assert.equal(panelLangToSet(undefined, "fr"), null); // a controller without a panel (the WROOM)
+  assert.equal(panelLangToSet(panel("en", ["en", "fr"]), "es"), null); // a panel without that language
+  assert.equal(panelLangToSet({ state: "unknown", attributes: {} }, "fr"), null);
 });
