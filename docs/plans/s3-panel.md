@@ -102,7 +102,7 @@ The options were evaluated in two iterations (2026-11-21: buttons + display agai
   - Wi-Fi at an equipment box is often weak: behind walls, in a crawl space, inside two boxes.
   - The new board sits behind a display's metal frame.
 - **Target board: an ESP32-S3-DevKitC-1 N16R8 clone with an IPEX connector**, the one tested being Heemol's: 16 MB flash, 8 MB octal PSRAM.
-  - The IPEX connector is disconnected out of the box, behind a 0 Ω resistor. It is bridged with a solder blob; a buyer reports +7 dB.
+  - Depending on the variant, the IPEX connector is the module's only antenna (the board tested: a fully shielded « S3-N16R8 » module, nothing to bridge), or sits behind a 0 Ω select resistor next to a printed antenna (a buyer bridged it with a solder blob, +7 dB). See S2's Decisions.
   - The module is a third-party one around a genuine Espressif ESP32-S3R8 chip. esptool reads the in-package 8 MB PSRAM from the chip's eFuses.
   - Espressif's DevKitC-1U-N8R8 is the no-rework alternative, hard to find at the time of writing.
 
@@ -194,6 +194,16 @@ The display can arrive after the board, so nothing in phase 1 waits for it but S
 - **today:** is dated in the source's Timezone (its POSIX string), the day both controllers are in once Timezone has moved.
 - **Safety:** the source is opened through a reader with no write method, and a target with the source's MAC is refused before anything is written. Manual Override is never copied.
 - **The fake controller** (`tools/transfer/fake_controller.py`) speaks the native API in plaintext, so the tests run aioesphomeapi itself. The encrypted (Noise) handshake is aioesphomeapi's own and only runs against a real controller: A10.
+
+**2026-11-26: S2, the bench board**
+- **The board read back** (esptool, then the bench firmware's boot log): ESP32-S3 (QFN56) rev v0.2, 8 MB embedded PSRAM, 16 MB Boya flash (quad in eFuse, DIO at boot), ESPHome's 16 MB partition table as S1's spike gave it. It came with ESP-IDF's TinyUSB console example, which holds the USB port: the first flash needs BOOT + RST by hand. After a flash, esptool's reset leaves it in download mode: press RST once.
+- **No `flash_chip: boya`**, though ESPHome suggests it to save IRAM: it drops the other vendors' flash drivers, and the published S3 build must boot on any N16R8 clone.
+- **The Auto button came with S4** (#92), in `pool-controller-s3.yaml`'s hardware block as this plan asks (GPIO 17, pull-up, inverted, debounced, logged under `panel`). S2 doesn't write a second one: it checks S4's on the bench.
+- **The pin check** is `tools/spike/s3-pins.yaml`: every pin of the map as an input with its pull-up, touched to GND one by one. It reads the raw levels every 100 ms and logs the pins read low on a change and every 2 s, with GPIO0 (the BOOT button) as a reference that needs no wire. Its binary sensors' interrupts are a second reading.
+- **Pin check, 2026-11-27: the silkscreen matches the map.** All 17 pins (12, 11, 10, 9, 8, 14, 1, 2, 21, 18, 17, 4, 5, 6, 7, 15, 16) read low in that order, one at a time, none with another. A first run saw nothing: a broken jumper wire, found by holding BOOT (`low: GPIO0`) and then 17 with another wire.
+- **The antenna: no bridge on this board (2026-11-27).** The radio is a shielded « S3-N16R8 » module (Sbspan) whose can covers it whole, with a notch for the IPEX connector: no printed antenna, so no select resistor; the IPEX is its only antenna, as on Espressif's WROOM-1U. The 0 Ω bridge reported by a buyer is another variant's. Until the dipole was fitted the board ran with no antenna, hence the weak signal (scans missing the network, pings 36–333 ms). S2's antenna check becomes: the dipole on the pigtail, 10 min at the box's spot. When buying a spare, check the photo for a shield that covers the whole module.
+- **PSRAM: 8 MB, octal**, found and usable (`psram: Available: YES, Size: 8192 KB` with `mode: octal`). ESPHome's summary doesn't print the mode; a wrong mode would fail to find it.
+- **S4's build on the board, no screen (2026-11-27, ed9e53b):** it boots, runs LVGL and joins Wi-Fi; the log shows the touch controller failing to start (`FT6336U touch driver failed to start`), the absent probes, and LVGL's first draw taking 125 ms once. Nothing stalls. 1,676,423 B of flash (20.6 %), 130,959 B of static RAM. Still open in S4's box: the page's panel entities on the board, the Auto button (the switch arrives 2026-11-28) and PSRAM use with LVGL.
 
 ## Open questions (each settled in its WP, then moved to Decisions)
 
@@ -453,7 +463,7 @@ Tick each one only with its evidence (PR, command, or the date of the hardware c
 | WP | Phase | What | Depends on | Branch | Status | PR |
 |---|---|---|---|---|---|---|
 | S1 | 1 | S3 target, Make targets, CI | — | `feat/s3-panel-s1-target` | done | [#88](https://github.com/davidterranova/pool-controller/pull/88) |
-| S2 | 1 | Board bring-up without the screen: board checks, antenna, Auto button, the full firmware | S1, board delivered | — | todo | — |
+| S2 | 1 | Board bring-up without the screen: board checks, antenna, Auto button, the full firmware | S1, board delivered | `feat/s3-panel-s2-board` | in progress | — |
 | S3 | 1 (any time) | Panel scaffolding: `panel_ui.h` + tests, translations pipeline, fonts, preview | contract | `feat/s3-panel-s3-scaffold` | done | [#89](https://github.com/davidterranova/pool-controller/pull/89) |
 | S4 | 1 (no screen) | Panel UI (LVGL) in the preview, then on the board with no screen attached | S1, S3; S2 for the board check | `feat/s3-panel-s4-panel` | in progress (the board check waits for hardware) | [#92](https://github.com/davidterranova/pool-controller/pull/92) |
 | S5 | 1 (any time) | Controller page + mock: « Screen », wizard | contract | `feat/s3-panel-s5-page` | done | [#87](https://github.com/davidterranova/pool-controller/pull/87) |
@@ -511,8 +521,8 @@ Only S6 waits for the display.
   - a throwaway `tools/spike/s3-pins.yaml` blinks or reads every pin of the map, checked against the silkscreen. The display's pins are checked here too, with nothing on them yet;
   - results in the PR.
 - [ ] Antenna:
-  - bridge the 0 Ω select pad to the IPEX connector and fit the pigtail and dipole;
-  - RSSI with the PCB antenna and with the IPEX one, 10 min each, at the box's spot.
+  - fit the pigtail and dipole (bridging the 0 Ω select pad first only on a variant that has a printed antenna; the tested board has none);
+  - RSSI with the dipole, 10 min at the box's spot.
 - [ ] The Auto button, in `pool-controller-s3.yaml`'s hardware block (not in the panel):
   - GPIO 17, internal pull-up, inverted, debounced;
   - a press sets Manual Override to `Auto`, logged under the `panel` tag;
