@@ -182,6 +182,74 @@ inline std::string duration(uint32_t seconds, Lang lang) {
   return fill(T("panel.fmt.h_min", lang), {{"h", h}, {"m", m}});
 }
 
+/// How long the controller has been running (Uptime): duration()'s minutes and hours, then « 3 d 4 h » (the card's
+/// words) from a day on.
+inline std::string uptime_text(float seconds, Lang lang) {
+  if (!std::isfinite(seconds) || seconds < 0)
+    return unknown(lang);
+  uint32_t s = (uint32_t) seconds;
+  if (s < 24u * 3600u)
+    return duration(s, lang);
+  return fill(T("card.fw.uptime_d", lang), {{"d", std::to_string(s / 86400u)}, {"h", std::to_string(s / 3600u % 24u)}});
+}
+
+// ------------------------------------------------------------------ readings
+
+/// Fill this month, in litres: this month's closed days (Fill Water Months' record, pool-controller.yaml: `month0`
+/// is fill_months[0], the closed days of month `months_key`, YYYYMM, 0 = no record yet) plus today's litres, as
+/// Fill Water Months shows this month. NaN when today's isn't known (Fill Meter off) or this month's record is.
+/// `this_month` is YYYYMM by the clock, 0 without one: then today alone can't be placed, so NaN.
+inline float fill_month(uint32_t months_key, uint32_t month0, float today_l, uint32_t this_month) {
+  if (!std::isfinite(today_l) || this_month == 0)
+    return NAN;
+  if (months_key != this_month)  // no day of this month closed yet (or no record at all): today alone
+    return today_l;
+  if (month0 == UINT32_MAX)
+    return NAN;
+  return (float) month0 + today_l;
+}
+
+/// Freeze protection forces Low now: the firmware's own test (pool-controller.yaml, evaluate_speed), the pool's
+/// water below Freeze Protection Temperature. An unknown reading never does.
+inline bool freeze_active(float water_c, float threshold_c) { return water_c < threshold_c; }
+
+// ------------------------------------------------------------------ the status screen
+
+/// Update Status's code (updates.h, status_text: `installing`, `pending:override`, `error:check`…) as a text:
+/// panel.status.update.<code>, the `:` as a `.`. « — » before the first status.
+inline std::string update_text(const std::string &code, Lang lang) {
+  if (code.empty())
+    return unknown(lang);
+  std::string key = code;
+  for (auto &c : key)
+    if (c == ':')
+      c = '.';
+  return tr_prefix("panel.status.update.", key, lang);
+}
+
+/// Setup State's code (device-settings.yaml): `configured`, or what is still missing, comma-separated
+/// (`page_password,wifi,position,probes,api_key`), as « Still to do: page password, Wi-Fi network ».
+inline std::string setup_text(const std::string &code, Lang lang) {
+  if (code.empty())
+    return unknown(lang);
+  if (code == "configured")
+    return T("panel.status.setup.configured", lang);
+  std::string items;
+  size_t start = 0;
+  while (start <= code.size()) {
+    size_t end = code.find(',', start);
+    if (end == std::string::npos)
+      end = code.size();
+    if (end > start) {
+      if (!items.empty())
+        items += ", ";
+      items += tr_prefix("panel.status.setup.item.", code.substr(start, end - start), lang);
+    }
+    start = end + 1;
+  }
+  return fill(T("panel.status.setup.missing", lang), {{"items", items}});
+}
+
 // ------------------------------------------------------------------ the override's time
 
 /// What the mode card says about the current override.
@@ -393,5 +461,13 @@ class TouchGuard {
   uint32_t count_ = 0;
   bool in_burst_ = false;
 };
+
+// ------------------------------------------------------------------ the panel's own
+
+/// What the pump-mode sheet stages between Change and Apply (local-panel.yaml). Here, not a global: ESPHome
+/// declares its globals before the includes. Never restored: a restart discards it.
+inline Sheet sheet;
+/// Touches on a sleeping screen, and their bursts (Panel Ignored Touches).
+inline TouchGuard touch_guard;
 
 }  // namespace panel_ui

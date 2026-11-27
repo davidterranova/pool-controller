@@ -10,7 +10,8 @@
     },
     "unit": {
       "celsius": "°C",
-      "litre": "L"
+      "litre": "L",
+      "dbm": "dBm"
     },
     "home": {
       "change": "Change",
@@ -23,6 +24,11 @@
         "outdoor": "Outdoor",
         "fill_today": "Fill today",
         "fill_month": "Fill this month"
+      },
+      "badge": {
+        "freeze": "Freeze protection",
+        "fill_alarm": "Fill running too long",
+        "no_wifi": "No Wi-Fi"
       }
     },
     "sheet": {
@@ -31,7 +37,48 @@
         "never": "A restart returns to Auto.",
         "until": "{speed} until {time}, then back to Auto",
         "for": "{speed} for {duration}, then back to Auto"
-      }
+      },
+      "title": "Pump mode",
+      "for": "For"
+    },
+    "status": {
+      "title": "Status",
+      "back": "Back",
+      "network": "Wi-Fi network",
+      "not_connected": "Not connected",
+      "signal": "Signal strength",
+      "ip": "IP address",
+      "scan": "Scan to open the controller's page",
+      "update": {
+        "label": "Update",
+        "installing": "Installing",
+        "checking": "Looking for a new version",
+        "available": "Update available",
+        "up_to_date": "Up to date",
+        "unchecked": "Not checked yet",
+        "pending": {
+          "override": "Waits for the forced speed to end",
+          "fill": "Waits for the fill to end"
+        },
+        "error": {
+          "check": "The check didn't succeed",
+          "install": "The install didn't succeed"
+        }
+      },
+      "setup": {
+        "label": "Setup",
+        "configured": "Complete",
+        "missing": "Still to do: {items}",
+        "item": {
+          "page_password": "page password",
+          "wifi": "Wi-Fi",
+          "position": "location",
+          "probes": "pool probe",
+          "api_key": "Home Assistant"
+        }
+      },
+      "version": "Version",
+      "uptime": "Running for"
     }
   }
 }

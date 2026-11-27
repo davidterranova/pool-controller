@@ -31,8 +31,7 @@ pool-controller-s3.yaml includes pool-controller.yaml, which includes wifi-setup
 and the others. --extra loads one more package the same way, for designing against
 entities the firmware doesn't have yet.
 --panel adds the S3 build's touch panel (docs/plans/s3-panel.md): Panel Language,
-Panel Sleep After and Panel Ignored Touches, from local-panel.yaml beside the config,
-or from panel-stand-in.yaml (this directory) on a branch that doesn't have it yet.
+Panel Sleep After and Panel Ignored Touches, from local-panel.yaml beside the config.
 The page shows its « Screen » section (« Écran ») only with them.
 --hotspot starts the simulated device on its fallback hotspot, with no clock.
 --no-release has no firmware published yet, so every update check fails (the
@@ -210,6 +209,23 @@ def _merge_package(config: dict, package: dict):
             config[key] = merged
 
 
+def _extended(items: list) -> list:
+    """A domain's entries with ESPHome's `id: !extend <id>` applied: an entry with no platform whose id is another
+    entry's (the tag loads as the plain id, see _Loader) is merged into that one, its keys winning, wherever it
+    stands (a config's own entries come before its packages'), as pool-controller-s3.yaml puts the panel's
+    entities in « Screen »."""
+    items = [dict(i) for i in items if isinstance(i, dict)]
+    by_id = {i["id"]: i for i in items if "platform" in i and i.get("id")}
+    out = []
+    for item in items:
+        target = by_id.get(item.get("id")) if "platform" not in item else None
+        if target is not None:
+            target.update({k: v for k, v in item.items() if k != "id"})
+        else:
+            out.append(item)
+    return out
+
+
 def load_layout(path: str, extras: list[str] | None = None) -> Layout:
     with open(path, encoding="utf-8") as f:
         config = yaml.load(f, Loader=_Loader) or {}
@@ -250,7 +266,7 @@ def load_layout(path: str, extras: list[str] | None = None) -> Layout:
 
     entities = []
     for domain in SUPPORTED_DOMAINS:
-        for item in config.get(domain) or []:
+        for item in _extended(config.get(domain) or []):
             platform = item.get("platform", "")
             if item.get("name") and not item.get("internal"):
                 entities.append(make(domain, platform, item))
@@ -406,7 +422,7 @@ F = {
     "ack": "Acknowledge Fill Alarm",
     "acked": "Fill Alarm Acknowledged",
 }
-# The S3 build's touch panel (local-panel.yaml, or panel-stand-in.yaml with --panel): settings the page writes, and
+# The S3 build's touch panel (local-panel.yaml, with --panel): settings the page writes, and
 # the touches the panel ignored while asleep, seeded with a few as after a damp night.
 P = {
     "lang": "Panel Language",
@@ -2206,10 +2222,8 @@ def check(config_path: str, extras: list[str] | None = None) -> int:
 
 
 def panel_package(config_path: str) -> str:
-    """The touch panel's package for --panel: local-panel.yaml beside the config once the branch has it, else the
-    stand-in with the same entities."""
-    real = os.path.join(os.path.dirname(os.path.abspath(config_path)), "local-panel.yaml")
-    return real if os.path.exists(real) else os.path.join(os.path.dirname(os.path.abspath(__file__)), "panel-stand-in.yaml")
+    """The touch panel's package for --panel: local-panel.yaml beside the config."""
+    return os.path.join(os.path.dirname(os.path.abspath(config_path)), "local-panel.yaml")
 
 
 def main() -> int:
@@ -2231,7 +2245,7 @@ def main() -> int:
     parser.add_argument("--long-fill", action="store_true",
                         help="start with a fill running past Fill Alarm After: its alarm is on")
     parser.add_argument("--panel", action="store_true",
-                        help="add the S3 build's touch panel entities (local-panel.yaml, else panel-stand-in.yaml)")
+                        help="add the S3 build's touch panel entities (local-panel.yaml)")
     parser.add_argument("--fresh", action="store_true",
                         help="start as a controller not set up yet (on its hotspot, nothing set)")
     parser.add_argument("--idle", type=float, default=6 * 3600, metavar="SECONDS",

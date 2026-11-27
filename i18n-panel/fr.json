@@ -10,7 +10,8 @@
     },
     "unit": {
       "celsius": "°C",
-      "litre": "L"
+      "litre": "L",
+      "dbm": "dBm"
     },
     "home": {
       "change": "Changer",
@@ -23,6 +24,11 @@
         "outdoor": "Extérieur",
         "fill_today": "Remplissage aujourd'hui",
         "fill_month": "Remplissage ce mois-ci"
+      },
+      "badge": {
+        "freeze": "Hors-gel",
+        "fill_alarm": "Remplissage trop long",
+        "no_wifi": "Pas de Wi-Fi"
       }
     },
     "sheet": {
@@ -31,7 +37,48 @@
         "never": "Un redémarrage revient en Auto.",
         "until": "{speed} jusqu'à {time}, puis retour en Auto",
         "for": "{speed} pendant {duration}, puis retour en Auto"
-      }
+      },
+      "title": "Mode de la pompe",
+      "for": "Pendant"
+    },
+    "status": {
+      "title": "État",
+      "back": "Retour",
+      "network": "Réseau Wi-Fi",
+      "not_connected": "Non connecté",
+      "signal": "Force du signal",
+      "ip": "Adresse IP",
+      "scan": "Scannez pour ouvrir la page du contrôleur",
+      "update": {
+        "label": "Mise à jour",
+        "installing": "Installation en cours",
+        "checking": "Recherche d'une nouvelle version",
+        "available": "Mise à jour disponible",
+        "up_to_date": "À jour",
+        "unchecked": "Pas encore vérifié",
+        "pending": {
+          "override": "Attend la fin de la vitesse forcée",
+          "fill": "Attend la fin du remplissage"
+        },
+        "error": {
+          "check": "La vérification a échoué",
+          "install": "L'installation a échoué"
+        }
+      },
+      "setup": {
+        "label": "Configuration",
+        "configured": "Terminée",
+        "missing": "Reste à faire : {items}",
+        "item": {
+          "page_password": "mot de passe",
+          "wifi": "Wi-Fi",
+          "position": "position",
+          "probes": "sonde piscine",
+          "api_key": "Home Assistant"
+        }
+      },
+      "version": "Version",
+      "uptime": "En marche depuis"
     }
   }
 }
