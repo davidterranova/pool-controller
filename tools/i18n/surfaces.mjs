@@ -55,5 +55,7 @@ export const SAME_AS_ENGLISH = [
   "page:setup.pos.lon", "page:setup.step.wifi.name", "page:setup.step.wifi.title", "page:setup.step.position.name",
   "page:setup.step.api_key.name", "page:setup.step.api_key.title", "page:page.no", "page:page.uptime.d",
   // the panel: units and their spacing, written alike in the three languages
-  "panel:panel.fmt.min", "panel:panel.fmt.h", "panel:panel.fmt.h_min", "panel:panel.unit.celsius", "panel:panel.unit.litre",
+  "panel:panel.fmt.min", "panel:panel.fmt.h", "panel:panel.fmt.h_min", "panel:panel.unit.celsius", "panel:panel.unit.litre", "panel:panel.unit.dbm",
+  // the panel's Status: « Version » (French), and names (Wi-Fi, Home Assistant)
+  "panel:panel.status.version", "panel:panel.status.setup.item.wifi", "panel:panel.status.setup.item.api_key",
 ];

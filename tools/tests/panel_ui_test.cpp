@@ -257,7 +257,49 @@ static void test_touch_guard() {
   EXPECT(roll.ignored(MIN));
 }
 
+static void test_uptime() {
+  EXPECT_EQ(uptime_text(90, EN), "2 min");
+  EXPECT_EQ(uptime_text(3 * 3600 + 60, EN), "3 h 1 min");
+  EXPECT_EQ(uptime_text(24 * 3600, EN), "1 d 0 h");
+  EXPECT_EQ(uptime_text(3 * 86400 + 4 * 3600 + 59 * 60, FR), "3 j 4 h");
+  EXPECT_EQ(uptime_text(NAN, ES), "—");
+}
+
+static void test_fill_month() {
+  // this month's closed days plus today
+  EXPECT(fill_month(202611, 950, 40, 202611) == 990.0f);
+  // the first of the month, or a record that stops before it: today alone
+  EXPECT(fill_month(202610, 950, 40, 202611) == 40.0f);
+  EXPECT(fill_month(0, UINT32_MAX, 40, 202611) == 40.0f);
+  // Fill Meter off, no clock, or this month unknown in the record
+  EXPECT(std::isnan(fill_month(202611, 950, NAN, 202611)));
+  EXPECT(std::isnan(fill_month(202611, 950, 40, 0)));
+  EXPECT(std::isnan(fill_month(202611, UINT32_MAX, 40, 202611)));
+}
+
+static void test_freeze() {
+  EXPECT(freeze_active(2.5f, 3.0f));
+  EXPECT(!freeze_active(3.0f, 3.0f));
+  EXPECT(!freeze_active(NAN, 3.0f));  // a dead probe never forces Low
+}
+
+static void test_status_texts() {
+  EXPECT_EQ(update_text("up_to_date", EN), "Up to date");
+  EXPECT_EQ(update_text("pending:override", FR), T("panel.status.update.pending.override", FR));
+  EXPECT_EQ(update_text("error:install", ES), T("panel.status.update.error.install", ES));
+  EXPECT_EQ(update_text("", EN), "—");
+  EXPECT_EQ(update_text("rebooting", EN), "rebooting");  // a newer firmware's code: shown as it is
+  EXPECT_EQ(setup_text("configured", EN), "Complete");
+  EXPECT_EQ(setup_text("wifi,probes", EN), "Still to do: Wi-Fi, pool probe");
+  EXPECT_EQ(setup_text("page_password", FR), "Reste à faire : mot de passe");
+  EXPECT_EQ(setup_text("", ES), "—");
+}
+
 int main() {
+  test_uptime();
+  test_fill_month();
+  test_freeze();
+  test_status_texts();
   test_texts();
   test_tr_prefix();
   test_fill();

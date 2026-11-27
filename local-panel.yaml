@@ -1,19 +1,49 @@
-# The touch panel (ESP32-S3 build; docs/plans/s3-panel.md): fonts, LVGL pages, the panel's entities.
+# The touch panel (ESP32-S3 build; docs/plans/s3-panel.md): run the pool from the box, without a phone.
 # pool-controller-s3.yaml includes it as a package, and so does the preview (tools/panel-preview/), so it names its
 # hardware only by id: panel_display (the ST7796), panel_touch (the FT6336U), panel_backlight and auto_button come
-# from the S3's hardware block, or from the preview's stand-ins. It reads the controller's own entities by their ids
-# in pool-controller.yaml (manual_override, manual_override_timeout_minutes, override_since_ms, last_commanded,
-# the probes' sensors, fill_today_sensor, local_time).
+# from the S3's hardware block, or from the preview's stand-ins. So do panel_wifi_ssid, panel_wifi_ip and
+# panel_wifi_rssi (the Wi-Fi as the panel shows it: the host build has no Wi-Fi component). Everything else it reads
+# is the controller's own, by its id in pool-controller.yaml and its packages: manual_override,
+# manual_override_timeout_minutes, override_since_ms, last_commanded, sched_next_change, the probes
+# (pool_return_temp, pad_ambient_temp, outdoor_temp), freeze_protection_c, fill_meter_enabled, fill_today_sensor,
+# fill_months, fill_months_key, fill_too_long_sensor, uptime_sensor, firmware_version_text, update_status,
+# setup_state, local_time.
 #
-# S3 (scaffolding) state: the fonts, Panel Language and a placeholder home screen that proves the texts, the fonts
-# and the preview. S4 replaces the placeholder with the panel's screens (home, the pump-mode sheet, status), its
-# sleep and wake, Panel Sleep After and Panel Ignored Touches.
+# Screens (480×320, landscape):
+#   Home     the status bar (the time, badges for freeze protection, a fill running too long and no Wi-Fi, the
+#            Wi-Fi symbol; a tap opens Status), the mode card (Auto: the speed now and the next change, « Medium
+#            until 16:00 »; manual: « High · 1 h 12 min left · Auto at 15:32 » or « no time limit ») with Change,
+#            and five tiles: Water, Equipment pad, Outdoor, Fill today, Fill this month (the fill row is hidden
+#            while Fill Meter is off; a tile with no reading shows « — »).
+#   Sheet    the pump mode: Auto · Off · Low · Medium · High, then « For » 30 min · 1 h · 2 h · Never (disabled
+#            for Auto), a hint (panel_ui.h's Sheet), Cancel · Apply. It opens on the current mode and the current
+#            Manual Override Timeout. Apply writes what the dashboard writes: Manual Override Timeout first, then
+#            Manual Override (Auto: Manual Override only), and logs both, in order.
+#   Status   Wi-Fi network, signal, IP address with a QR code of the page's address, firmware version, uptime,
+#            Update Status and Setup State (their codes, translated). Back returns home.
+#
+# Behaviour:
+#   - After Panel Sleep After with no touch: the sheet is discarded, Home is shown, the backlight goes off and LVGL
+#     pauses (on_idle).
+#   - A touch on a sleeping screen only wakes it: LVGL hands no widget a touch while paused, and resumes on its
+#     release (resume_on_input). It is counted (Panel Ignored Touches); a burst logs a warning (panel_ui.h's
+#     TouchGuard: condensation shows as touches nobody made).
+#   - The Auto button: the S3's hardware block sets Auto (it works whatever the panel does); here it also discards
+#     the sheet, shows Home and wakes the screen.
+#   - Panel Language relabels every widget at once.
+#   - Every text is redrawn every 5 s (the readings, the time left), on a language change, and after Apply.
+#   - Log tag `panel`: wake, sleep, every Apply with what it wrote, the Auto button, ignored touches and bursts.
 #
 # Texts: every one through panel_ui.h's T() / tr_prefix() from panel_i18n.h, never a literal
 # (.claude/rules/translations.md). panel_i18n.h is generated from i18n-panel/{en,fr,es}.json: make panel-i18n.
 #
-# Stable, never renamed (an NVS key is the md5 of its global's id; Home Assistant keys on the names):
-#   Panel Language (select, options en, fr, es)   global panel_lang (uint8_t, panel_i18n::Lang), default en
+# Entities (names are English and never renamed once published):
+#   Panel Language          select, config: en, fr, es (codes; the page shows the languages' names)
+#   Panel Sleep After       number, config: 15–600 s, step 15, default 60
+#   Panel Ignored Touches   sensor, diagnostic: touches that only woke the screen, since boot
+# Stable globals, never renamed (an NVS key is the md5 of its global's id):
+#   panel_lang     uint8_t (panel_i18n::Lang), default en
+#   panel_sleep_s  uint16_t, seconds, default 60
 
 esphome:
   # A list: pool-controller.yaml has its own. panel_ui.h includes panel_i18n.h, so both are copied.
@@ -28,6 +58,8 @@ esphome:
             panel_ui::set_lang((panel_i18n::Lang) id(panel_lang));
             panel_ui::on_missing = [](const char *key) { ESP_LOGW("panel", "no text for %s", key); };
             id(panel_language).publish_state(panel_ui::lang_code(panel_ui::current_lang));
+            id(panel_sleep_after).publish_state(id(panel_sleep_s));
+            id(panel_ignored_touches).publish_state(0);
         - script.execute: panel_refresh
 
 globals:
@@ -35,6 +67,10 @@ globals:
     type: uint8_t
     restore_value: true
     initial_value: '0'
+  - id: panel_sleep_s
+    type: uint16_t
+    restore_value: true
+    initial_value: '60'
 
 select:
   # The panel's language, as a code (en, fr, es): the page shows the languages' names (S5), and the setup wizard
@@ -52,10 +88,70 @@ select:
           id(panel_language).publish_state(x);
           ESP_LOGI("panel", "Panel Language: %s", x.c_str());
       - script.execute: panel_refresh
+      - script.execute: panel_settings_save
+  # The pump mode, whoever changes it (the sheet, the page, Home Assistant, the expiry, the Auto button): the
+  # panel follows at once, not at its next 5 s refresh.
+  - id: !extend manual_override
+    on_value:
+      - script.execute: panel_refresh
+
+number:
+  # How long the screen stays lit with no touch. A touch on a sleeping screen only wakes it.
+  - platform: template
+    name: "Panel Sleep After"
+    id: panel_sleep_after
+    icon: mdi:sleep
+    entity_category: config
+    unit_of_measurement: s
+    device_class: duration
+    mode: box
+    min_value: 15
+    max_value: 600
+    step: 15
+    lambda: 'return (float) id(panel_sleep_s);'
+    set_action:
+      - lambda: |-
+          id(panel_sleep_s) = (uint16_t) lroundf(x);
+          id(panel_sleep_after).publish_state(id(panel_sleep_s));
+          ESP_LOGI("panel", "Panel Sleep After: %u s", (unsigned) id(panel_sleep_s));
+      - script.execute: panel_settings_save
+
+sensor:
+  # Touches that only woke a sleeping screen, since boot. Condensation shows here first: touches nobody made.
+  - platform: template
+    name: "Panel Ignored Touches"
+    id: panel_ignored_touches
+    icon: mdi:gesture-tap
+    entity_category: diagnostic
+    state_class: total_increasing
+    accuracy_decimals: 0
+    update_interval: never
+
+# The Auto button (the S3's hardware block sets Auto on its press): it also discards the sheet and wakes the screen.
+binary_sensor:
+  - id: !extend auto_button
+    on_press:
+      - script.execute: panel_auto_button
+
+touchscreen:
+  - id: !extend panel_touch
+    on_touch:
+      - if:
+          condition: lvgl.is_paused
+          then:
+            - lambda: |-
+                auto &g = panel_ui::touch_guard;
+                bool burst = g.ignored(millis());
+                ESP_LOGI("panel", "Touch while asleep: it only wakes the screen (%u since boot)", (unsigned) g.count());
+                if (burst)
+                  ESP_LOGW("panel", "%u touches within %u min while asleep: condensation on the glass?",
+                           (unsigned) panel_ui::TouchGuard::BURST_COUNT,
+                           (unsigned) (panel_ui::TouchGuard::BURST_WINDOW_MS / 60000));
+                id(panel_ignored_touches).publish_state(g.count());
 
 # Montserrat (LVGL's own face) with GF_Latin_Core, which holds every accent of the three languages, ° and …; plus
 # ³ for m³. tools/i18n/panel-header.mjs reads these glyph sets: make panel-i18n fails when a text needs a character
-# a font lacks. Sizes are S4's to settle (their flash cost).
+# a font lacks. Three sizes: 16 (names, hints, badges), 20 (the mode line, buttons), 28 (readings).
 font:
   - file: "gfonts://Montserrat"
     id: panel_font_s
@@ -84,112 +180,644 @@ lvgl:
   touchscreens: [panel_touch]
   default_font: panel_font_m
   bg_color: 0xF4F6F8
+  text_color: 0x1F2933
+  # Dims to nothing: the backlight off, LVGL paused. A touch only resumes it (resume_on_input, on by default).
+  on_idle:
+    - timeout: !lambda 'return (uint32_t) id(panel_sleep_s) * 1000u;'
+      then:
+        - script.execute: panel_sleep
+  on_resume:
+    - light.turn_on: panel_backlight
+    - logger.log: {level: INFO, tag: panel, format: "Wake: backlight on"}
+  style_definitions:
+    - id: panel_card
+      bg_color: 0xFFFFFF
+      bg_opa: COVER
+      radius: 12
+      border_width: 0
+      shadow_width: 0
+      pad_all: 9
+    - id: panel_badge
+      radius: 10
+      bg_opa: COVER
+      pad_left: 8
+      pad_right: 8
+      pad_top: 2
+      pad_bottom: 2
+      text_color: 0xFFFFFF
+      text_font: panel_font_s
+    - id: panel_name
+      text_font: panel_font_s
+      text_color: 0x52606D
+  theme:
+    button:
+      bg_color: 0xFFFFFF
+      bg_opa: COVER
+      border_color: 0xC9D1DA
+      border_width: 2
+      radius: 10
+      shadow_width: 0
+      text_color: 0x1F2933
+      pad_all: 2
+      pressed:
+        bg_color: 0xDCE6F2
+      checked:
+        bg_color: 0x1565C0
+        border_color: 0x1565C0
+        text_color: 0xFFFFFF
+      disabled:
+        bg_color: 0xEEF1F4
+        border_color: 0xE1E6EB
+        text_color: 0xA9B4BF
   pages:
-    # Placeholder (S3): the mode line, Change, and the five tiles. S4's home screen replaces it.
+    # ------------------------------------------------------------------------------------------------------ home
     - id: panel_home
+      scrollbar_mode: "OFF"
       widgets:
-        - label:
-            id: panel_mode_line
-            x: 12
-            y: 14
-            width: 340
-            long_mode: wrap
-            text_font: panel_font_m
-            text: ""
-        - button:
-            id: panel_change
-            x: 360
-            y: 8
-            width: 108
-            height: 44
+        # The status bar: a tap opens Status.
+        - obj:
+            id: panel_bar
+            x: 0
+            y: 0
+            width: 480
+            height: 38
+            bg_opa: TRANSP
+            border_width: 0
+            radius: 0
+            pad_all: 0
+            clickable: true
+            scrollbar_mode: "OFF"
+            on_click:
+              - script.execute: panel_show_status
             widgets:
-              - label:
-                  id: panel_change_label
-                  align: center
-                  text_font: panel_font_s
-                  text: ""
+              - label: {id: panel_clock, x: 12, y: 8, text_font: panel_font_m, text: ""}
+              - obj:
+                  x: 84
+                  y: 6
+                  width: 344
+                  height: 28
+                  bg_opa: TRANSP
+                  border_width: 0
+                  pad_all: 0
+                  # A tap goes to the bar.
+                  clickable: false
+                  scrollbar_mode: "OFF"
+                  layout:
+                    type: flex
+                    flex_flow: row
+                    pad_column: 6
+                    flex_align_cross: center
+                  widgets:
+                    - label: {id: panel_badge_freeze, styles: panel_badge, bg_color: 0x1E88E5, hidden: true, text: ""}
+                    - label: {id: panel_badge_fill, styles: panel_badge, bg_color: 0xD9480F, hidden: true, text: ""}
+                    - label: {id: panel_badge_wifi, styles: panel_badge, bg_color: 0x6B7785, hidden: true, text: ""}
+              # LVGL's symbol font: its Wi-Fi sign, no text.
+              - label: {id: panel_wifi_icon, x: 440, y: 9, text_font: montserrat_20, text: ""}
+        # The mode card.
         - obj:
             x: 12
-            y: 100
-            width: 148
-            height: 96
-            pad_all: 10
+            y: 42
+            width: 456
+            height: 98
+            styles: panel_card
             scrollbar_mode: "OFF"
             widgets:
-              - label: {id: panel_water_name, x: 0, y: 0, width: 128, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - label: {id: panel_mode_name, x: 0, y: 0, styles: panel_name, text: ""}
+              - label: {id: panel_mode_line, x: 0, y: 22, width: 310, long_mode: wrap, text_font: panel_font_m, text: ""}
+              - button:
+                  id: panel_change
+                  x: 316
+                  y: 9
+                  width: 120
+                  height: 60
+                  on_click:
+                    - script.execute: panel_open_sheet
+                  widgets:
+                    - label: {id: panel_change_label, align: center, text_font: panel_font_m, text: ""}
+        # The probes' tiles.
+        - obj:
+            x: 12
+            y: 148
+            width: 150
+            height: 80
+            styles: panel_card
+            scrollbar_mode: "OFF"
+            widgets:
+              - label: {id: panel_water_name, x: 0, y: 0, width: 132, height: 20, long_mode: dot, styles: panel_name, text: ""}
               - label: {id: panel_water_value, align: bottom_left, x: 0, y: 0, text_font: panel_font_l, text: ""}
         - obj:
-            x: 166
-            y: 100
-            width: 148
-            height: 96
-            pad_all: 10
+            x: 165
+            y: 148
+            width: 150
+            height: 80
+            styles: panel_card
             scrollbar_mode: "OFF"
             widgets:
-              - label: {id: panel_pad_name, x: 0, y: 0, width: 128, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - label: {id: panel_pad_name, x: 0, y: 0, width: 132, height: 20, long_mode: dot, styles: panel_name, text: ""}
               - label: {id: panel_pad_value, align: bottom_left, x: 0, y: 0, text_font: panel_font_l, text: ""}
         - obj:
-            x: 320
-            y: 100
-            width: 148
-            height: 96
-            pad_all: 10
+            x: 318
+            y: 148
+            width: 150
+            height: 80
+            styles: panel_card
             scrollbar_mode: "OFF"
             widgets:
-              - label: {id: panel_outdoor_name, x: 0, y: 0, width: 128, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - label: {id: panel_outdoor_name, x: 0, y: 0, width: 132, height: 20, long_mode: dot, styles: panel_name, text: ""}
               - label: {id: panel_outdoor_value, align: bottom_left, x: 0, y: 0, text_font: panel_font_l, text: ""}
+        # The fill tiles, hidden while Fill Meter is off.
         - obj:
+            id: panel_fill_today_tile
             x: 12
-            y: 206
+            y: 234
             width: 225
-            height: 96
-            pad_all: 10
+            height: 80
+            styles: panel_card
             scrollbar_mode: "OFF"
             widgets:
-              - label: {id: panel_fill_today_name, x: 0, y: 0, width: 205, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - label: {id: panel_fill_today_name, x: 0, y: 0, width: 207, height: 20, long_mode: dot, styles: panel_name, text: ""}
               - label: {id: panel_fill_today_value, align: bottom_left, x: 0, y: 0, text_font: panel_font_l, text: ""}
         - obj:
+            id: panel_fill_month_tile
             x: 243
-            y: 206
+            y: 234
             width: 225
-            height: 96
-            pad_all: 10
+            height: 80
+            styles: panel_card
             scrollbar_mode: "OFF"
             widgets:
-              - label: {id: panel_fill_month_name, x: 0, y: 0, width: 205, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - label: {id: panel_fill_month_name, x: 0, y: 0, width: 207, height: 20, long_mode: dot, styles: panel_name, text: ""}
               - label: {id: panel_fill_month_value, align: bottom_left, x: 0, y: 0, text_font: panel_font_l, text: ""}
 
+    # ----------------------------------------------------------------------------------------- pump-mode sheet
+    - id: panel_sheet_page
+      scrollbar_mode: "OFF"
+      widgets:
+        - label: {id: panel_sheet_title, x: 12, y: 8, text_font: panel_font_m, text: ""}
+        - button:
+            id: panel_sheet_auto
+            x: 12
+            y: 38
+            width: 86
+            height: 58
+            checkable: true
+            on_click:
+              - lambda: 'panel_ui::sheet.choose_mode(panel_ui::AUTO);'
+              - script.execute: panel_sheet_draw
+            widgets:
+              - label: {id: panel_sheet_auto_label, align: center, text_font: panel_font_s, text: ""}
+        - button:
+            id: panel_sheet_off
+            x: 104
+            y: 38
+            width: 86
+            height: 58
+            checkable: true
+            on_click:
+              - lambda: 'panel_ui::sheet.choose_mode(panel_ui::OFF);'
+              - script.execute: panel_sheet_draw
+            widgets:
+              - label: {id: panel_sheet_off_label, align: center, text_font: panel_font_s, text: ""}
+        - button:
+            id: panel_sheet_low
+            x: 196
+            y: 38
+            width: 86
+            height: 58
+            checkable: true
+            on_click:
+              - lambda: 'panel_ui::sheet.choose_mode(panel_ui::LOW);'
+              - script.execute: panel_sheet_draw
+            widgets:
+              - label: {id: panel_sheet_low_label, align: center, text_font: panel_font_s, text: ""}
+        - button:
+            id: panel_sheet_medium
+            x: 288
+            y: 38
+            width: 86
+            height: 58
+            checkable: true
+            on_click:
+              - lambda: 'panel_ui::sheet.choose_mode(panel_ui::MEDIUM);'
+              - script.execute: panel_sheet_draw
+            widgets:
+              - label: {id: panel_sheet_medium_label, align: center, text_font: panel_font_s, text: ""}
+        - button:
+            id: panel_sheet_high
+            x: 380
+            y: 38
+            width: 86
+            height: 58
+            checkable: true
+            on_click:
+              - lambda: 'panel_ui::sheet.choose_mode(panel_ui::HIGH);'
+              - script.execute: panel_sheet_draw
+            widgets:
+              - label: {id: panel_sheet_high_label, align: center, text_font: panel_font_s, text: ""}
+        - label: {id: panel_sheet_for, x: 12, y: 104, styles: panel_name, text: ""}
+        - button:
+            id: panel_sheet_30
+            x: 12
+            y: 126
+            width: 109
+            height: 56
+            checkable: true
+            on_click:
+              - lambda: 'panel_ui::sheet.choose_minutes(panel_ui::DURATIONS[0]);'
+              - script.execute: panel_sheet_draw
+            widgets:
+              - label: {id: panel_sheet_30_label, align: center, text_font: panel_font_s, text: ""}
+        - button:
+            id: panel_sheet_60
+            x: 127
+            y: 126
+            width: 109
+            height: 56
+            checkable: true
+            on_click:
+              - lambda: 'panel_ui::sheet.choose_minutes(panel_ui::DURATIONS[1]);'
+              - script.execute: panel_sheet_draw
+            widgets:
+              - label: {id: panel_sheet_60_label, align: center, text_font: panel_font_s, text: ""}
+        - button:
+            id: panel_sheet_120
+            x: 242
+            y: 126
+            width: 109
+            height: 56
+            checkable: true
+            on_click:
+              - lambda: 'panel_ui::sheet.choose_minutes(panel_ui::DURATIONS[2]);'
+              - script.execute: panel_sheet_draw
+            widgets:
+              - label: {id: panel_sheet_120_label, align: center, text_font: panel_font_s, text: ""}
+        - button:
+            id: panel_sheet_never
+            x: 357
+            y: 126
+            width: 109
+            height: 56
+            checkable: true
+            on_click:
+              - lambda: 'panel_ui::sheet.choose_minutes(panel_ui::DURATIONS[3]);'
+              - script.execute: panel_sheet_draw
+            widgets:
+              - label: {id: panel_sheet_never_label, align: center, text_font: panel_font_s, text: ""}
+        - label: {id: panel_sheet_hint, x: 12, y: 190, width: 456, long_mode: wrap, text_font: panel_font_s, text: ""}
+        - button:
+            id: panel_sheet_cancel
+            x: 12
+            y: 256
+            width: 222
+            height: 56
+            on_click:
+              - lambda: 'ESP_LOGI("panel", "Sheet cancelled: nothing written");'
+              - script.execute: panel_close_sheet
+            widgets:
+              - label: {id: panel_sheet_cancel_label, align: center, text_font: panel_font_m, text: ""}
+        - button:
+            id: panel_sheet_apply
+            x: 246
+            y: 256
+            width: 222
+            height: 56
+            bg_color: 0x1565C0
+            border_color: 0x1565C0
+            text_color: 0xFFFFFF
+            on_click:
+              - script.execute: panel_apply
+            widgets:
+              - label: {id: panel_sheet_apply_label, align: center, text_font: panel_font_m, text: ""}
+
+    # ----------------------------------------------------------------------------------------------- status
+    - id: panel_status_page
+      scrollbar_mode: "OFF"
+      widgets:
+        - label: {id: panel_status_title, x: 12, y: 12, text_font: panel_font_m, text: ""}
+        - button:
+            id: panel_status_back
+            x: 348
+            y: 6
+            width: 120
+            height: 44
+            on_click:
+              - lvgl.page.show: panel_home
+            widgets:
+              - label: {id: panel_status_back_label, align: center, text_font: panel_font_s, text: ""}
+        - obj:
+            x: 0
+            y: 54
+            width: 352
+            height: 266
+            bg_opa: TRANSP
+            border_width: 0
+            pad_left: 12
+            pad_right: 4
+            pad_top: 0
+            pad_bottom: 4
+            scrollbar_mode: "OFF"
+            layout:
+              type: flex
+              flex_flow: column
+              pad_row: 6
+            widgets:
+              - obj:
+                  width: 336
+                  height: SIZE_CONTENT
+                  bg_opa: TRANSP
+                  border_width: 0
+                  pad_all: 0
+                  scrollbar_mode: "OFF"
+                  widgets:
+                    - label: {id: panel_st_network_name, x: 0, y: 0, width: 140, long_mode: wrap, styles: panel_name, text: ""}
+                    - label: {id: panel_st_network, x: 146, y: 0, width: 190, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - obj:
+                  width: 336
+                  height: SIZE_CONTENT
+                  bg_opa: TRANSP
+                  border_width: 0
+                  pad_all: 0
+                  scrollbar_mode: "OFF"
+                  widgets:
+                    - label: {id: panel_st_signal_name, x: 0, y: 0, width: 140, long_mode: wrap, styles: panel_name, text: ""}
+                    - label: {id: panel_st_signal, x: 146, y: 0, width: 190, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - obj:
+                  width: 336
+                  height: SIZE_CONTENT
+                  bg_opa: TRANSP
+                  border_width: 0
+                  pad_all: 0
+                  scrollbar_mode: "OFF"
+                  widgets:
+                    - label: {id: panel_st_ip_name, x: 0, y: 0, width: 140, long_mode: wrap, styles: panel_name, text: ""}
+                    - label: {id: panel_st_ip, x: 146, y: 0, width: 190, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - obj:
+                  width: 336
+                  height: SIZE_CONTENT
+                  bg_opa: TRANSP
+                  border_width: 0
+                  pad_all: 0
+                  scrollbar_mode: "OFF"
+                  widgets:
+                    - label: {id: panel_st_version_name, x: 0, y: 0, width: 140, long_mode: wrap, styles: panel_name, text: ""}
+                    - label: {id: panel_st_version, x: 146, y: 0, width: 190, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - obj:
+                  width: 336
+                  height: SIZE_CONTENT
+                  bg_opa: TRANSP
+                  border_width: 0
+                  pad_all: 0
+                  scrollbar_mode: "OFF"
+                  widgets:
+                    - label: {id: panel_st_uptime_name, x: 0, y: 0, width: 140, long_mode: wrap, styles: panel_name, text: ""}
+                    - label: {id: panel_st_uptime, x: 146, y: 0, width: 190, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - obj:
+                  width: 336
+                  height: SIZE_CONTENT
+                  bg_opa: TRANSP
+                  border_width: 0
+                  pad_all: 0
+                  scrollbar_mode: "OFF"
+                  widgets:
+                    - label: {id: panel_st_update_name, x: 0, y: 0, width: 140, long_mode: wrap, styles: panel_name, text: ""}
+                    - label: {id: panel_st_update, x: 146, y: 0, width: 190, long_mode: wrap, text_font: panel_font_s, text: ""}
+              - obj:
+                  width: 336
+                  height: SIZE_CONTENT
+                  bg_opa: TRANSP
+                  border_width: 0
+                  pad_all: 0
+                  scrollbar_mode: "OFF"
+                  widgets:
+                    - label: {id: panel_st_setup_name, x: 0, y: 0, width: 140, long_mode: wrap, styles: panel_name, text: ""}
+                    - label: {id: panel_st_setup, x: 146, y: 0, width: 190, long_mode: wrap, text_font: panel_font_s, text: ""}
+        # The page's address, to open it from a phone.
+        - qrcode:
+            id: panel_st_qr
+            x: 362
+            y: 62
+            size: 106
+            text: " "
+        - label: {id: panel_st_scan, x: 354, y: 176, width: 122, long_mode: wrap, text_align: center, styles: panel_name, text: ""}
+
 script:
-  # Every text of the placeholder, in the panel's language: on boot, on a Panel Language change, every 5 s.
+  # Every text of every screen, in the panel's language: on boot, on a Panel Language change, every 5 s, and
+  # after Apply. A label is only touched when its text changes, so LVGL redraws what changed.
   - id: panel_refresh
     mode: queued
+    max_runs: 2
     then:
       - lambda: |-
           using namespace panel_ui;
+          const Lang L = current_lang;
+          auto set = [](lv_obj_t *o, const std::string &s) {
+            if (std::strcmp(lv_label_get_text(o), s.c_str()) != 0)
+              lv_label_set_text(o, s.c_str());
+          };
+          auto show = [](lv_obj_t *o, bool on) {
+            lv_obj_set_hidden(o, !on);
+          };
+
+          // The clock now, if any.
+          int now_minute = -1, now_second = 0;
+          uint32_t this_month = 0;
+          auto now = id(local_time).now();
+          if (now.is_valid()) {
+            now_minute = now.hour * 60 + now.minute;
+            now_second = now.second;
+            this_month = now.year * 100u + now.month;
+          }
+
+          // ---- the status bar
+          set(id(panel_clock), clock(now_minute, L));
+          bool wifi = !id(panel_wifi_ip).state.empty();
+          set(id(panel_badge_freeze), T("panel.home.badge.freeze"));
+          set(id(panel_badge_fill), T("panel.home.badge.fill_alarm"));
+          set(id(panel_badge_wifi), T("panel.home.badge.no_wifi"));
+          show(id(panel_badge_freeze), freeze_active(id(pool_return_temp).state, id(freeze_protection_c).state));
+          show(id(panel_badge_fill), id(fill_meter_enabled) && id(fill_too_long_sensor).state);
+          show(id(panel_badge_wifi), !wifi);
+          lv_obj_set_style_text_color(id(panel_wifi_icon), lv_color_hex(wifi ? 0x1565C0 : 0xA9B4BF), 0);
+
+          // ---- the mode card
           Mode mode;
           mode_from_option(id(manual_override).current_option().c_str(), mode);
+          int next_minute = -1;
+          if (id(sched_next_change) != 0) {
+            auto at = ESPTime::from_epoch_local(id(sched_next_change));
+            next_minute = at.hour * 60 + at.minute;
+          }
+          OverrideTime t = override_time(id(override_since_ms), millis(), id(manual_override_timeout_minutes).state);
+          set(id(panel_mode_name), mode == AUTO ? T("common.mode.auto") : T("common.mode.manual"));
+          set(id(panel_mode_line), mode_line(mode, id(last_commanded), next_minute, t, now_minute, now_second, L));
+          set(id(panel_change_label), T("panel.home.change"));
+
+          // ---- the tiles
+          const char *celsius = T("panel.unit.celsius"), *litre = T("panel.unit.litre");
+          set(id(panel_water_name), T("panel.home.tile.water"));
+          set(id(panel_pad_name), T("panel.home.tile.pad"));
+          set(id(panel_outdoor_name), T("panel.home.tile.outdoor"));
+          set(id(panel_fill_today_name), T("panel.home.tile.fill_today"));
+          set(id(panel_fill_month_name), T("panel.home.tile.fill_month"));
+          set(id(panel_water_value), quantity(id(pool_return_temp).state, 1, celsius, L));
+          set(id(panel_pad_value), quantity(id(pad_ambient_temp).state, 1, celsius, L));
+          set(id(panel_outdoor_value), quantity(id(outdoor_temp).state, 1, celsius, L));
+          bool fill_on = id(fill_meter_enabled);
+          show(id(panel_fill_today_tile), fill_on);
+          show(id(panel_fill_month_tile), fill_on);
+          float today_l = id(fill_today_sensor).state;
+          set(id(panel_fill_today_value), quantity(today_l, 0, litre, L));
+          set(id(panel_fill_month_value),
+              quantity(fill_month(id(fill_months_key), id(fill_months)[0], today_l, this_month), 0, litre, L));
+
+          // ---- the sheet's fixed texts (panel_sheet_draw sets what it stages)
+          set(id(panel_sheet_title), T("panel.sheet.title"));
+          set(id(panel_sheet_auto_label), mode_label(AUTO, L));
+          set(id(panel_sheet_off_label), mode_label(OFF, L));
+          set(id(panel_sheet_low_label), mode_label(LOW, L));
+          set(id(panel_sheet_medium_label), mode_label(MEDIUM, L));
+          set(id(panel_sheet_high_label), mode_label(HIGH, L));
+          set(id(panel_sheet_for), T("panel.sheet.for"));
+          set(id(panel_sheet_30_label), duration(DURATIONS[0] * 60u, L));
+          set(id(panel_sheet_60_label), duration(DURATIONS[1] * 60u, L));
+          set(id(panel_sheet_120_label), duration(DURATIONS[2] * 60u, L));
+          set(id(panel_sheet_never_label), T("common.never"));
+          set(id(panel_sheet_cancel_label), T("common.cancel"));
+          set(id(panel_sheet_apply_label), T("common.apply"));
+          if (panel_ui::sheet.is_open())
+            set(id(panel_sheet_hint), panel_ui::sheet.hint_text(now_minute, now_second, L));
+
+          // ---- status
+          set(id(panel_status_title), T("panel.status.title"));
+          set(id(panel_status_back_label), T("panel.status.back"));
+          set(id(panel_st_network_name), T("panel.status.network"));
+          set(id(panel_st_signal_name), T("panel.status.signal"));
+          set(id(panel_st_ip_name), T("panel.status.ip"));
+          set(id(panel_st_version_name), T("panel.status.version"));
+          set(id(panel_st_uptime_name), T("panel.status.uptime"));
+          set(id(panel_st_update_name), T("panel.status.update.label"));
+          set(id(panel_st_setup_name), T("panel.status.setup.label"));
+          set(id(panel_st_scan), T("panel.status.scan"));
+          set(id(panel_st_network), wifi ? id(panel_wifi_ssid).state : std::string(T("panel.status.not_connected")));
+          set(id(panel_st_signal), quantity(wifi ? id(panel_wifi_rssi).state : NAN, 0, T("panel.unit.dbm"), L));
+          set(id(panel_st_ip), wifi ? id(panel_wifi_ip).state : unknown(L));
+          set(id(panel_st_version), id(firmware_version_text).has_state() ? id(firmware_version_text).state : unknown(L));
+          set(id(panel_st_uptime), uptime_text(id(uptime_sensor).state, L));
+          set(id(panel_st_update), update_text(id(update_status).state, L));
+          set(id(panel_st_setup), setup_text(id(setup_state).state, L));
+          static std::string qr_text;
+          std::string url = wifi ? "http://" + id(panel_wifi_ip).state + "/" : "";
+          if (url != qr_text) {
+            qr_text = url;
+            if (!url.empty())
+              lv_qrcode_update(id(panel_st_qr), url.c_str(), url.size());
+          }
+          show(id(panel_st_qr), wifi);
+          show(id(panel_st_scan), wifi);
+
+  # The sheet's buttons and hint, from what it stages.
+  - id: panel_sheet_draw
+    then:
+      - lambda: |-
+          using namespace panel_ui;
+          const Sheet &s = panel_ui::sheet;
+          lv_obj_t *modes[MODE_COUNT] = {id(panel_sheet_auto), id(panel_sheet_off), id(panel_sheet_low),
+                                         id(panel_sheet_medium), id(panel_sheet_high)};
+          for (int i = 0; i < MODE_COUNT; i++)
+            lv_obj_set_state(modes[i], LV_STATE_CHECKED, s.mode() == i);
+          lv_obj_t *durations[DURATION_COUNT] = {id(panel_sheet_30), id(panel_sheet_60), id(panel_sheet_120),
+                                                 id(panel_sheet_never)};
+          int choice = s.minutes_choice();
+          for (int i = 0; i < DURATION_COUNT; i++) {
+            lv_obj_set_state(durations[i], LV_STATE_CHECKED, choice == i);
+            lv_obj_set_state(durations[i], LV_STATE_DISABLED, !s.minutes_enabled());
+          }
           int now_minute = -1, now_second = 0;
           auto now = id(local_time).now();
           if (now.is_valid()) {
             now_minute = now.hour * 60 + now.minute;
             now_second = now.second;
           }
-          OverrideTime t = override_time(id(override_since_ms), millis(), id(manual_override_timeout_minutes).state);
-          std::string line = mode_line(mode, id(last_commanded), -1, t, now_minute, now_second, current_lang);
-          lv_label_set_text(id(panel_mode_line), line.c_str());
-          lv_label_set_text(id(panel_change_label), T("panel.home.change"));
-          lv_label_set_text(id(panel_water_name), T("panel.home.tile.water"));
-          lv_label_set_text(id(panel_pad_name), T("panel.home.tile.pad"));
-          lv_label_set_text(id(panel_outdoor_name), T("panel.home.tile.outdoor"));
-          lv_label_set_text(id(panel_fill_today_name), T("panel.home.tile.fill_today"));
-          lv_label_set_text(id(panel_fill_month_name), T("panel.home.tile.fill_month"));
-          const char *celsius = T("panel.unit.celsius"), *litre = T("panel.unit.litre");
-          lv_label_set_text(id(panel_water_value), quantity(id(pool_return_temp).state, 1, celsius, current_lang).c_str());
-          lv_label_set_text(id(panel_pad_value), quantity(id(pad_ambient_temp).state, 1, celsius, current_lang).c_str());
-          lv_label_set_text(id(panel_outdoor_value), quantity(id(outdoor_temp).state, 1, celsius, current_lang).c_str());
-          lv_label_set_text(id(panel_fill_today_value), quantity(id(fill_today_sensor).state, 0, litre, current_lang).c_str());
-          // This month's fill (closed days plus today) is S4's: unknown on the placeholder.
-          lv_label_set_text(id(panel_fill_month_value), quantity(NAN, 0, litre, current_lang).c_str());
+          lv_label_set_text(id(panel_sheet_hint), s.hint_text(now_minute, now_second, current_lang).c_str());
+
+  # Change: the sheet opens on the current mode and the current Manual Override Timeout.
+  - id: panel_open_sheet
+    then:
+      - lambda: |-
+          panel_ui::Mode mode;
+          panel_ui::mode_from_option(id(manual_override).current_option().c_str(), mode);
+          panel_ui::sheet.open(mode, id(manual_override_timeout_minutes).state);
+          ESP_LOGI("panel", "Sheet open on %s, %.0f min", panel_ui::mode_option(mode),
+                   id(manual_override_timeout_minutes).state);
+      - script.execute: panel_sheet_draw
+      - lvgl.page.show: panel_sheet_page
+
+  # Cancel (and Apply, once written): nothing staged survives.
+  - id: panel_close_sheet
+    then:
+      - lambda: 'panel_ui::sheet.discard();'
+      - lvgl.page.show: panel_home
+
+  # Apply: Manual Override Timeout first (not for Auto), then Manual Override, as the dashboard writes them. The
+  # firmware does the rest: its expiry, « Manual Override Ends At », the alert, freeze protection's priority.
+  - id: panel_apply
+    then:
+      - lambda: |-
+          if (!panel_ui::sheet.is_open()) return;
+          panel_ui::Writes w = panel_ui::sheet.apply();
+          if (w.set_timeout) {
+            ESP_LOGI("panel", "Apply: Manual Override Timeout %u min", (unsigned) w.timeout_min);
+            auto call = id(manual_override_timeout_minutes).make_call();
+            call.set_value(w.timeout_min);
+            call.perform();
+          }
+          ESP_LOGI("panel", "Apply: Manual Override %s", w.override_option);
+          auto call = id(manual_override).make_call();
+          call.set_option(w.override_option);
+          call.perform();
+      - lvgl.page.show: panel_home
+      - script.execute: panel_refresh
+
+  - id: panel_show_status
+    then:
+      - script.execute: panel_refresh
+      - lvgl.page.show: panel_status_page
+
+  # After Panel Sleep After with no touch.
+  - id: panel_sleep
+    then:
+      - lambda: |-
+          bool staged = panel_ui::sheet.is_open();
+          panel_ui::sheet.discard();
+          ESP_LOGI("panel", "Sleep after %u s with no touch%s", (unsigned) id(panel_sleep_s),
+                   staged ? ": the sheet is discarded" : "");
+      - lvgl.page.show: panel_home
+      - light.turn_off: panel_backlight
+      - lvgl.pause:
+
+  # The Auto button's press: the hardware block has set Auto already.
+  - id: panel_auto_button
+    then:
+      - lambda: |-
+          if (panel_ui::sheet.is_open())
+            ESP_LOGI("panel", "Auto button: the sheet is discarded");
+          panel_ui::sheet.discard();
+          // Restarts on_idle's count: without it, a screen woken by the button would never sleep again.
+          lv_display_trigger_activity(nullptr);
+      - lvgl.page.show: panel_home
+      - if:
+          condition: lvgl.is_paused
+          then:
+            - logger.log: {level: INFO, tag: panel, format: "Auto button: wakes the screen"}
+            - lvgl.resume:
+      - script.execute: panel_refresh
+
+  # A setting saved now, not at the next flash write (5 min).
+  - id: panel_settings_save
+    mode: restart
+    then:
+      - delay: 2s
+      - lambda: 'global_preferences->sync();'
 
 interval:
   - interval: 5s

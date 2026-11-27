@@ -268,13 +268,24 @@ mock-ui: webui
 # MOCK_INSTALL_FAIL=1: every install fails at 60 % of its download.
 # MOCK_FILL=off starts with the fill meter turned off; MOCK_LONG_FILL=1 with a
 # fill already past Fill Alarm After, its alarm on (fill-meter.yaml).
+# MOCK_PANEL=1 adds the S3 build's touch panel (Panel Language, Panel Sleep
+# After, Panel Ignored Touches): Réglages contrôleur shows its « Screen » section.
 mock-webui:
-	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh) $(if $(MOCK_NO_RELEASE),--no-release) $(if $(filter off,$(MOCK_FILL)),--fill-off) $(if $(MOCK_LONG_FILL),--long-fill) $(if $(MOCK_INSTALL_FAIL),--install-fail) $(if $(MOCK_IDLE),--idle $(MOCK_IDLE))"
+	$(MAKE) mock-ui MOCK_INDEX=webui/index.html MOCK_ARGS="$(if $(MOCK_HOTSPOT),--hotspot) $(if $(MOCK_FRESH),--fresh) $(if $(MOCK_NO_RELEASE),--no-release) $(if $(filter off,$(MOCK_FILL)),--fill-off) $(if $(MOCK_LONG_FILL),--long-fill) $(if $(MOCK_INSTALL_FAIL),--install-fail) $(if $(MOCK_PANEL),--panel) $(if $(MOCK_IDLE),--idle $(MOCK_IDLE))"
 
 # Prints the page layout (sections, order, which entities the simulation
-# drives) and fails if $(CONFIG) has an entity type the mock can't render.
+# drives) and fails if $(CONFIG) has an entity type the mock can't render;
+# then the same with the touch panel (--panel), and for the S3 build's
+# config, $(CONFIG_S3), once the branch has it (docs/plans/s3-panel.md).
+CONFIG_S3 ?= pool-controller-s3.yaml
 mock-ui-check:
 	$(MOCK) --check $(MOCK_ARGS) /config/$(CONFIG)
+	$(MOCK) --check --panel $(MOCK_ARGS) /config/$(CONFIG) > /dev/null
+ifneq ($(wildcard $(CONFIG_S3)),)
+	$(MOCK) --check $(MOCK_ARGS) /config/$(CONFIG_S3)
+else
+	@echo "mock-ui-check: no $(CONFIG_S3) on this branch yet, skipped"
+endif
 
 # Checks home-assistant/dashboard/ (the dashboard components and the scripts piscine-card calls, each
 # language's file that make ha-files generates) and home-assistant/blueprints/ against $(CONFIG): every
@@ -341,13 +352,15 @@ card-preview-check: $(if $(CARD_BUNDLE),card)
 # once per ESPHOME_VERSION by panel-preview-image). No board, no controller. One build, then each scenario of
 # preview.h in each language:
 #   panel-shots          tools/panel-preview/shots/<lang>-<screen>-<state>.png at 480×320 (gitignored);
-#                        SCENARIO=auto,off for some, LANGS=fr for one language (LANGS, not LANG: the shell's locale)
+#                        SCENARIO=auto,off for some, SCREEN=home,sheet,status for some screens, LANGS=fr for one
+#                        language (LANGS, not LANG: the shell's locale)
 #   panel-preview-check  the same, failing on a dictionary key, « nan » or a missing text drawn instead of a text,
-#                        or a run that logs an error (CI runs it)
+#                        or a run that logs an error; then the flows (shoot.py's FLOWS: taps and the Auto button,
+#                        checked against the panel's log). CI runs it
 PANEL_PREVIEW_IMAGE := pool-panel-preview:$(ESPHOME_VERSION)
 PANEL_PREVIEW_PROGRAM := tools/panel-preview/.esphome/build/pool-panel-preview/.pioenvs/pool-panel-preview/program
 PANEL_SHOOT = docker run --rm -v "$(CURDIR):/config" -w /config --entrypoint python3 $(PANEL_PREVIEW_IMAGE) -I tools/panel-preview/shoot.py \
-	$(PANEL_PREVIEW_PROGRAM) $(if $(SCENARIO),--only $(SCENARIO)) $(if $(LANGS),--lang $(LANGS))
+	$(PANEL_PREVIEW_PROGRAM) $(if $(SCENARIO),--only $(SCENARIO)) $(if $(SCREEN),--screen $(SCREEN)) $(if $(LANGS),--lang $(LANGS))
 
 panel-preview-image:
 	docker build -q --build-arg ESPHOME_IMAGE=$(ESPHOME_IMAGE) -t $(PANEL_PREVIEW_IMAGE) tools/panel-preview >/dev/null

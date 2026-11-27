@@ -11,11 +11,16 @@ enum Lang : uint8_t { EN = 0, FR = 1, ES = 2 };
 inline constexpr int LANG_COUNT = 3;
 inline constexpr const char *LANG_CODES[LANG_COUNT] = {"en", "fr", "es"};
 
-inline constexpr int KEY_COUNT = 26;
+inline constexpr int KEY_COUNT = 64;
 
 // Sorted by byte, for panel_ui::find_key.
 inline constexpr const char *KEYS[KEY_COUNT] = {
+    "card.fw.uptime_d",
+    "common.apply",
+    "common.cancel",
     "common.mode.auto",
+    "common.mode.manual",
+    "common.never",
     "common.speed.High",
     "common.speed.Low",
     "common.speed.Medium",
@@ -27,6 +32,9 @@ inline constexpr const char *KEYS[KEY_COUNT] = {
     "panel.fmt.quantity",
     "panel.fmt.unknown",
     "panel.home.auto_until",
+    "panel.home.badge.fill_alarm",
+    "panel.home.badge.freeze",
+    "panel.home.badge.no_wifi",
     "panel.home.change",
     "panel.home.manual_left",
     "panel.home.manual_never",
@@ -35,17 +43,52 @@ inline constexpr const char *KEYS[KEY_COUNT] = {
     "panel.home.tile.outdoor",
     "panel.home.tile.pad",
     "panel.home.tile.water",
+    "panel.sheet.for",
     "panel.sheet.hint.for",
     "panel.sheet.hint.never",
     "panel.sheet.hint.off_never",
     "panel.sheet.hint.until",
+    "panel.sheet.title",
+    "panel.status.back",
+    "panel.status.ip",
+    "panel.status.network",
+    "panel.status.not_connected",
+    "panel.status.scan",
+    "panel.status.setup.configured",
+    "panel.status.setup.item.api_key",
+    "panel.status.setup.item.page_password",
+    "panel.status.setup.item.position",
+    "panel.status.setup.item.probes",
+    "panel.status.setup.item.wifi",
+    "panel.status.setup.label",
+    "panel.status.setup.missing",
+    "panel.status.signal",
+    "panel.status.title",
+    "panel.status.update.available",
+    "panel.status.update.checking",
+    "panel.status.update.error.check",
+    "panel.status.update.error.install",
+    "panel.status.update.installing",
+    "panel.status.update.label",
+    "panel.status.update.pending.fill",
+    "panel.status.update.pending.override",
+    "panel.status.update.unchecked",
+    "panel.status.update.up_to_date",
+    "panel.status.uptime",
+    "panel.status.version",
     "panel.unit.celsius",
+    "panel.unit.dbm",
     "panel.unit.litre",
 };
 
 // TEXTS[key][lang], in KEYS' order: en, fr, es.
 inline constexpr const char *TEXTS[KEY_COUNT][LANG_COUNT] = {
+    {"{d} d {h} h", "{d} j {h} h", "{d} d {h} h"},  // card.fw.uptime_d
+    {"Apply", "Appliquer", "Aplicar"},  // common.apply
+    {"Cancel", "Annuler", "Cancelar"},  // common.cancel
     {"Auto", "Auto", "Auto"},  // common.mode.auto
+    {"Manual", "Manuel", "Manual"},  // common.mode.manual
+    {"Never", "Jamais", "Nunca"},  // common.never
     {"High", "Haute", "Alta"},  // common.speed.High
     {"Low", "Basse", "Baja"},  // common.speed.Low
     {"Medium", "Moyenne", "Media"},  // common.speed.Medium
@@ -57,6 +100,9 @@ inline constexpr const char *TEXTS[KEY_COUNT][LANG_COUNT] = {
     {"{value} {unit}", "{value} {unit}", "{value} {unit}"},  // panel.fmt.quantity
     {"—", "—", "—"},  // panel.fmt.unknown
     {"{speed} until {time}", "{speed} jusqu'à {time}", "{speed} hasta las {time}"},  // panel.home.auto_until
+    {"Fill running too long", "Remplissage trop long", "Llenado demasiado largo"},  // panel.home.badge.fill_alarm
+    {"Freeze protection", "Hors-gel", "Antiheladas"},  // panel.home.badge.freeze
+    {"No Wi-Fi", "Pas de Wi-Fi", "Sin Wi-Fi"},  // panel.home.badge.no_wifi
     {"Change", "Changer", "Cambiar"},  // panel.home.change
     {"{speed} · {left} left · Auto at {time}", "{speed} · encore {left} · Auto à {time}", "{speed} · quedan {left} · Auto a las {time}"},  // panel.home.manual_left
     {"{speed} · no time limit", "{speed} · sans limite de durée", "{speed} · sin límite de tiempo"},  // panel.home.manual_never
@@ -65,11 +111,41 @@ inline constexpr const char *TEXTS[KEY_COUNT][LANG_COUNT] = {
     {"Outdoor", "Extérieur", "Exterior"},  // panel.home.tile.outdoor
     {"Equipment pad", "Local technique", "Cuarto técnico"},  // panel.home.tile.pad
     {"Water", "Eau", "Agua"},  // panel.home.tile.water
+    {"For", "Pendant", "Durante"},  // panel.sheet.for
     {"{speed} for {duration}, then back to Auto", "{speed} pendant {duration}, puis retour en Auto", "{speed} durante {duration}, después vuelve a Auto"},  // panel.sheet.hint.for
     {"A restart returns to Auto.", "Un redémarrage revient en Auto.", "Un reinicio vuelve a Auto."},  // panel.sheet.hint.never
     {"Filtration stays off until you change it or the controller restarts. Freeze protection still starts the pump.", "La filtration reste arrêtée jusqu'à ce que vous la changiez ou que le contrôleur redémarre. Le hors-gel démarre quand même la pompe.", "La filtración sigue apagada hasta que la cambie o el controlador se reinicie. El antiheladas sigue arrancando la bomba."},  // panel.sheet.hint.off_never
     {"{speed} until {time}, then back to Auto", "{speed} jusqu'à {time}, puis retour en Auto", "{speed} hasta las {time}, después vuelve a Auto"},  // panel.sheet.hint.until
+    {"Pump mode", "Mode de la pompe", "Modo de la bomba"},  // panel.sheet.title
+    {"Back", "Retour", "Volver"},  // panel.status.back
+    {"IP address", "Adresse IP", "Dirección IP"},  // panel.status.ip
+    {"Wi-Fi network", "Réseau Wi-Fi", "Red Wi-Fi"},  // panel.status.network
+    {"Not connected", "Non connecté", "No conectado"},  // panel.status.not_connected
+    {"Scan to open the controller's page", "Scannez pour ouvrir la page du contrôleur", "Escanee para abrir la página del controlador"},  // panel.status.scan
+    {"Complete", "Terminée", "Completa"},  // panel.status.setup.configured
+    {"Home Assistant", "Home Assistant", "Home Assistant"},  // panel.status.setup.item.api_key
+    {"page password", "mot de passe", "contraseña"},  // panel.status.setup.item.page_password
+    {"location", "position", "ubicación"},  // panel.status.setup.item.position
+    {"pool probe", "sonde piscine", "sonda piscina"},  // panel.status.setup.item.probes
+    {"Wi-Fi", "Wi-Fi", "Wi-Fi"},  // panel.status.setup.item.wifi
+    {"Setup", "Configuration", "Configuración"},  // panel.status.setup.label
+    {"Still to do: {items}", "Reste à faire : {items}", "Falta: {items}"},  // panel.status.setup.missing
+    {"Signal strength", "Force du signal", "Señal"},  // panel.status.signal
+    {"Status", "État", "Estado"},  // panel.status.title
+    {"Update available", "Mise à jour disponible", "Actualización disponible"},  // panel.status.update.available
+    {"Looking for a new version", "Recherche d'une nouvelle version", "Buscando una nueva versión"},  // panel.status.update.checking
+    {"The check didn't succeed", "La vérification a échoué", "La comprobación no tuvo éxito"},  // panel.status.update.error.check
+    {"The install didn't succeed", "L'installation a échoué", "La instalación no tuvo éxito"},  // panel.status.update.error.install
+    {"Installing", "Installation en cours", "Instalando"},  // panel.status.update.installing
+    {"Update", "Mise à jour", "Actualización"},  // panel.status.update.label
+    {"Waits for the fill to end", "Attend la fin du remplissage", "Espera el fin del llenado"},  // panel.status.update.pending.fill
+    {"Waits for the forced speed to end", "Attend la fin de la vitesse forcée", "Espera el fin de la velocidad forzada"},  // panel.status.update.pending.override
+    {"Not checked yet", "Pas encore vérifié", "Aún sin comprobar"},  // panel.status.update.unchecked
+    {"Up to date", "À jour", "Al día"},  // panel.status.update.up_to_date
+    {"Running for", "En marche depuis", "Tiempo en marcha"},  // panel.status.uptime
+    {"Version", "Version", "Versión"},  // panel.status.version
     {"°C", "°C", "°C"},  // panel.unit.celsius
+    {"dBm", "dBm", "dBm"},  // panel.unit.dbm
     {"L", "L", "L"},  // panel.unit.litre
 };
 
