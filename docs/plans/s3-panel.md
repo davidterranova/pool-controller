@@ -457,7 +457,7 @@ Tick each one only with its evidence (PR, command, or the date of the hardware c
 | S3 | 1 (any time) | Panel scaffolding: `panel_ui.h` + tests, translations pipeline, fonts, preview | contract | `feat/s3-panel-s3-scaffold` | done | [#89](https://github.com/davidterranova/pool-controller/pull/89) |
 | S4 | 1 (no screen) | Panel UI (LVGL) in the preview, then on the board with no screen attached | S1, S3; S2 for the board check | `feat/s3-panel-s4-panel` | in progress (the board check waits for hardware) | [#92](https://github.com/davidterranova/pool-controller/pull/92) |
 | S5 | 1 (any time) | Controller page + mock: « Screen », wizard | contract | `feat/s3-panel-s5-page` | done | [#87](https://github.com/davidterranova/pool-controller/pull/87) |
-| S6 | 1 | Screen on the bench: wiring, rotation, touch, the panel checked on it | S2, S4, display delivered | — | todo | — |
+| S6 | 1 | Screen on the bench: wiring, rotation, touch, the panel checked on it | S2, S4, display delivered | `feat/s3-panel-s6-screen` | in progress | — |
 | S7 | 2 | Relays and a bench probe: pump safety on the S3 | M1 | — | todo | — |
 | S8 | 3 (any time) | History Import (every build) | contract | `feat/s3-panel-s8-history` | in progress (bench check waits for hardware) | [#90](https://github.com/davidterranova/pool-controller/pull/90) |
 | S9 | 3 (any time) | Transfer tool | S8 | `feat/s3-panel-s9-transfer` | in progress (A10 waits for hardware) | [#91](https://github.com/davidterranova/pool-controller/pull/91) |
