@@ -133,6 +133,9 @@ display:
     dc_pin: ${display_dc_pin}
     reset_pin: ${display_reset_pin}
     data_rate: 40MHz
+    # The IPS panel shows inverted colours without it (S6: the light theme
+    # came out black).
+    invert_colors: true
     # Landscape, 480×320 (the panel is 320×480 portrait), turned by the
     # controller itself: LVGL won't take a display `rotation:`. Seen on the
     # bench (S6): the header pins on the left, viewed from the front. The
