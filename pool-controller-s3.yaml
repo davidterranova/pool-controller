@@ -134,14 +134,16 @@ display:
     reset_pin: ${display_reset_pin}
     data_rate: 40MHz
     # Landscape, 480×320 (the panel is 320×480 portrait), turned by the
-    # controller itself: LVGL won't take a display `rotation:`. S6 sets the
-    # mirrors from what the screen shows.
+    # controller itself: LVGL won't take a display `rotation:`. Seen on the
+    # bench (S6): the header pins on the left, viewed from the front. The
+    # other way up is mirror_x and mirror_y both true (and the touch's
+    # mirror_x true, mirror_y false).
     dimensions:
       width: 480
       height: 320
     transform:
       swap_xy: true
-      mirror_x: true
+      mirror_x: false
       mirror_y: false
     # LVGL draws the screen; its buffer goes in PSRAM.
     auto_clear_enabled: false
@@ -159,7 +161,12 @@ touchscreen:
     display: panel_display
     interrupt_pin: ${touch_int_pin}
     reset_pin: ${touch_reset_pin}
-    # No transform until S6 sees where a tap lands.
+    # The glass reports the panel's native portrait (x 0-320, y 0-480);
+    # turned like the display (swap first, then mirror): x = raw y,
+    # y = 320 - raw x. Measured on the bench (S6).
+    transform:
+      swap_xy: true
+      mirror_y: true
 
 output:
   - platform: ledc

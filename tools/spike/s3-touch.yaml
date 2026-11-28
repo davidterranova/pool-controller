@@ -1,0 +1,98 @@
+# S6 spike (docs/plans/s3-panel.md): is the touch controller (FT6336U, I²C at
+# 0x38) on the bus? Throwaway: no Wi-Fi, no display, nothing but the log.
+#
+# Releases the controller from reset, waits, then every 2 s logs the idle
+# level of each touch line, scans the bus and, if 0x38 answers, reads its
+# chip id and the number of fingers on the glass.
+#   docker run --rm -v "$PWD:/config" ghcr.io/esphome/esphome:2026.11.0b6 \
+#     compile tools/spike/s3-touch.yaml
+#   (swapped lines: add -s sda 2 -s scl 1 after `compile`)
+#   esptool --chip esp32s3 --port /dev/cu.usbmodem… write-flash \
+#     0x0 tools/spike/.esphome/build/s3-touch/build/firmware.factory.bin
+# It keeps the NVS partition, so `make flash-s3 BENCH=1` afterwards brings the
+# bench firmware back with its settings.
+
+substitutions:
+  sda: "1"
+  scl: "2"
+  int: "21"
+  rst: "18"
+
+esphome:
+  name: s3-touch
+  on_boot:
+    priority: -100
+    then:
+      - output.turn_off: touch_rst
+      - delay: 20ms
+      - output.turn_on: touch_rst
+      - delay: 500ms
+      - logger.log:
+          level: INFO
+          format: "S6 touch check: SDA=GPIO${sda} SCL=GPIO${scl}, reset released"
+      - lambda: 'id(ready) = true;'
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+logger:
+  level: INFO
+
+globals:
+  - id: int_changes
+    type: uint32_t
+    initial_value: '0'
+  - id: ready
+    type: bool
+    initial_value: 'false'
+
+output:
+  - platform: gpio
+    id: touch_rst
+    pin: GPIO${rst}
+
+# The controller pulls INT low on every touch, even with nothing on I²C:
+# pulses here = it is powered and out of reset.
+binary_sensor:
+  - platform: gpio
+    id: touch_int
+    internal: true
+    pin:
+      number: GPIO${int}
+      mode: {input: true, pullup: true}
+    on_state:
+      - lambda: 'ESP_LOGI("touch", "INT -> %d (change %u)", x ? 1 : 0, ++id(int_changes));'
+
+i2c:
+  - id: touch_bus
+    sda: GPIO${sda}
+    scl: GPIO${scl}
+    scan: false
+    frequency: 100kHz
+
+interval:
+  - interval: 5s
+    then:
+      - lambda: |-
+          if (!id(ready)) return;
+          gpio_num_t sda = (gpio_num_t) ${sda}, scl = (gpio_num_t) ${scl},
+                     irq = (gpio_num_t) ${int};
+          ESP_LOGI("touch", "levels: SDA=%d SCL=%d INT=%d", gpio_get_level(sda),
+                   gpio_get_level(scl), gpio_get_level(irq));
+          std::string found;
+          for (uint8_t a = 0x08; a < 0x78; a++) {
+            if (id(touch_bus)->write(a, nullptr, 0) == i2c::ERROR_OK) {
+              char buf[8];
+              snprintf(buf, sizeof(buf), " 0x%02X", a);
+              found += buf;
+            }
+          }
+          ESP_LOGI("touch", "scan:%s", found.empty() ? " nothing answers" : found.c_str());
+          uint8_t reg = 0xA3, chip = 0, reg2 = 0x02, fingers = 0;
+          if (id(touch_bus)->write_readv(0x38, &reg, 1, &chip, 1) == i2c::ERROR_OK &&
+              id(touch_bus)->write_readv(0x38, &reg2, 1, &fingers, 1) == i2c::ERROR_OK)
+            ESP_LOGI("touch", "0x38: chip id 0x%02X, fingers %u", chip, fingers & 0x0F);

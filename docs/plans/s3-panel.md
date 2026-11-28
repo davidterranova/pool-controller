@@ -195,13 +195,20 @@ The display can arrive after the board, so nothing in phase 1 waits for it but S
 - **Safety:** the source is opened through a reader with no write method, and a target with the source's MAC is refused before anything is written. Manual Override is never copied.
 - **The fake controller** (`tools/transfer/fake_controller.py`) speaks the native API in plaintext, so the tests run aioesphomeapi itself. The encrypted (Noise) handshake is aioesphomeapi's own and only runs against a real controller: A10.
 
+**2026-11-28: S6, the screen on the bench**
+- **Landscape: `swap_xy: true`, `mirror_x: false`, `mirror_y: false`**, with the header pins on the left seen from the front. S4's `mirror_x: true` drew the screen mirrored. Upside down (header on the right) is both mirrors true; S10 picks the side for the box.
+- **Touch: `swap_xy: true`, `mirror_y: true`.** The glass reports the panel's native portrait (x 0–320, y 0–480); ESPHome swaps before it mirrors, and its default calibration (the display's native size, after the swap) fits, so no `calibration:`. Checked by tapping the corners and the pump-mode sheet.
+- **The FT6336U's « failed to start » at boot is harmless:** ESPHome reads the chip id 10 ms after the reset pulse, before the chip answers (it reads 0x64 a moment later, `tools/spike/s3-touch.yaml`). Touch works; the error stays in the boot log.
+- **On USB alone, the board's 5Vin pin is dead** until its IN-OUT pads are bridged: a diode separates the USB's 5 V from it, so the display had no power and pulled the touch lines low. The bench bridges them; with the bridge, the 5 V supply and USB must never be connected together. In the box the supply feeds 5Vin, so no bridge is needed there (S10).
+- **A dead jumper wire looks like a dead touch controller:** the chip pulsed INT on every touch but nothing answered on I²C until the SDA/SCL jumpers were changed. `tools/spike/s3-touch.yaml` tells the two apart (line levels, a bus scan, INT pulses).
+
 ## Open questions (each settled in its WP, then moved to Decisions)
 
 - One manifest with both builds, or one per target (S12), with S1's finding (c).
 - How Home Assistant keeps the entity ids across the swap (rehearsed on the bench board, then done in S11):
   - the ESPHome integration's device replacement, if it accepts a new MAC for the same name;
   - otherwise remove the old device, add the new one, and rename the ids back.
-- Rotation direction and touch transform (S6), with the connector's side as the box will mount it (S10).
+- Which way up the box mounts the screen (S10): the header on the left as now, or both mirrors flipped (S6's Decisions).
 - Whether the board runs the LVGL build with no screen attached, with only the touch controller failed (S4). Expected: the SPI bus has no handshake, and a failed FT6336 setup marks only that component failed.
 
 ## Hardware
@@ -605,8 +612,9 @@ Only S6 waits for the display.
 #### S6: the screen on the bench (hardware)
 - [ ] Bench, phase 1 complete: the display wired per the pin map (SD_CS to 3.3 V, SDO unconnected), on the 5 V supply.
 - [ ] On the screen, with the full firmware (`make flash-s3 BENCH=1`). If it stays blank, use a throwaway `tools/spike/s3-display.yaml` test pattern:
-  - the landscape rotation, with the connector on the side the box will mount it, plus the colour order and inversion;
-  - the touch transform (`swap_xy`/`mirror_*`), so taps land on the drawn targets;
+  - [x] the landscape rotation (header on the left; the box's side waits for S10);
+  - [ ] the colour order and inversion;
+  - [x] the touch transform (`swap_xy`/`mirror_*`), so taps land on the drawn targets;
   - SPI at 40 MHz, then tried at 80 MHz;
   - the backlight dims by PWM and goes off when asleep.
 - [ ] S4's hardware block corrected with what the screen showed. The rotation, the transform and the bus speed go in Decisions.
