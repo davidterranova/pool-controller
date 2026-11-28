@@ -198,6 +198,7 @@ The display can arrive after the board, so nothing in phase 1 waits for it but S
 **2026-11-28: S6, the screen on the bench**
 - **Landscape: `swap_xy: true`, `mirror_x: false`, `mirror_y: false`**, with the header pins on the left seen from the front. S4's `mirror_x: true` drew the screen mirrored. Upside down (header on the right) is both mirrors true; S10 picks the side for the box.
 - **`invert_colors: true`:** without it the IPS panel showed the light theme black, with light text. The colour order (RGB) was right as is.
+- **SPI at 80 MHz:** clean on the bench's ~20 cm jumper wires (no speckles or torn lines while the sheet opens and closes), and the first full draw drops from 133–146 ms to 122 ms. The box's shorter wires only help; 40 MHz is the fallback if a build ever shows noise.
 - **Touch: `swap_xy: true`, `mirror_y: true`.** The glass reports the panel's native portrait (x 0–320, y 0–480); ESPHome swaps before it mirrors, and its default calibration (the display's native size, after the swap) fits, so no `calibration:`. Checked by tapping the corners and the pump-mode sheet.
 - **The FT6336U's « failed to start » at boot is harmless:** ESPHome reads the chip id 10 ms after the reset pulse, before the chip answers (it reads 0x64 a moment later, `tools/spike/s3-touch.yaml`). Touch works; the error stays in the boot log.
 - **On USB alone, the board's 5Vin pin is dead** until its IN-OUT pads are bridged: a diode separates the USB's 5 V from it, so the display had no power and pulled the touch lines low. The bench bridges them; with the bridge, the 5 V supply and USB must never be connected together. In the box the supply feeds 5Vin, so no bridge is needed there (S10).
@@ -616,8 +617,8 @@ Only S6 waits for the display.
   - [x] the landscape rotation (header on the left; the box's side waits for S10);
   - [x] the colour order and inversion (`invert_colors: true`; RGB order as is);
   - [x] the touch transform (`swap_xy`/`mirror_*`), so taps land on the drawn targets;
-  - SPI at 40 MHz, then tried at 80 MHz;
-  - the backlight dims by PWM and goes off when asleep.
+  - [x] SPI at 40 MHz, then tried at 80 MHz (kept: 80 MHz);
+  - [x] the backlight dims by PWM and goes off when asleep.
 - [ ] S4's hardware block corrected with what the screen showed. The rotation, the transform and the bus speed go in Decisions.
 - [ ] Against the bench controller:
   - A4, item by item;
