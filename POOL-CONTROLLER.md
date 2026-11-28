@@ -1096,9 +1096,42 @@ State. **Back** (« Retour ») returns home.
 
 | Entity | Type | What |
 |---|---|---|
-| Panel Language | select (config) | `en`, `fr` or `es`; a change relabels the panel at once. The setup wizard sets it to the page's language |
+| Panel Language | select (config) | `en`, `fr` or `es`; a change relabels the panel at once. The setup wizard sets it to the page's language; after that it is set on its own, in « Controller settings › Screen » (« Réglages contrôleur › Écran »): the page's own language switch doesn't change it |
 | Panel Sleep After | number (config) | Seconds with no touch before the screen sleeps, 15–600, default 60 |
 | Panel Ignored Touches | sensor (diagnostic) | Touches that only woke the screen, since boot |
+
+**Wiring the screen** (a 3.5″ SPI display, ST7796U with an FT6336U touch
+controller, Elecrow DLS30035B1 or its clones; 14-pin header, numbered from
+VCC):
+
+| Display pin | ESP32-S3 | Note |
+|---|---|---|
+| 1 VCC | 5Vin | The module runs on 5 V and converts its own levels |
+| 2 GND | GND | |
+| 3 LCD_CS | GPIO10 | |
+| 4 LCD_RST | GPIO8 | |
+| 5 LCD_RS (DC) | GPIO9 | |
+| 6 SDI (MOSI) | GPIO11 | |
+| 7 SCK | GPIO12 | SPI at 80 MHz |
+| 8 LED | GPIO14 | Backlight, PWM |
+| 9 SDO (MISO) | — | Unconnected: nothing is read back |
+| 10 CTP_SCL | GPIO2 | |
+| 11 CTP_RST | GPIO18 | |
+| 12 CTP_SDA | GPIO1 | |
+| 13 CTP_INT | GPIO21 | |
+| 14 SD_CS | 3V3 | Keeps the micro-SD slot (unused) off the bus |
+
+- **Power:** on the DevKitC-style S3 boards, a diode separates the USB's
+  5 V from the 5Vin pin. Powered by the 5 V supply on 5Vin, the board and
+  the screen both run. On USB alone (a bench), 5Vin stays dead and the
+  screen dark, unless the board's IN-OUT pads are bridged; with that bridge,
+  never connect the 5 V supply and USB at the same time.
+- **Orientation:** landscape, with the header on the left seen from the
+  front. The boot log's `FT6336U touch driver failed to start` is harmless:
+  the driver asks the chip too early after its reset, and touch works.
+- **If touch doesn't answer:** `tools/spike/s3-touch.yaml` scans the touch
+  bus and counts the INT pulses. Pulses when you touch but nothing on the
+  bus means an SDA or SCL wire is bad, not the controller.
 
 ## Changing the freeze-protection threshold
 

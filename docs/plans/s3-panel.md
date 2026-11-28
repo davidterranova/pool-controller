@@ -612,23 +612,23 @@ Only S6 waits for the display.
   - the mock's flag in README.
 
 #### S6: the screen on the bench (hardware)
-- [ ] Bench, phase 1 complete: the display wired per the pin map (SD_CS to 3.3 V, SDO unconnected), on the 5 V supply.
-- [ ] On the screen, with the full firmware (`make flash-s3 BENCH=1`). If it stays blank, use a throwaway `tools/spike/s3-display.yaml` test pattern:
+- [x] Bench, phase 1 complete: the display wired per the pin map (SD_CS to 3.3 V, SDO unconnected), on USB with the board's IN-OUT pads bridged (Decisions).
+- [x] On the screen, with the full firmware (`make flash-s3 BENCH=1`). If it stays blank, use a throwaway `tools/spike/s3-display.yaml` test pattern (not needed; `tools/spike/s3-touch.yaml` found the touch wiring):
   - [x] the landscape rotation (header on the left; the box's side waits for S10);
   - [x] the colour order and inversion (`invert_colors: true`; RGB order as is);
   - [x] the touch transform (`swap_xy`/`mirror_*`), so taps land on the drawn targets;
   - [x] SPI at 40 MHz, then tried at 80 MHz (kept: 80 MHz);
   - [x] the backlight dims by PWM and goes off when asleep.
-- [ ] S4's hardware block corrected with what the screen showed. The rotation, the transform and the bus speed go in Decisions.
+- [x] S4's hardware block corrected with what the screen showed. The rotation, the transform and the bus speed go in Decisions.
 - [ ] Against the bench controller:
-  - A4, item by item;
-  - A5 with the screen awake, asleep, and with the touch flex unplugged;
-  - A6's on-screen part.
-- [ ] One language on the bench, described in the PR.
+  - [x] A4, item by item (2026-11-28);
+  - [ ] A5 with the screen awake, asleep, and with the touch flex unplugged (waits for the Auto button's switch);
+  - [x] A6's on-screen part: the three languages switched from the page's « Screen » section, accents drawn, nothing clipped (2026-11-28).
+- [x] Languages on the bench: all three, described in the PR.
 - [ ] Done when:
   - A4, A5 and A6 hold on the screen;
   - with S1–S5 done, this PR ticks M1.
-- [ ] **Docs:** the display wiring in POOL-CONTROLLER.md's S3 hardware draft.
+- [x] **Docs:** the display wiring in POOL-CONTROLLER.md, under « Local touch panel » (S2's hardware draft isn't merged yet; S10 moves it there).
 
 **Milestone M1:** A1–A6 ticked. The PR completing phase 1 (normally S6's) says so here, with the date.
 
